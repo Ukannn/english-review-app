@@ -1,0 +1,24 @@
+# Generated browser/test artifacts; keep locally for evidence, but do not treat as source.
+.playwright-cli/
+output/playwright/
+
+# Private operational history must not enter the public edition.
+rollback/
+archive/
+HANDOFF.md
+PROJECT_INDEX.md
+.clasp.json
+
+# Local machine artifacts and dependencies.
+.DS_Store
+node_modules/
+
+# Local secrets and authentication state. Apps Script project IDs in retained
+# rollback snapshots are versioned, but OAuth credentials must never be added.
+.env
+.env.*
+.clasprc.json
+*credentials*.json
+*service-account*.json
+*.pem
+*.key

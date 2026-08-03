@@ -1,0 +1,3677 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f7f7f2">
+  <link rel="icon" href="data:,">
+  <title>英语搭配复习</title>
+  <style>
+    :root {
+      --paper: #f7f7f2;
+      --surface: #ffffff;
+      --ink: #17211b;
+      --muted: #647067;
+      --line: #dfe4dd;
+      --green: #155f46;
+      --green-soft: #e5f1ea;
+      --amber: #9a5a08;
+      --amber-soft: #fff1d8;
+      --red: #a33b33;
+      --red-soft: #fbe9e7;
+      --blue: #315f86;
+      --blue-soft: #e9f1f7;
+      --shadow: 0 18px 45px rgba(37, 50, 41, .08);
+      --radius: 22px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      min-height: 100%;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+        "Helvetica Neue", Arial, sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      margin: 0;
+      background:
+        radial-gradient(circle at 8% 0%, rgba(208, 228, 214, .55), transparent 29rem),
+        radial-gradient(circle at 100% 12%, rgba(240, 223, 190, .38), transparent 27rem),
+        var(--paper);
+    }
+
+    button, textarea, a { font: inherit; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    button { border: 0; }
+    button:focus-visible, textarea:focus-visible, a:focus-visible {
+      outline: 3px solid rgba(21, 95, 70, .25);
+      outline-offset: 2px;
+    }
+
+    .shell {
+      width: min(1180px, 100%);
+      min-height: 100vh;
+      min-height: 100dvh;
+      margin: 0 auto;
+      padding: max(20px, env(safe-area-inset-top)) 28px max(28px, env(safe-area-inset-bottom));
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      min-height: 60px;
+      margin-bottom: 24px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .mark {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      flex: 0 0 auto;
+      border-radius: 13px;
+      color: #fff;
+      background: var(--green);
+      box-shadow: 0 8px 22px rgba(21, 95, 70, .18);
+      font-size: 20px;
+      font-weight: 750;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: clamp(19px, 2vw, 24px);
+      letter-spacing: -.02em;
+    }
+
+    .brand p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .save-state {
+      min-width: 78px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: right;
+    }
+
+    .save-state[data-tone="good"] { color: var(--green); }
+    .save-state[data-tone="warn"] { color: var(--amber); }
+    .save-state[data-tone="bad"] { color: var(--red); }
+    .muted { color: var(--muted); }
+
+    .progress-wrap {
+      display: none;
+      align-items: center;
+      gap: 13px;
+      margin-bottom: 20px;
+    }
+
+    .progress-track {
+      height: 8px;
+      flex: 1;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e4e8e2;
+    }
+
+    .progress-bar {
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--green);
+      transition: width .25s ease;
+    }
+
+    .progress-label {
+      min-width: 72px;
+      color: var(--muted);
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+
+    .quiz-layout {
+      display: grid;
+      grid-template-columns: 218px minmax(0, 1fr);
+      gap: 24px;
+      align-items: start;
+    }
+
+    .navigator {
+      position: sticky;
+      top: 20px;
+      padding: 18px;
+      border: 1px solid rgba(223, 228, 221, .9);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, .84);
+      box-shadow: 0 12px 34px rgba(37, 50, 41, .045);
+      backdrop-filter: blur(14px);
+    }
+
+    .navigator-title {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 13px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+
+    .number-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .q-number {
+      position: relative;
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--muted);
+      background: var(--surface);
+      cursor: pointer;
+      transition: border-color .15s ease, background .15s ease, color .15s ease;
+    }
+
+    .q-number:hover { border-color: #aab7ae; }
+    .q-number.answered { color: var(--green); background: var(--green-soft); border-color: #bed6c6; }
+    .q-number.revealed { color: #fff; background: #3f8069; border-color: #3f8069; }
+    .q-number.sync-error { color: var(--red); background: var(--red-soft); border-color: #e5b8b8; }
+    .q-number.current { color: #fff; background: var(--green); border-color: var(--green); }
+    .q-number.current::after {
+      content: "";
+      position: absolute;
+      inset: -4px;
+      border: 1px solid rgba(21, 95, 70, .22);
+      border-radius: 15px;
+    }
+
+    .mobile-navigator {
+      display: none;
+      gap: 8px;
+      margin: 0 -20px 15px;
+      padding: 2px 20px 8px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      scroll-snap-type: x proximity;
+    }
+
+    .mobile-navigator::-webkit-scrollbar { display: none; }
+    .mobile-navigator .q-number {
+      width: 44px;
+      min-width: 44px;
+      scroll-snap-align: center;
+    }
+
+    .question-card {
+      min-height: 520px;
+      padding: clamp(26px, 4.5vw, 52px);
+      border: 1px solid rgba(223, 228, 221, .92);
+      border-radius: 28px;
+      background: rgba(255, 255, 255, .94);
+      box-shadow: var(--shadow);
+    }
+
+    .question-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .eyebrow {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .type-pill, .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      color: var(--blue);
+      background: var(--blue-soft);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .prompt-zh {
+      margin: 0;
+      font-size: clamp(24px, 4vw, 38px);
+      line-height: 1.36;
+      letter-spacing: -.025em;
+    }
+
+    .prompt-en {
+      margin: 16px 0 0;
+      color: #465148;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(18px, 2.5vw, 24px);
+      line-height: 1.52;
+    }
+
+    .answer-label {
+      display: block;
+      margin: 42px 0 10px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .answer-box {
+      width: 100%;
+      min-height: 126px;
+      resize: vertical;
+      padding: 17px 18px;
+      border: 1.5px solid #cfd7d0;
+      border-radius: 16px;
+      color: var(--ink);
+      background: #fbfcfa;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 19px;
+      line-height: 1.55;
+      transition: border-color .16s ease, box-shadow .16s ease;
+    }
+
+    .answer-box:focus {
+      border-color: var(--green);
+      box-shadow: 0 0 0 4px rgba(21, 95, 70, .08);
+    }
+
+    .answer-box:disabled {
+      color: #35433a;
+      background: #f0f3ef;
+      -webkit-text-fill-color: #35433a;
+      opacity: 1;
+    }
+
+    .answer-reveal {
+      margin-top: 18px;
+      padding: 18px 20px;
+      border: 1px solid #bed6c6;
+      border-radius: 16px;
+      background: var(--green-soft);
+    }
+
+    .answer-reveal span {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: .08em;
+    }
+
+    .answer-reveal p {
+      margin: 0;
+      color: var(--ink);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(20px, 2.7vw, 27px);
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .question-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 25px;
+    }
+
+    .action-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 46px;
+      padding: 11px 18px;
+      border: 1px solid transparent;
+      border-radius: 14px;
+      color: var(--ink);
+      background: #edf0ec;
+      font-weight: 680;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform .12s ease, background .15s ease, opacity .15s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { cursor: not-allowed; opacity: .48; transform: none; }
+    .btn.primary { color: #fff; background: var(--green); }
+    .btn.secondary { border-color: var(--line); background: var(--surface); }
+    .btn.danger { color: var(--red); background: var(--red-soft); }
+    .btn.full { width: 100%; }
+
+    .state-card {
+      width: min(720px, 100%);
+      margin: clamp(30px, 9vh, 100px) auto 0;
+      padding: clamp(28px, 5vw, 48px);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: rgba(255, 255, 255, .94);
+      box-shadow: var(--shadow);
+      text-align: center;
+    }
+
+    .state-icon {
+      display: grid;
+      place-items: center;
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 20px;
+      border-radius: 20px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 29px;
+      font-weight: 750;
+    }
+
+    .state-icon.spin { animation: breathe 1.6s ease-in-out infinite; }
+    @keyframes breathe { 50% { transform: scale(.94); opacity: .7; } }
+
+    .state-card h2 {
+      margin: 0;
+      font-size: clamp(24px, 4vw, 34px);
+      letter-spacing: -.025em;
+    }
+
+    .state-card p {
+      margin: 13px auto 0;
+      max-width: 560px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .state-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 28px;
+    }
+
+    .command {
+      width: min(360px, 100%);
+      margin: 24px auto 0;
+      padding: 16px;
+      border: 1px dashed #a9c3b2;
+      border-radius: 16px;
+      color: var(--green);
+      background: #f4faf6;
+      font-size: 24px;
+      font-weight: 750;
+      letter-spacing: .08em;
+    }
+
+    .fine-print {
+      margin-top: 16px !important;
+      font-size: 12px;
+    }
+
+    .app-nav {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid rgba(223, 228, 221, .9);
+      border-radius: 15px;
+      background: rgba(255, 255, 255, .78);
+    }
+
+    .nav-link {
+      min-height: 38px;
+      padding: 8px 13px;
+      border-radius: 11px;
+      color: var(--muted);
+      background: transparent;
+      font-size: 13px;
+      font-weight: 680;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .nav-link[aria-current="page"] {
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .bottom-nav { display: none; }
+    .view { min-width: 0; }
+
+    .today-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 16px;
+      padding: 13px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, .78);
+      font-size: 13px;
+    }
+
+    .today-strip strong { color: var(--ink); }
+    .today-strip-parts { display: flex; flex-wrap: wrap; gap: 12px; }
+
+    .page-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 18px;
+      margin: 6px 0 22px;
+    }
+
+    .page-head h2 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 42px);
+      letter-spacing: -.035em;
+    }
+
+    .page-head p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .freshness {
+      flex: 0 0 auto;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: right;
+    }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .kpi-grid {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .kpi-card, .panel {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, .92);
+      box-shadow: 0 10px 30px rgba(37, 50, 41, .045);
+    }
+
+    .kpi-card {
+      min-height: 126px;
+      padding: 18px;
+      border-radius: 18px;
+    }
+
+    .kpi-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 680;
+    }
+
+    .kpi-value {
+      display: block;
+      margin-top: 12px;
+      font-size: clamp(27px, 3vw, 37px);
+      font-weight: 760;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -.04em;
+    }
+
+    .kpi-note {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .panel {
+      grid-column: span 6;
+      min-width: 0;
+      padding: 22px;
+      border-radius: 20px;
+    }
+
+    .panel.wide { grid-column: 1 / -1; }
+
+    .panel-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .panel-head h3 { margin: 0; font-size: 17px; }
+    .panel-head p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .chart-empty {
+      display: grid;
+      place-items: center;
+      min-height: 180px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .line-chart {
+      display: block;
+      width: 100%;
+      height: auto;
+      overflow: visible;
+    }
+
+    .chart-grid-line { stroke: #e8ebe7; stroke-width: 1; }
+    .chart-line {
+      fill: none;
+      stroke: var(--green);
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .chart-dot { fill: #fff; stroke: var(--green); stroke-width: 2; }
+    .chart-label { fill: var(--muted); font-size: 10px; }
+
+    .bar-list { display: grid; gap: 12px; }
+    .bar-row {
+      display: grid;
+      grid-template-columns: minmax(90px, 150px) minmax(0, 1fr) 34px;
+      gap: 10px;
+      align-items: center;
+      font-size: 13px;
+    }
+    .bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-track {
+      height: 12px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #edf0ec;
+    }
+    .bar-fill {
+      height: 100%;
+      min-width: 2px;
+      border-radius: inherit;
+      background: var(--green);
+    }
+    .bar-fill.amber { background: #c9872d; }
+    .bar-fill.blue { background: #5d86a7; }
+    .bar-value { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+
+    .date-bars {
+      display: grid;
+      grid-template-columns: repeat(14, minmax(28px, 1fr));
+      gap: 7px;
+      align-items: end;
+      min-height: 210px;
+      padding-top: 14px;
+    }
+    .date-bar {
+      display: grid;
+      grid-template-rows: 22px 140px 20px;
+      gap: 5px;
+      align-items: end;
+      min-width: 0;
+      text-align: center;
+    }
+    .date-bar strong { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .date-bar-track {
+      display: flex;
+      align-items: end;
+      height: 140px;
+      border-bottom: 1px solid var(--line);
+    }
+    .date-bar-fill {
+      width: 100%;
+      min-height: 2px;
+      border: 1px solid #aebfb3;
+      border-bottom: 0;
+      border-radius: 7px 7px 0 0;
+      background: #d9e8de;
+    }
+    .date-bar span { color: var(--muted); font-size: 10px; white-space: nowrap; }
+
+    .rank-list { display: grid; gap: 8px; }
+    .rank-row {
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr) auto;
+      gap: 11px;
+      align-items: center;
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color: var(--ink);
+      background: #fbfcfa;
+      text-align: left;
+      cursor: pointer;
+    }
+    .rank-index {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 9px;
+      color: var(--amber);
+      background: var(--amber-soft);
+      font-size: 12px;
+      font-weight: 720;
+    }
+    .rank-row small { display: block; margin-top: 3px; color: var(--muted); }
+    .rank-value { color: var(--amber); font-weight: 720; font-variant-numeric: tabular-nums; }
+
+    .filter-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 160px;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .filter-input, .filter-select {
+      min-height: 46px;
+      width: 100%;
+      padding: 10px 13px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      color: var(--ink);
+      background: rgba(255, 255, 255, .94);
+      font: inherit;
+    }
+
+    .phrase-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .phrase-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      min-height: 96px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      color: var(--ink);
+      background: rgba(255, 255, 255, .9);
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .phrase-card:hover { border-color: #b8c6bc; }
+    .phrase-card strong { font-family: Georgia, "Times New Roman", serif; font-size: 18px; }
+    .phrase-card p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 25px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .status-chip.warn { color: var(--amber); background: var(--amber-soft); }
+    .status-chip.bad { color: var(--red); background: var(--red-soft); }
+    .status-chip.neutral { color: var(--muted); background: #edf0ec; }
+
+    .diagnostic-list { display: grid; gap: 9px; }
+    .diagnostic-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 13px 0;
+      border-bottom: 1px solid #edf0ec;
+      font-size: 14px;
+    }
+    .diagnostic-row:last-child { border-bottom: 0; }
+    .diagnostic-row span:first-child { color: var(--muted); }
+
+    .detail-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgba(23, 33, 27, .32);
+      backdrop-filter: blur(8px);
+    }
+
+    .detail-sheet {
+      width: min(820px, 100%);
+      max-height: min(780px, calc(100dvh - 48px));
+      overflow: auto;
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: var(--surface);
+      box-shadow: 0 28px 80px rgba(16, 28, 20, .2);
+    }
+
+    .detail-close { float: right; min-width: 42px; padding: 8px; }
+    .detail-sheet h2 { margin: 0; padding-right: 55px; font-family: Georgia, "Times New Roman", serif; }
+    .detail-sheet > p { color: var(--muted); }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin: 22px 0;
+    }
+    .detail-stat { padding: 13px; border-radius: 13px; background: #f5f7f4; }
+    .detail-stat span { display: block; color: var(--muted); font-size: 11px; }
+    .detail-stat strong { display: block; margin-top: 5px; font-size: 15px; overflow-wrap: anywhere; }
+    .history-list { display: grid; gap: 9px; margin-top: 12px; }
+    .history-row { padding: 13px; border: 1px solid var(--line); border-radius: 13px; }
+    .history-row p { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+    .intake-grid {
+      display: grid;
+      grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .intake-card {
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, .92);
+    }
+    .intake-card h3 { margin: 0 0 6px; font-size: 18px; }
+    .intake-card > p { margin: 0 0 16px; color: var(--muted); line-height: 1.55; }
+    .intake-field { display: grid; gap: 7px; margin-bottom: 13px; }
+    .intake-field span { color: var(--muted); font-size: 13px; font-weight: 650; }
+    .intake-field input, .intake-field textarea {
+      width: 100%;
+      min-height: 45px;
+      padding: 11px 13px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--ink);
+      background: #fff;
+      font: inherit;
+      line-height: 1.55;
+      resize: vertical;
+    }
+    .intake-field textarea { min-height: 116px; }
+    .intake-field textarea.compact { min-height: 74px; }
+    .selection-wrap { margin: 14px 0; }
+    .selection-surface {
+      min-height: 138px;
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: #fbfcfa;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      line-height: 1.75;
+      user-select: text;
+      -webkit-user-select: text;
+      touch-action: manipulation;
+    }
+    .selection-surface mark {
+      padding: 1px 2px;
+      border-radius: 4px;
+      color: inherit;
+      background: #fff0a8;
+      cursor: pointer;
+    }
+    .intake-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+    .intake-help { margin-top: 10px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .context-list { display: grid; gap: 12px; }
+    .context-card { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+    .context-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .context-head strong { font-size: 13px; }
+    .context-raw { margin: 12px 0; white-space: pre-wrap; line-height: 1.65; overflow-wrap: anywhere; }
+    .context-meta { color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .proposal-list { display: grid; gap: 10px; margin-top: 14px; }
+    .proposal-card { padding: 14px; border-radius: 13px; background: #f5f7f4; }
+    .proposal-card h4 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 18px; }
+    .proposal-card p { margin: 6px 0 0; font-size: 13px; line-height: 1.55; }
+    .proposal-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+    .proposal-actions .btn { min-height: 38px; padding: 8px 11px; font-size: 12px; }
+    .intake-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+
+    .review-list, .confirmation-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 26px;
+      text-align: left;
+    }
+
+    .review-row, .confirmation-row {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fbfcfa;
+    }
+
+    .review-row {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+
+    .row-index {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 11px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-weight: 700;
+    }
+
+    .review-row strong { display: block; line-height: 1.45; }
+    .review-row p { margin: 5px 0 0; font-size: 14px; line-height: 1.5; }
+
+    .result-bar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin: 26px 0;
+    }
+
+    .metric {
+      padding: 15px 9px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fbfcfa;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 24px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric span { color: var(--muted); font-size: 12px; }
+
+    .result-section {
+      margin-top: 28px;
+      text-align: left;
+    }
+
+    .result-section h3 {
+      margin: 0 0 12px;
+      font-size: 17px;
+    }
+
+    .result-item {
+      margin-bottom: 10px;
+      padding: 17px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fbfcfa;
+    }
+
+    .result-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 9px;
+    }
+
+    .result-label {
+      flex: 0 0 auto;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .result-label.forgotten { color: var(--red); background: var(--red-soft); }
+    .result-label.difficult { color: var(--amber); background: var(--amber-soft); }
+    .result-label.normal { color: var(--blue); background: var(--blue-soft); }
+    .result-label.mastered { color: var(--green); background: var(--green-soft); }
+
+    .result-item dl {
+      display: grid;
+      grid-template-columns: 78px minmax(0, 1fr);
+      gap: 7px 10px;
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .result-item dt { color: var(--muted); }
+    .result-item dd { margin: 0; overflow-wrap: anywhere; }
+    .result-item .result-prompt {
+      color: var(--ink);
+      font-weight: 600;
+      white-space: pre-wrap;
+    }
+
+    .confirmation-row h3 { margin: 0 0 7px; font-size: 17px; }
+    .confirmation-row p { margin: 4px 0; text-align: left; }
+
+    .choice-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .choice {
+      min-height: 42px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      color: var(--muted);
+      background: #fff;
+      cursor: pointer;
+    }
+
+    .choice.selected {
+      color: #fff;
+      border-color: var(--green);
+      background: var(--green);
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: max(24px, env(safe-area-inset-bottom));
+      z-index: 20;
+      max-width: calc(100vw - 32px);
+      padding: 12px 16px;
+      border-radius: 13px;
+      color: #fff;
+      background: rgba(23, 33, 27, .94);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .18);
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 10px);
+      transition: opacity .2s ease, transform .2s ease;
+    }
+
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 760px) {
+      .shell {
+        width: 100%;
+        padding: max(12px, env(safe-area-inset-top)) 16px
+          max(92px, calc(76px + env(safe-area-inset-bottom)));
+      }
+
+      .topbar { min-height: 48px; margin-bottom: 12px; gap: 10px; }
+      .mark { width: 38px; height: 38px; border-radius: 12px; }
+      .brand { gap: 10px; }
+      .brand h1 { font-size: 20px; }
+      .brand p { display: none; }
+      .save-state {
+        min-width: 0;
+        max-width: 42%;
+        padding-top: 10px;
+        font-size: 12px;
+      }
+      .app-nav { display: none; }
+      .bottom-nav {
+        position: fixed;
+        right: 12px;
+        bottom: max(10px, env(safe-area-inset-bottom));
+        left: 12px;
+        z-index: 30;
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 4px;
+        padding: 6px;
+        border: 1px solid rgba(207, 215, 208, .95);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, .94);
+        box-shadow: 0 14px 40px rgba(23, 33, 27, .16);
+        backdrop-filter: blur(18px);
+      }
+      .bottom-nav .nav-link { min-width: 0; padding: 8px 4px; font-size: 11px; }
+      .intake-grid { grid-template-columns: 1fr; }
+      .intake-card { padding: 16px; }
+      .selection-surface { min-height: 120px; }
+      .today-strip { align-items: start; padding: 11px 13px; }
+      .today-strip > span:last-child { display: none; }
+      .page-head { display: block; margin-bottom: 16px; }
+      .page-head h2 { font-size: 31px; }
+      .freshness { margin-top: 8px; text-align: left; }
+      .dashboard-grid { display: block; }
+      .kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-bottom: 12px;
+      }
+      .kpi-card { min-height: 112px; padding: 15px; }
+      .panel { margin-bottom: 12px; padding: 18px; }
+      .date-bars { gap: 4px; overflow-x: auto; }
+      .date-bar { min-width: 28px; }
+      .bar-row { grid-template-columns: minmax(82px, 120px) minmax(0, 1fr) 30px; }
+      .filter-row { grid-template-columns: 1fr; }
+      .phrase-list { grid-template-columns: 1fr; }
+      .phrase-card { min-height: 88px; }
+      .detail-modal { align-items: end; padding: 0; }
+      .detail-sheet {
+        width: 100%;
+        max-height: calc(100dvh - 28px);
+        padding: 22px 18px max(28px, env(safe-area-inset-bottom));
+        border-radius: 24px 24px 0 0;
+      }
+      .detail-grid { grid-template-columns: repeat(2, 1fr); }
+      .progress-wrap { margin-bottom: 12px; }
+      .quiz-layout { display: block; }
+      .navigator { display: none; }
+      .mobile-navigator {
+        display: flex;
+        margin-right: -16px;
+        margin-left: -16px;
+        padding-right: 16px;
+        padding-left: 16px;
+      }
+      .question-card {
+        min-height: auto;
+        padding: 24px 20px;
+        border-radius: 22px;
+      }
+
+      .question-meta { margin-bottom: 22px; }
+      .prompt-zh { font-size: 25px; }
+      .prompt-en { font-size: 18px; }
+      .answer-label { margin-top: 32px; }
+      .answer-box { min-height: 116px; font-size: 18px; }
+      .answer-reveal { padding: 16px; }
+      .question-actions { align-items: stretch; }
+      .question-actions .btn { min-width: 48px; padding: 11px 13px; }
+      .question-actions .primary { flex: 1; }
+      .action-group { flex: 1; }
+      .action-group .btn { flex: 1; }
+      .state-card {
+        width: 100%;
+        margin-top: 8px;
+        padding: 24px 18px;
+        border-radius: 22px;
+      }
+      .state-icon {
+        width: 54px;
+        height: 54px;
+        margin-bottom: 17px;
+        border-radius: 17px;
+        font-size: 25px;
+      }
+      .state-card h2 { font-size: 26px; }
+      .state-card p { line-height: 1.55; }
+      .command {
+        width: 100%;
+        margin-top: 20px;
+        padding: 14px;
+      }
+      .state-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        margin-top: 22px;
+      }
+      .state-actions .btn {
+        width: 100%;
+        min-height: 48px;
+      }
+      .fine-print { margin-top: 12px !important; }
+      .result-bar { grid-template-columns: repeat(2, 1fr); }
+      .choice-grid { grid-template-columns: repeat(2, 1fr); }
+      .result-item dl { grid-template-columns: 66px minmax(0, 1fr); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        transition-duration: .01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark" aria-hidden="true">E</div>
+        <div>
+          <h1>英语搭配复习</h1>
+          <p>逐题即时标准答案 · 20 题统一批改</p>
+        </div>
+      </div>
+      <nav class="app-nav" aria-label="主要导航">
+        <button class="nav-link" type="button" data-view="today">今日学习</button>
+        <button class="nav-link" type="button" data-view="intake">语料箱</button>
+        <button class="nav-link" type="button" data-view="analytics">学习分析</button>
+        <button class="nav-link" type="button" data-view="phrases">我的搭配</button>
+        <button class="nav-link" type="button" data-view="settings">系统状态</button>
+      </nav>
+      <div id="saveState" class="save-state" aria-live="polite"></div>
+    </header>
+
+    <section id="todayView" class="view">
+      <div id="todayStrip" class="today-strip hidden" aria-live="polite"></div>
+      <section id="progressWrap" class="progress-wrap" aria-label="答题进度">
+        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+        <div id="progressLabel" class="progress-label">0 / 20</div>
+      </section>
+
+      <section id="quizLayout" class="quiz-layout hidden">
+        <aside class="navigator" aria-label="题号导航">
+          <div class="navigator-title"><span>题目</span><span id="answeredCount">0 / 20</span></div>
+          <div id="desktopNumbers" class="number-grid"></div>
+        </aside>
+
+        <div>
+          <nav id="mobileNumbers" class="mobile-navigator" aria-label="题号导航"></nav>
+          <article class="question-card">
+            <div class="question-meta">
+              <span id="questionEyebrow" class="eyebrow">第 1 题，共 20 题</span>
+              <span id="questionType" class="type-pill">回忆作答</span>
+            </div>
+            <h2 id="promptZh" class="prompt-zh"></h2>
+            <p id="promptEn" class="prompt-en"></p>
+            <label class="answer-label" for="answerBox">你的答案</label>
+            <textarea
+              id="answerBox"
+              class="answer-box"
+              maxlength="2000"
+              autocomplete="off"
+              autocapitalize="sentences"
+              spellcheck="true"
+              placeholder="用英语写下你的答案…"
+            ></textarea>
+            <section id="answerReveal" class="answer-reveal hidden" aria-live="polite">
+              <span>标准答案</span>
+              <p id="expectedAnswer"></p>
+            </section>
+            <div class="question-actions">
+              <button id="prevBtn" class="btn secondary" type="button" aria-label="上一题">←</button>
+              <div class="action-group">
+                <button id="revealBtn" class="btn primary" type="button">锁定并查看标准答案</button>
+                <button id="nextBtn" class="btn secondary hidden" type="button">下一题</button>
+                <button id="submitBtn" class="btn primary hidden" type="button">检查并提交 20 题</button>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="stateMount"></section>
+    </section>
+
+    <section id="intakeView" class="view hidden">
+      <div class="page-head">
+        <div><h2>语料箱</h2><p>保存真实阅读中遇到的完整上下文，再把值得学习的表达整理成搭配。</p></div>
+        <div id="intakeFreshness" class="freshness"></div>
+      </div>
+      <div class="intake-grid">
+        <section class="intake-card">
+          <h3>新建语料</h3>
+          <p>粘贴完整句子或自然段。你可以标记多处不懂的内容，也可以不标记，让系统结合整段上下文判断。</p>
+          <label class="intake-field">
+            <span>英文原文（必填）</span>
+            <textarea id="contextRawText" maxlength="12000" placeholder="粘贴完整英文句子或自然段…"></textarea>
+          </label>
+          <div class="intake-actions">
+            <button id="startMarkingBtn" class="btn secondary" type="button">开始标记</button>
+            <button id="addSelectionBtn" class="btn secondary" type="button" disabled>标记为不懂</button>
+            <button id="clearSelectionsBtn" class="btn secondary" type="button" disabled>清除标记</button>
+          </div>
+          <div id="selectionWrap" class="selection-wrap hidden">
+            <div id="selectionSurface" class="selection-surface" tabindex="0" aria-label="选择并标记不懂的原文"></div>
+            <p class="intake-help">在上方原文里选中文字，再点“标记为不懂”。点击黄色标记可以取消；标记阶段原文会锁定，修改时请重新开始标记。</p>
+          </div>
+          <label class="intake-field">
+            <span>来源链接（可选）</span>
+            <input id="contextSourceUrl" type="url" maxlength="2048" placeholder="https://…">
+          </label>
+          <label class="intake-field">
+            <span>来源标题（可选）</span>
+            <input id="contextSourceTitle" type="text" maxlength="300" placeholder="文章或页面标题">
+          </label>
+          <label class="intake-field">
+            <span>我的疑问或备注（可选）</span>
+            <textarea id="contextUserNote" class="compact" maxlength="2000" placeholder="例如：单词都认识，但整句看不懂。"></textarea>
+          </label>
+          <div class="intake-actions">
+            <button id="saveContextBtn" class="btn primary" type="button">保存到语料箱</button>
+            <button id="resetContextBtn" class="btn secondary" type="button">清空</button>
+          </div>
+          <p id="intakeFormStatus" class="intake-help" aria-live="polite">原文保存后不会被 AI 改写覆盖。</p>
+        </section>
+        <section class="intake-card">
+          <h3>待处理与提取结果</h3>
+          <p>发送“整理语料”后，ChatGPT 只会把 0–3 条建议写入暂存区；你确认后，Apps Script 才会正式加入候选池。</p>
+          <div id="intakeSummary" class="intake-summary"></div>
+          <div class="intake-actions" style="margin-bottom:14px">
+            <button id="copyContextCommandBtn" class="btn secondary" type="button">复制“整理语料”</button>
+            <button id="refreshContextBtn" class="btn secondary" type="button">刷新结果</button>
+          </div>
+          <div id="contextList" class="context-list"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="analyticsView" class="view hidden">
+      <div class="page-head">
+        <div><h2>学习分析</h2><p>查看答题正确率、复习安排和常见错误。</p></div>
+        <div id="analyticsFreshness" class="freshness"></div>
+      </div>
+      <div id="analyticsMount"></div>
+    </section>
+
+    <section id="phrasesView" class="view hidden">
+      <div class="page-head">
+        <div><h2>我的搭配</h2><p>搜索搭配库，查看每个搭配的复习进度和学习记录。</p></div>
+        <div><button class="btn secondary" type="button" data-view="intake">＋ 收集语料</button><div id="phraseCount" class="freshness"></div></div>
+      </div>
+      <div class="filter-row">
+        <input id="phraseSearch" class="filter-input" type="search" placeholder="搜索英文搭配、中文提示或主题…">
+        <select id="phraseFilter" class="filter-select" aria-label="搭配筛选">
+          <option value="all">全部搭配</option>
+          <option value="due">今日到期 / 逾期</option>
+          <option value="hard">困难项</option>
+          <option value="mastered">已掌握</option>
+          <option value="learning">学习中</option>
+          <option value="paused">已暂停</option>
+        </select>
+      </div>
+      <div id="phrasesMount" class="phrase-list"></div>
+    </section>
+
+    <section id="settingsView" class="view hidden">
+      <div class="page-head">
+        <div><h2>系统状态</h2><p>查看今日题目、批改和学习记录的保存情况。</p></div>
+        <div id="settingsFreshness" class="freshness"></div>
+      </div>
+      <div id="settingsMount"></div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="主要导航">
+    <button class="nav-link" type="button" data-view="today">今日学习</button>
+    <button class="nav-link" type="button" data-view="intake">语料箱</button>
+    <button class="nav-link" type="button" data-view="analytics">学习分析</button>
+    <button class="nav-link" type="button" data-view="phrases">我的搭配</button>
+    <button class="nav-link" type="button" data-view="settings">系统状态</button>
+  </nav>
+
+  <div id="phraseDetailModal" class="detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="phraseDetailTitle">
+    <article id="phraseDetailSheet" class="detail-sheet"></article>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var query = new URLSearchParams(window.location.search);
+      var templateDemo = "<?= demoMode ?>" === "true";
+      var templateInitialView = "<?= initialView ?>";
+      if (!templateInitialView || templateInitialView.charAt(0) === "<") {
+        templateInitialView = query.get("view") || "today";
+      }
+      var demoMode = templateDemo || query.get("demo") === "1";
+      var demoState = query.get("state") || "answering";
+      var RESULT_LABELS = {
+        forgotten: "没想起来",
+        difficult: "比较生疏",
+        normal: "基本掌握",
+        mastered: "熟练掌握"
+      };
+      var TYPE_LABELS = {
+        recall: "回忆作答",
+        cloze: "填空",
+        contrast: "辨析",
+        scenario: "情境",
+        oral: "口语"
+      };
+      var STATUS_LABELS = {
+        active: "学习中",
+        mastered: "已掌握",
+        suspended: "已暂停",
+        paused: "已暂停",
+        scheduled: "已安排",
+        due_today: "今日到期",
+        overdue: "已逾期",
+        planned: "待开始",
+        presented: "进行中",
+        staged: "已暂存",
+        ready: "已准备",
+        bound: "已绑定",
+        draft: "草稿",
+        submitted: "已提交",
+        awaiting_chatgpt: "等待批改",
+        grading_validated: "批改完成",
+        writing: "正在保存",
+        verifying: "正在核验",
+        committed: "已完成",
+        verified: "已核验",
+        verified_complete: "全部核验完成",
+        pending: "待处理",
+        processing: "正在整理",
+        processed: "已整理",
+        needs_review: "需要检查",
+        explanation_only: "只需解释",
+        accepted: "已接受",
+        edited: "已编辑",
+        known: "已经会了",
+        duplicate: "已有相同搭配",
+        invalid: "数据无效",
+        missing: "暂无记录",
+        ambiguous: "状态异常",
+        rejected: "已停用",
+        failed: "失败",
+        complete: "已完成"
+      };
+      var PIPELINE_STEP_LABELS = {
+        grading_needs_confirmation: "等待你确认批改结果",
+        grading_validated: "批改结果已核验",
+        user_confirmation_recorded: "你的确认已保存",
+        commit_plan_frozen: "保存计划已锁定",
+        review_log: "学习记录已保存",
+        error_log: "错误记录已保存",
+        candidate_bank: "待学搭配已补充",
+        phrase_bank: "搭配库已更新",
+        daily_queue: "今日题组已更新",
+        pre_session_readback: "正在核对学习记录",
+        session_log: "本次学习记录已保存",
+        verified_complete: "全部记录已核验"
+      };
+      var ERROR_CATEGORY_LABELS = {
+        "target retrieval": "目标搭配未想起",
+        "recall failure": "未能想起",
+        "difficult recall": "回忆不完整",
+        "semantic boundary": "语义边界不清",
+        collocation: "搭配不当",
+        preposition: "介词错误",
+        "word form": "词形错误",
+        spelling: "拼写错误",
+        grammar: "语法错误",
+        tense: "时态错误",
+        article: "冠词错误",
+        "subject-verb agreement": "主谓不一致",
+        "word order": "语序错误",
+        meaning: "含义理解偏差",
+        register: "语体不当",
+        translationese: "表达不自然",
+        uncategorized: "未分类"
+      };
+      var TOPIC_LABELS = {
+        work: "工作",
+        reporting: "汇报",
+        project: "项目",
+        status: "进度",
+        "daily life": "日常生活",
+        business: "商务",
+        communication: "沟通",
+        meeting: "会议",
+        scheduling: "日程安排",
+        planning: "规划",
+        travel: "出行",
+        health: "健康",
+        study: "学习",
+        negotiation: "协商",
+        "problem solving": "解决问题",
+        personal: "个人",
+        food: "餐饮"
+      };
+      var app = {
+        payload: null,
+        activeView: "",
+        todayLoaded: false,
+        dashboard: null,
+        dashboardPromise: null,
+        contextInbox: null,
+        contextPromise: null,
+        contextSpans: [],
+        contextMarkingText: "",
+        contextRequestId: "",
+        questions: [],
+        current: 0,
+        answers: {},
+        revisions: {},
+        dirty: {},
+        timers: {},
+        busy: false,
+        pollingTimer: null,
+        confirmationChoices: {},
+        localVersions: {},
+        savedAnswers: {},
+        savePromises: {},
+        conflicts: {}
+      };
+      var demoCloudDrafts = {};
+      var demoContextItems = [];
+
+      var el = {
+        saveState: document.getElementById("saveState"),
+        todayView: document.getElementById("todayView"),
+        intakeView: document.getElementById("intakeView"),
+        analyticsView: document.getElementById("analyticsView"),
+        phrasesView: document.getElementById("phrasesView"),
+        settingsView: document.getElementById("settingsView"),
+        todayStrip: document.getElementById("todayStrip"),
+        progressWrap: document.getElementById("progressWrap"),
+        progressBar: document.getElementById("progressBar"),
+        progressLabel: document.getElementById("progressLabel"),
+        quizLayout: document.getElementById("quizLayout"),
+        answeredCount: document.getElementById("answeredCount"),
+        desktopNumbers: document.getElementById("desktopNumbers"),
+        mobileNumbers: document.getElementById("mobileNumbers"),
+        questionEyebrow: document.getElementById("questionEyebrow"),
+        questionType: document.getElementById("questionType"),
+        promptZh: document.getElementById("promptZh"),
+        promptEn: document.getElementById("promptEn"),
+        answerBox: document.getElementById("answerBox"),
+        answerReveal: document.getElementById("answerReveal"),
+        expectedAnswer: document.getElementById("expectedAnswer"),
+        prevBtn: document.getElementById("prevBtn"),
+        revealBtn: document.getElementById("revealBtn"),
+        nextBtn: document.getElementById("nextBtn"),
+        submitBtn: document.getElementById("submitBtn"),
+        stateMount: document.getElementById("stateMount"),
+        analyticsMount: document.getElementById("analyticsMount"),
+        analyticsFreshness: document.getElementById("analyticsFreshness"),
+        phraseSearch: document.getElementById("phraseSearch"),
+        phraseFilter: document.getElementById("phraseFilter"),
+        phraseCount: document.getElementById("phraseCount"),
+        phrasesMount: document.getElementById("phrasesMount"),
+        settingsMount: document.getElementById("settingsMount"),
+        settingsFreshness: document.getElementById("settingsFreshness"),
+        intakeFreshness: document.getElementById("intakeFreshness"),
+        contextRawText: document.getElementById("contextRawText"),
+        contextSourceUrl: document.getElementById("contextSourceUrl"),
+        contextSourceTitle: document.getElementById("contextSourceTitle"),
+        contextUserNote: document.getElementById("contextUserNote"),
+        startMarkingBtn: document.getElementById("startMarkingBtn"),
+        addSelectionBtn: document.getElementById("addSelectionBtn"),
+        clearSelectionsBtn: document.getElementById("clearSelectionsBtn"),
+        selectionWrap: document.getElementById("selectionWrap"),
+        selectionSurface: document.getElementById("selectionSurface"),
+        saveContextBtn: document.getElementById("saveContextBtn"),
+        resetContextBtn: document.getElementById("resetContextBtn"),
+        intakeFormStatus: document.getElementById("intakeFormStatus"),
+        intakeSummary: document.getElementById("intakeSummary"),
+        copyContextCommandBtn: document.getElementById("copyContextCommandBtn"),
+        refreshContextBtn: document.getElementById("refreshContextBtn"),
+        contextList: document.getElementById("contextList"),
+        phraseDetailModal: document.getElementById("phraseDetailModal"),
+        phraseDetailSheet: document.getElementById("phraseDetailSheet"),
+        toast: document.getElementById("toast")
+      };
+
+      function callServer(name, args) {
+        args = args || [];
+        if (demoMode) return callDemo(name, args);
+        return new Promise(function (resolve, reject) {
+          if (!window.google || !google.script || !google.script.run) {
+            reject(new Error("当前页面未连接到学习系统。"));
+            return;
+          }
+          var runner = google.script.run
+            .withSuccessHandler(resolve)
+            .withFailureHandler(function (error) {
+              reject(new Error(error && error.message ? error.message : String(error)));
+            });
+          runner[name].apply(runner, args);
+        });
+      }
+
+      function callDemo(name, args) {
+        return new Promise(function (resolve) {
+          window.setTimeout(function () {
+            if (name === "saveDraftV4") {
+              var savedDraft = demoCloudDraftForPosition(args[1]);
+              if (savedDraft.locked) {
+                resolve({
+                  ok: false,
+                  locked: true,
+                  revealed: true,
+                  position: args[1],
+                  revision: savedDraft.revision,
+                  answer: savedDraft.answer
+                });
+                return;
+              }
+              if (savedDraft.revision !== Number(args[3] || 0)) {
+                resolve({
+                  ok: false,
+                  conflict: true,
+                  position: args[1],
+                  revision: savedDraft.revision,
+                  answer: savedDraft.answer
+                });
+                return;
+              }
+              savedDraft.exists = true;
+              savedDraft.answer = args[2];
+              savedDraft.revision += 1;
+              resolve({
+                ok: true,
+                position: args[1],
+                revision: savedDraft.revision,
+                answer: savedDraft.answer
+              });
+              return;
+            }
+            if (name === "revealAnswerV4") {
+              var revealDraft = demoCloudDraftForPosition(args[1]);
+              var revealRevision = Number(args[3] || 0);
+              if (revealDraft.locked) {
+                resolve({
+                  ok: true,
+                  position: args[1],
+                  revision: revealDraft.revision,
+                  answer: revealDraft.answer,
+                  revealed: true,
+                  locked: true,
+                  expectedAnswer: demoExpectedAnswer(args[1])
+                });
+                return;
+              }
+              if (
+                (!revealDraft.exists && revealRevision !== 0) ||
+                (revealDraft.exists && revealDraft.revision < revealRevision) ||
+                (revealDraft.exists && revealDraft.answer !== args[2])
+              ) {
+                resolve({
+                  ok: false,
+                  conflict: true,
+                  position: args[1],
+                  revision: revealDraft.revision,
+                  answer: revealDraft.answer
+                });
+                return;
+              }
+              revealDraft.exists = true;
+              revealDraft.answer = args[2];
+              revealDraft.revision += 1;
+              revealDraft.locked = true;
+              resolve({
+                ok: true,
+                position: args[1],
+                revision: revealDraft.revision,
+                answer: revealDraft.answer,
+                revealed: true,
+                locked: true,
+                expectedAnswer: demoExpectedAnswer(args[1])
+              });
+              return;
+            }
+            if (name === "submitSessionV4") {
+              resolve({
+                ok: true,
+                state: "awaiting_chatgpt",
+                sessionId: "DEMO-SESSION",
+                submissionId: "DEMO-SUBMISSION",
+                chatGptTaskUrl: "https://chatgpt.com/scheduled",
+                gradingCommand: "批改"
+              });
+              return;
+            }
+            if (name === "confirmGradesV4") {
+              resolve(demoCommittedPayload());
+              return;
+            }
+            if (name === "getSubmissionStatusV4" || name === "retrySubmissionCommitV4") {
+              resolve(demoState === "committed" ? demoCommittedPayload() : app.payload);
+              return;
+            }
+            if (name === "getLearningDashboardV4") {
+              resolve(demoDashboardData());
+              return;
+            }
+            if (name === "getContextInboxV4") {
+              resolve(demoContextInbox());
+              return;
+            }
+            if (name === "saveContextV4") {
+              var submittedContext = args[0] || {};
+              var demoContextId = "CTX-" + String(demoContextItems.length + 2).padStart(6, "0");
+              demoContextItems.unshift({
+                contextId: demoContextId,
+                rawText: submittedContext.rawText || "",
+                selectedSpans: submittedContext.selectedSpans || [],
+                sourceUrl: submittedContext.sourceUrl || "",
+                sourceTitle: submittedContext.sourceTitle || "",
+                userNote: submittedContext.userNote || "",
+                status: "pending",
+                processingBatchId: "",
+                createdAt: "2026-08-03 12:00:00",
+                processedAt: "",
+                proposals: []
+              });
+              resolve({ ok: true, contextId: demoContextId, status: "pending" });
+              return;
+            }
+            if (name === "decideContextCandidateV4") {
+              demoContextItems.forEach(function (item) {
+                if (item.contextId !== args[0]) return;
+                item.proposals.forEach(function (proposal) {
+                  if (proposal.position !== Number(args[1])) return;
+                  proposal.decisionStatus = args[2] === "accept" || args[2] === "edit" ? "committed" : args[2];
+                  if (proposal.decisionStatus === "committed") proposal.candidateId = "CAN-0099";
+                });
+              });
+              resolve({ ok: true, decisionStatus: args[2] === "accept" || args[2] === "edit" ? "committed" : args[2], candidateId: "CAN-0099" });
+              return;
+            }
+            if (name === "getPhraseDetailV4") {
+              resolve(demoPhraseDetail(args[0]));
+              return;
+            }
+            resolve(demoBootstrap());
+          }, 260);
+        });
+      }
+
+      function demoCloudDraftForPosition(position) {
+        position = Number(position);
+        if (!demoCloudDrafts[position]) {
+          var question = app.questions.filter(function (item) {
+            return item.position === position;
+          })[0];
+          var revision = Number(app.revisions[position] || 0);
+          var answer = String(app.savedAnswers[position] || "");
+          demoCloudDrafts[position] = {
+            exists: revision > 0 || Boolean(answer),
+            answer: answer,
+            revision: revision,
+            locked: Boolean(question && question.locked)
+          };
+        }
+        return demoCloudDrafts[position];
+      }
+
+      function demoBootstrap() {
+        if (demoState === "committed") return demoCommittedPayload();
+        if (demoState === "needs_confirmation") {
+          return {
+            ok: true,
+            state: "needs_confirmation",
+            sessionId: "DEMO-SESSION",
+            confirmationItems: [
+              {
+                position: 4,
+                result: "difficult",
+                feedbackZh: "意思基本正确，但搭配边界不够明确。",
+                expectedAnswer: "follow up on the issue",
+                confidence: 0.68,
+                errorCategory: "collocation"
+              },
+              {
+                position: 11,
+                result: "normal",
+                feedbackZh: "表达自然，但也可能被理解为近义表达。",
+                expectedAnswer: "keep me posted",
+                confidence: 0.72,
+                errorCategory: "semantic boundary"
+              }
+            ]
+          };
+        }
+        var prompts = [
+          ["表达“按计划进行”，完成句子：The launch went ___.", "Complete the sentence with the target chunk."],
+          ["怎样自然地说“项目仍在正轨上”？", "Use one concise business expression."],
+          ["用英语表达“会议比预定时间晚了”。", "Write a natural sentence."],
+          ["你答应稍后调查这个问题。怎么说？", "Respond in one sentence."],
+          ["表达“请及时告诉我任何变化”。", "Use the target communication chunk."],
+          ["怎样说“我想在晚饭前挤出时间锻炼”？", "Use a scheduling chunk."],
+          ["表达“我会再次确认日期”。", "Write one natural sentence."],
+          ["同事问你是否已解决故障。你说还在处理中。", "Give a concise status update."],
+          ["表达“这个结果符合预期”。", "Use a business reporting chunk."],
+          ["怎样说“我们需要想出更简单的办法”？", "Use a phrasal verb."],
+          ["请对方稍等，你要查一下地址。", "Give a natural spoken reply."],
+          ["表达“我今天会处理预订”。", "Use a common daily-life chunk."],
+          ["怎样说“别忘了时间只是大概的”？", "Use a reminder chunk."],
+          ["表达“我最后还是点了外卖”。", "Use an outcome pattern."],
+          ["用英语说“我逐渐习惯了新日程”。", "Use an adaptation chunk."],
+          ["表达“我们从昨天停下的地方继续”。", "Use the full target phrase."],
+          ["怎样说“我下午三点前都忙得脱不开身”？", "Write a natural sentence."],
+          ["表达“请提前告诉我时间是否变化”。", "Use a heads-up expression."],
+          ["怎样说“我们可以一起把它解决好”？", "Use a negotiation/problem-solving chunk."],
+          ["表达“文件上传后就可以开始了”。", "Use a readiness expression."]
+        ];
+        return {
+          ok: true,
+          state: "answering",
+          sessionId: "DEMO-SESSION",
+          queueId: "DEMO-QUEUE",
+          presentedAt: "2026-07-29 09:02:18",
+          queueMeta: { planned: 20, due: 12, fresh: 8 },
+          questions: prompts.map(function (prompt, index) {
+            var allRevealed = demoState === "all_revealed";
+            return {
+              position: index + 1,
+              questionType: ["recall", "scenario", "cloze", "contrast"][index % 4],
+              promptZh: prompt[0],
+              promptEn: prompt[1],
+              answer: allRevealed
+                ? demoExpectedAnswer(index + 1)
+                : (index < 3 ? ["as planned", "The project is still on track.", "The meeting ran late."][index] : ""),
+              revision: allRevealed ? 2 : (index < 3 ? 1 : 0),
+              revealed: allRevealed,
+              locked: allRevealed,
+              expectedAnswer: demoExpectedAnswer(index + 1)
+            };
+          })
+        };
+      }
+
+      function demoExpectedAnswer(position) {
+        var answers = ["as planned", "on track", "run late", "look into", "keep me posted"];
+        return answers[(Number(position) - 1) % answers.length];
+      }
+
+      function demoCommittedPayload() {
+        var source = demoBootstrapForResults();
+        return {
+          ok: true,
+          state: "committed",
+          sessionId: "DEMO-SESSION",
+          result: {
+            sessionId: "DEMO-SESSION",
+            dueCount: 12,
+            newCount: 8,
+            replenishedCandidateCount: 8,
+            counts: { forgotten: 2, difficult: 4, normal: 8, mastered: 6 },
+            items: source.map(function (item, index) {
+              return {
+                position: index + 1,
+                selectionType: index < 12 ? "due_today" : "new",
+                phraseId: "ENG-" + String(index + 1).padStart(4, "0"),
+                chunk: item.chunk,
+                prompt: item.prompt,
+                answer: item.answer,
+                expectedAnswer: item.expected,
+                result: ["mastered", "normal", "difficult", "normal", "forgotten"][index % 5],
+                feedbackZh: item.feedback,
+                nextReview: "2026-08-" + String(2 + (index % 8)).padStart(2, "0")
+              };
+            })
+          }
+        };
+      }
+
+      function demoBootstrapForResults() {
+        var prompts = [
+          "表达“按计划进行”，完成句子：The launch went ___. / Complete the sentence with the target chunk.",
+          "怎样自然地说“项目仍在正轨上”？ / Use one concise business expression.",
+          "用英语表达“会议比预定时间晚了”。 / Write a natural sentence.",
+          "你答应稍后调查这个问题。怎么说？ / Respond in one sentence.",
+          "表达“请及时告诉我任何变化”。 / Use the target communication chunk."
+        ];
+        return Array.from({ length: 20 }, function (_, index) {
+          var chunks = ["as planned", "on track", "run late", "look into", "keep me posted"];
+          var chunk = chunks[index % chunks.length];
+          return {
+            chunk: chunk,
+            prompt: prompts[index % prompts.length],
+            answer: index % 5 === 4 ? "I am not sure." : chunk,
+            expected: chunk,
+            feedback: index % 5 === 4 ? "这次没有准确回忆出来，已安排更近的复习。" : "表达自然，符合本题语义边界。"
+          };
+        });
+      }
+
+      function demoDashboardData() {
+        var today = new Date();
+        var dateKey = today.toISOString().slice(0, 10);
+        var trend = Array.from({ length: 30 }, function (_, index) {
+          var date = new Date(today.getTime() - (29 - index) * 86400000);
+          var total = index % 7 === 1 ? 0 : 20;
+          var correct = total ? Math.min(18, 10 + Math.round(index / 4) + (index % 3)) : 0;
+          return {
+            date: date.toISOString().slice(0, 10),
+            total: total,
+            correct: correct,
+            accuracy: total ? Math.round(correct / total * 1000) / 10 : null
+          };
+        });
+        var phrases = Array.from({ length: 24 }, function (_, index) {
+          var chunks = ["as planned", "on track", "follow up on", "keep me posted", "cut back on", "look into"];
+          var band = ["初学", "学习中", "稳定", "熟练", "困难项"][index % 5];
+          return {
+            id: "ENG-" + String(index + 1).padStart(4, "0"),
+            chunk: chunks[index % chunks.length] + (index > 5 ? " · " + (index + 1) : ""),
+            chineseCue: ["按计划", "在正轨上", "跟进", "及时告知", "减少", "调查"][index % 6],
+            topic: ["work/reporting", "project/status", "daily life"][index % 3],
+            status: index % 6 === 3 ? "mastered" : "active",
+            stage: 1 + index % 8,
+            masteryBand: band,
+            hard: band === "困难项",
+            dueState: index % 8 === 0 ? "overdue" : (index % 7 === 0 ? "due_today" : "scheduled"),
+            nextReview: dateKey,
+            recentCorrect: index % 5,
+            recentTotal: 5
+          };
+        });
+        return {
+          ok: true,
+          today: dateKey,
+          generatedAt: dateKey + " 09:48:00",
+          definitions: {
+            firstCorrect: "每个搭配在每场练习中的第一次作答里，“基本掌握”或“熟练掌握”所占的比例。",
+            difficult: "最近 5 次作答中至少 3 次没有答对，或最近连续 2 次没有答对。",
+            overdue: "仍在学习或已经掌握、且下次复习日期早于今天的搭配数量。"
+          },
+          overview: {
+            todayPlanned: 20,
+            todayCompleted: 20,
+            todayAccuracy: { correct: 13, total: 20, percent: 65 },
+            sevenDayAccuracy: { correct: 88, total: 140, percent: 62.9 },
+            thirtyDayAccuracy: { correct: 330, total: 520, percent: 63.5 },
+            totalPhrases: 86,
+            masteredPhrases: 24,
+            hardPhrases: 9,
+            overdue: 3,
+            streak: 18
+          },
+          todayPlan: { status: "committed", planned: 20, due: 20, fresh: 0, completed: 20 },
+          trend: trend,
+          futureDue: Array.from({ length: 14 }, function (_, index) {
+            var date = new Date(today.getTime() + index * 86400000);
+            return { date: date.toISOString().slice(0, 10), count: [3, 12, 8, 5, 17, 7, 10][index % 7] };
+          }),
+          mastery: [
+            { label: "未学习", count: 0 }, { label: "初学", count: 18 },
+            { label: "学习中", count: 27 }, { label: "稳定", count: 20 },
+            { label: "熟练", count: 12 }, { label: "困难项", count: 9 },
+            { label: "暂停", count: 0 }
+          ],
+          errorCategories: [
+            { category: "target retrieval", count: 14 },
+            { category: "semantic boundary", count: 11 },
+            { category: "preposition", count: 8 },
+            { category: "word form", count: 6 },
+            { category: "spelling", count: 4 }
+          ],
+          topErrors: phrases.filter(function (item) { return item.hard; }).slice(0, 6).map(function (item, index) {
+            return {
+              phraseId: item.id,
+              chunk: item.chunk,
+              chineseCue: item.chineseCue,
+              errorCount: 6 - index,
+              recentCorrect: item.recentCorrect,
+              recentTotal: 5,
+              nextReview: item.nextReview
+            };
+          }),
+          phrases: phrases,
+          system: {
+            tone: "good",
+            contractVersion: "4.0",
+            queueCount: 20,
+            queueStatus: "committed",
+            questionCount: 20,
+            generationCount: 1,
+            gradeCount: 20,
+            pendingGradeCount: 0,
+            journalStatus: "committed",
+            journalStep: "verified_complete",
+            journalReadback: "verified",
+            sessionWrite: "verified",
+            sessionReadback: "verified",
+            latestActivity: dateKey + " 09:47:24"
+          }
+        };
+      }
+
+      function demoContextInbox() {
+        if (!demoContextItems.length) {
+          demoContextItems = [{
+            contextId: "CTX-000001",
+            rawText: "MacBook Air is subject to availability in selected regions.",
+            selectedSpans: [{ text: "subject to availability", start: 15, end: 38 }],
+            sourceUrl: "https://example.com/article",
+            sourceTitle: "Product availability note",
+            userNote: "这里为什么不能只理解成 availability？",
+            status: "processed",
+            processingBatchId: "CTXB-DEMO-001",
+            createdAt: "2026-08-03 11:20:00",
+            processedAt: "2026-08-03 11:30:00",
+            proposals: [{
+              position: 1,
+              selectedText: "subject to availability",
+              candidate: "be subject to availability",
+              chineseCue: "视供应情况而定",
+              candidateType: "chunk",
+              contextMeaning: "能否提供取决于当时是否有供应。",
+              whyUseful: "常见于商品、服务、预订和促销条款。",
+              topic: "shopping",
+              difficulty: "medium",
+              naturalExample: "All promotional items are subject to availability.",
+              commonMistake: "漏掉 be，或误解为表示主题。",
+              extractionRationale: "组合含义不能靠 availability 单独推断。",
+              confidence: .94,
+              decisionStatus: "staged",
+              editedCandidate: "",
+              processingBatchId: "CTXB-DEMO-001",
+              candidateId: ""
+            }]
+          }];
+        }
+        var counts = { pending: 0, needsDecision: 0, committed: 0, errors: 0 };
+        demoContextItems.forEach(function (item) {
+          if (item.status === "pending" || item.status === "processing") counts.pending++;
+          item.proposals.forEach(function (proposal) {
+            if (proposal.decisionStatus === "staged") counts.needsDecision++;
+            if (proposal.decisionStatus === "committed") counts.committed++;
+          });
+        });
+        return {
+          ok: true,
+          generatedAt: "2026-08-03 12:00:00",
+          counts: counts,
+          items: demoContextItems,
+          processingCommand: "整理语料",
+          chatGptTaskUrl: "https://chatgpt.com/scheduled"
+        };
+      }
+
+      function demoPhraseDetail(phraseId) {
+        var data = demoDashboardData();
+        var phrase = data.phrases.find(function (item) { return item.id === phraseId; }) || data.phrases[0];
+        phrase = Object.assign({
+          type: "fixed phrase",
+          difficulty: "medium",
+          lastReviewed: data.today,
+          timesSeen: 8,
+          timesCorrect: 5,
+          commonMistake: "容易漏掉介词或使用近义但不自然的表达。",
+          naturalExample: "The launch went as planned.",
+          notes: "Demo phrase detail.",
+          source: "demo",
+          createdDate: "2026-07-08",
+          masteryStreak: 1,
+          lastResult: "normal"
+        }, phrase);
+        return {
+          ok: true,
+          phrase: phrase,
+          history: [
+            { date: data.today, position: 3, result: "normal", userAnswer: phrase.chunk, expectedAnswer: phrase.chunk, notes: "表达自然。", questionType: "recall" },
+            { date: "2026-07-30", position: 8, result: "difficult", userAnswer: "near answer", expectedAnswer: phrase.chunk, notes: "没有完整想起目标搭配。", questionType: "contrast" }
+          ],
+          errors: [
+            { date: "2026-07-30", type: "target retrieval", userAnswer: "near answer", correction: phrase.chunk, explanation: "需要完整想起目标搭配。" }
+          ]
+        };
+      }
+
+      function initialize() {
+        bindEvents();
+        var initialView = viewFromHash();
+        if (!window.location.hash) {
+          history.replaceState(null, "", window.location.pathname + window.location.search + "#" + initialView);
+        }
+        activateView(initialView);
+      }
+
+      function bindEvents() {
+        Array.prototype.forEach.call(document.querySelectorAll("[data-view]"), function (button) {
+          button.addEventListener("click", function () {
+            var view = button.dataset.view;
+            if (viewFromHash() === view) activateView(view);
+            else window.location.hash = view;
+          });
+        });
+        window.addEventListener("hashchange", function () { activateView(viewFromHash()); });
+        el.phraseSearch.addEventListener("input", renderPhraseList);
+        el.phraseFilter.addEventListener("change", renderPhraseList);
+        el.startMarkingBtn.addEventListener("click", beginContextMarking);
+        el.addSelectionBtn.addEventListener("click", addCurrentContextSelection);
+        el.clearSelectionsBtn.addEventListener("click", function () {
+          app.contextSpans = [];
+          renderContextSelectionSurface();
+          persistContextDraft();
+        });
+        el.selectionSurface.addEventListener("click", function (event) {
+          var mark = event.target.closest("mark[data-span-index]");
+          if (!mark) return;
+          app.contextSpans.splice(Number(mark.dataset.spanIndex), 1);
+          renderContextSelectionSurface();
+          persistContextDraft();
+        });
+        [el.contextRawText, el.contextSourceUrl, el.contextSourceTitle, el.contextUserNote].forEach(function (field) {
+          field.addEventListener("input", persistContextDraft);
+        });
+        el.saveContextBtn.addEventListener("click", saveContextFromForm);
+        el.resetContextBtn.addEventListener("click", resetContextForm);
+        el.refreshContextBtn.addEventListener("click", function () { loadContextInbox(true); });
+        el.copyContextCommandBtn.addEventListener("click", function () {
+          copyPlainText("整理语料").then(function () { showToast("已复制：整理语料"); });
+        });
+        el.contextList.addEventListener("click", handleContextListAction);
+        el.phraseDetailModal.addEventListener("click", function (event) {
+          if (event.target === el.phraseDetailModal) closePhraseDetail();
+        });
+        document.addEventListener("keydown", function (event) {
+          if (event.key === "Escape" && !el.phraseDetailModal.classList.contains("hidden")) {
+            closePhraseDetail();
+          }
+        });
+        el.answerBox.addEventListener("input", onAnswerInput);
+        el.answerBox.addEventListener("keydown", function (event) {
+          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+            event.preventDefault();
+            goNext();
+          }
+        });
+        el.prevBtn.addEventListener("click", function () { navigateTo(app.current - 1); });
+        el.revealBtn.addEventListener("click", revealCurrentAnswer);
+        el.nextBtn.addEventListener("click", goNext);
+        el.submitBtn.addEventListener("click", reviewBeforeSubmit);
+        document.addEventListener("visibilitychange", function () {
+          if (document.visibilityState === "hidden") saveCurrent(true);
+        });
+        window.addEventListener("pagehide", function () { saveCurrent(true); });
+        window.addEventListener("beforeunload", function () { saveCurrent(true); });
+        restoreContextDraft();
+      }
+
+      function viewFromHash() {
+        var value = String(window.location.hash || ("#" + templateInitialView)).replace(/^#/, "");
+        return ["today", "intake", "analytics", "phrases", "settings"].indexOf(value) === -1 ? "today" : value;
+      }
+
+      function activateView(view) {
+        if (app.activeView === "today" && view !== "today") saveCurrent(true);
+        app.activeView = view;
+        var views = {
+          today: el.todayView,
+          intake: el.intakeView,
+          analytics: el.analyticsView,
+          phrases: el.phrasesView,
+          settings: el.settingsView
+        };
+        Object.keys(views).forEach(function (key) {
+          views[key].classList.toggle("hidden", key !== view);
+        });
+        Array.prototype.forEach.call(document.querySelectorAll("[data-view]"), function (button) {
+          if (button.dataset.view === view) button.setAttribute("aria-current", "page");
+          else button.removeAttribute("aria-current");
+        });
+        if (view === "today") {
+          if (app.todayLoaded) {
+            if (app.questions.length && app.payload && app.payload.state === "answering") refreshSaveState();
+            return;
+          }
+          app.todayLoaded = true;
+          setSaveState("正在载入…", "warn");
+          var initial = demoMode ? Promise.resolve(demoBootstrap()) : callServer("getReviewBootstrapV4");
+          initial.then(handlePayload).catch(showFatal);
+          return;
+        }
+        if (view === "intake") {
+          setSaveState("语料箱", "");
+          loadContextInbox().catch(function (error) { renderSectionError("intake", error); });
+          return;
+        }
+        setSaveState("只读", "");
+        loadDashboard().then(function (payload) {
+          if (view === "analytics") renderAnalytics(payload);
+          if (view === "phrases") renderPhraseList();
+          if (view === "settings") renderSettings(payload);
+        }).catch(function (error) {
+          renderSectionError(view, error);
+        });
+      }
+
+      function loadDashboard() {
+        if (app.dashboard) return Promise.resolve(app.dashboard);
+        if (app.dashboardPromise) return app.dashboardPromise;
+        app.dashboardPromise = callServer("getLearningDashboardV4").then(function (payload) {
+          if (!payload || payload.ok === false) throw new Error("学习分析载入失败。");
+          app.dashboard = payload;
+          app.dashboardPromise = null;
+          return payload;
+        }).catch(function (error) {
+          app.dashboardPromise = null;
+          throw error;
+        });
+        return app.dashboardPromise;
+      }
+
+      function loadContextInbox(force) {
+        if (force) {
+          app.contextInbox = null;
+          app.contextPromise = null;
+        }
+        if (app.contextInbox) {
+          renderContextInbox(app.contextInbox);
+          return Promise.resolve(app.contextInbox);
+        }
+        if (app.contextPromise) return app.contextPromise;
+        el.contextList.innerHTML = '<div class="state-card"><p>正在载入语料箱…</p></div>';
+        app.contextPromise = callServer("getContextInboxV4").then(function (payload) {
+          if (!payload || payload.ok === false) throw new Error("语料箱载入失败。");
+          app.contextInbox = payload;
+          app.contextPromise = null;
+          renderContextInbox(payload);
+          return payload;
+        }).catch(function (error) {
+          app.contextPromise = null;
+          renderSectionError("intake", error);
+          throw error;
+        });
+        return app.contextPromise;
+      }
+
+      function beginContextMarking() {
+        var rawText = String(el.contextRawText.value || "").replace(/\r\n?/g, "\n");
+        if (!rawText.trim()) {
+          showToast("请先粘贴英文句子或自然段。");
+          el.contextRawText.focus();
+          return;
+        }
+        if (app.contextMarkingText !== rawText) app.contextSpans = [];
+        app.contextMarkingText = rawText;
+        el.contextRawText.readOnly = true;
+        el.selectionWrap.classList.remove("hidden");
+        el.addSelectionBtn.disabled = false;
+        el.clearSelectionsBtn.disabled = false;
+        el.startMarkingBtn.textContent = "重新标记";
+        renderContextSelectionSurface();
+        persistContextDraft();
+      }
+
+      function addCurrentContextSelection() {
+        var selection = window.getSelection ? window.getSelection() : null;
+        if (!selection || !selection.rangeCount || selection.isCollapsed) {
+          showToast("请先在原文中选择一段文字。");
+          return;
+        }
+        var range = selection.getRangeAt(0);
+        if (!el.selectionSurface.contains(range.commonAncestorContainer)) {
+          showToast("请在语料原文区域内选择文字。");
+          return;
+        }
+        var startRange = document.createRange();
+        startRange.selectNodeContents(el.selectionSurface);
+        startRange.setEnd(range.startContainer, range.startOffset);
+        var endRange = document.createRange();
+        endRange.selectNodeContents(el.selectionSurface);
+        endRange.setEnd(range.endContainer, range.endOffset);
+        var start = startRange.toString().length;
+        var end = endRange.toString().length;
+        var text = app.contextMarkingText.slice(start, end);
+        if (!text || app.contextMarkingText.slice(start, end) !== range.toString()) {
+          showToast("这次选择无法精确定位，请重新选择。");
+          return;
+        }
+        var overlaps = app.contextSpans.some(function (span) {
+          return start < span.end && end > span.start;
+        });
+        if (overlaps) {
+          showToast("第一版不支持重叠标记；请先取消已有标记。");
+          return;
+        }
+        app.contextSpans.push({ text: text, start: start, end: end });
+        app.contextSpans.sort(function (a, b) { return a.start - b.start || a.end - b.end; });
+        selection.removeAllRanges();
+        renderContextSelectionSurface();
+        persistContextDraft();
+      }
+
+      function renderContextSelectionSurface() {
+        var rawText = app.contextMarkingText || String(el.contextRawText.value || "");
+        el.selectionSurface.textContent = "";
+        var cursor = 0;
+        app.contextSpans.forEach(function (span, index) {
+          el.selectionSurface.appendChild(document.createTextNode(rawText.slice(cursor, span.start)));
+          var mark = document.createElement("mark");
+          mark.dataset.spanIndex = String(index);
+          mark.title = "点击取消标记";
+          mark.textContent = rawText.slice(span.start, span.end);
+          el.selectionSurface.appendChild(mark);
+          cursor = span.end;
+        });
+        el.selectionSurface.appendChild(document.createTextNode(rawText.slice(cursor)));
+        el.clearSelectionsBtn.disabled = !app.contextSpans.length;
+        el.intakeFormStatus.textContent = app.contextSpans.length
+          ? "已标记 " + app.contextSpans.length + " 处；保存前仍会逐项校验原文偏移。"
+          : "可以不标记直接保存，系统会结合整段上下文识别潜在学习点。";
+      }
+
+      function saveContextFromForm() {
+        var rawText = String(el.contextRawText.value || "").replace(/\r\n?/g, "\n");
+        if (!rawText.trim()) {
+          showToast("请先粘贴英文句子或自然段。");
+          return;
+        }
+        if (app.contextMarkingText && app.contextMarkingText !== rawText) {
+          showToast("原文已改变，请重新开始标记。");
+          return;
+        }
+        if (!app.contextRequestId) app.contextRequestId = createContextRequestId();
+        el.saveContextBtn.disabled = true;
+        el.intakeFormStatus.textContent = "正在保存并精确回读…";
+        callServer("saveContextV4", [{
+          rawText: rawText,
+          selectedSpans: app.contextSpans,
+          sourceUrl: el.contextSourceUrl.value,
+          sourceTitle: el.contextSourceTitle.value,
+          userNote: el.contextUserNote.value,
+          requestId: app.contextRequestId
+        }]).then(function (result) {
+          if (!result || result.ok === false) throw new Error("语料保存失败。");
+          showToast("已保存 " + result.contextId + "，等待整理。");
+          resetContextForm();
+          return loadContextInbox(true);
+        }).catch(function (error) {
+          el.intakeFormStatus.textContent = error.message || String(error);
+          showToast(error.message || String(error));
+        }).finally(function () {
+          el.saveContextBtn.disabled = false;
+        });
+      }
+
+      function createContextRequestId() {
+        if (window.crypto && typeof window.crypto.randomUUID === "function") {
+          return "CTXREQ-" + window.crypto.randomUUID();
+        }
+        return "CTXREQ-" + Date.now() + "-" + Math.random().toString(36).slice(2, 14);
+      }
+
+      function resetContextForm() {
+        el.contextRawText.value = "";
+        el.contextSourceUrl.value = "";
+        el.contextSourceTitle.value = "";
+        el.contextUserNote.value = "";
+        el.contextRawText.readOnly = false;
+        el.selectionWrap.classList.add("hidden");
+        el.addSelectionBtn.disabled = true;
+        el.clearSelectionsBtn.disabled = true;
+        el.startMarkingBtn.textContent = "开始标记";
+        app.contextSpans = [];
+        app.contextMarkingText = "";
+        app.contextRequestId = "";
+        el.selectionSurface.textContent = "";
+        el.intakeFormStatus.textContent = "原文保存后不会被 AI 改写覆盖。";
+        try { localStorage.removeItem("ER4_CONTEXT_DRAFT_V1"); } catch (ignore) {}
+      }
+
+      function persistContextDraft() {
+        try {
+          localStorage.setItem("ER4_CONTEXT_DRAFT_V1", JSON.stringify({
+            rawText: el.contextRawText.value,
+            sourceUrl: el.contextSourceUrl.value,
+            sourceTitle: el.contextSourceTitle.value,
+            userNote: el.contextUserNote.value,
+            markingText: app.contextMarkingText,
+            spans: app.contextSpans,
+            requestId: app.contextRequestId
+          }));
+        } catch (ignore) {}
+      }
+
+      function restoreContextDraft() {
+        try {
+          var draft = JSON.parse(localStorage.getItem("ER4_CONTEXT_DRAFT_V1") || "null");
+          if (!draft || typeof draft !== "object") return;
+          el.contextRawText.value = draft.rawText || "";
+          el.contextSourceUrl.value = draft.sourceUrl || "";
+          el.contextSourceTitle.value = draft.sourceTitle || "";
+          el.contextUserNote.value = draft.userNote || "";
+          app.contextRequestId = draft.requestId || "";
+          if (draft.markingText && draft.markingText === draft.rawText && Array.isArray(draft.spans)) {
+            app.contextMarkingText = draft.markingText;
+            app.contextSpans = draft.spans;
+            el.contextRawText.readOnly = true;
+            el.selectionWrap.classList.remove("hidden");
+            el.addSelectionBtn.disabled = false;
+            el.startMarkingBtn.textContent = "重新标记";
+            renderContextSelectionSurface();
+          }
+        } catch (ignore) {}
+      }
+
+      function renderContextInbox(payload) {
+        var counts = payload.counts || {};
+        el.intakeFreshness.textContent = "更新于 " + (payload.generatedAt || "");
+        el.intakeSummary.innerHTML = [
+          ["待整理", counts.pending || 0, "warn"],
+          ["待你确认", counts.needsDecision || 0, "warn"],
+          ["已进候选池", counts.committed || 0, ""],
+          ["异常", counts.errors || 0, counts.errors ? "bad" : "neutral"]
+        ].map(function (item) {
+          return '<span class="status-chip ' + item[2] + '">' + escapeHtml(item[0]) + " " + Number(item[1]) + "</span>";
+        }).join("");
+        var items = payload.items || [];
+        if (!items.length) {
+          el.contextList.innerHTML = '<div class="state-card"><h2>还没有语料</h2><p>把真实阅读中看不懂的完整句子或自然段保存在左侧。</p></div>';
+          return;
+        }
+        el.contextList.innerHTML = items.map(renderContextCard).join("");
+      }
+
+      function renderContextCard(item) {
+        var source = item.sourceUrl
+          ? '<a href="' + escapeAttribute(item.sourceUrl) + '" target="_blank" rel="noopener">' + escapeHtml(item.sourceTitle || "查看来源") + "</a>"
+          : escapeHtml(item.sourceTitle || "无来源信息");
+        var proposals = (item.proposals || []).map(function (proposal) {
+          var terminal = ["committed", "duplicate", "rejected", "known", "explanation_only", "invalid"].indexOf(proposal.decisionStatus) !== -1;
+          var title = proposal.candidateType === "explanation_only"
+            ? "无需加入复习库"
+            : (proposal.editedCandidate || proposal.candidate || "待检查建议");
+          var actions = terminal ? "" :
+            '<div class="proposal-actions">' +
+              '<button class="btn primary" type="button" data-context-action="accept" data-context-id="' + escapeAttribute(item.contextId) + '" data-proposal-position="' + Number(proposal.position) + '">加入候选池</button>' +
+              '<button class="btn secondary" type="button" data-context-action="edit" data-context-id="' + escapeAttribute(item.contextId) + '" data-proposal-position="' + Number(proposal.position) + '" data-candidate="' + escapeAttribute(proposal.candidate || "") + '">编辑后加入</button>' +
+              '<button class="btn secondary" type="button" data-context-action="known" data-context-id="' + escapeAttribute(item.contextId) + '" data-proposal-position="' + Number(proposal.position) + '">我已经会了</button>' +
+              '<button class="btn secondary" type="button" data-context-action="explanation_only" data-context-id="' + escapeAttribute(item.contextId) + '" data-proposal-position="' + Number(proposal.position) + '">只需要解释</button>' +
+              '<button class="btn secondary" type="button" data-context-action="reject" data-context-id="' + escapeAttribute(item.contextId) + '" data-proposal-position="' + Number(proposal.position) + '">拒绝</button>' +
+            '</div>';
+          return '<article class="proposal-card">' +
+            '<div class="context-head"><h4>' + escapeHtml(title) + '</h4><span class="status-chip ' + statusTone(proposal.decisionStatus) + '">' + escapeHtml(displayStatus(proposal.decisionStatus)) + '</span></div>' +
+            (proposal.selectedText ? '<p><strong>原文标记：</strong>' + escapeHtml(proposal.selectedText) + '</p>' : '') +
+            (proposal.chineseCue ? '<p><strong>中文含义：</strong>' + escapeHtml(proposal.chineseCue) + '</p>' : '') +
+            (proposal.contextMeaning ? '<p><strong>原文含义：</strong>' + escapeHtml(proposal.contextMeaning) + '</p>' : '') +
+            (proposal.whyUseful ? '<p><strong>为什么值得学：</strong>' + escapeHtml(proposal.whyUseful) + '</p>' : '') +
+            (proposal.naturalExample ? '<p><strong>自然例句：</strong>' + escapeHtml(proposal.naturalExample) + '</p>' : '') +
+            (proposal.commonMistake ? '<p><strong>常见错误：</strong>' + escapeHtml(proposal.commonMistake) + '</p>' : '') +
+            '<p class="context-meta">AI 信心 ' + Math.round(Number(proposal.confidence || 0) * 100) + '% · ' + escapeHtml(proposal.extractionRationale || "") + '</p>' +
+            actions +
+          '</article>';
+        }).join("");
+        return '<article class="context-card">' +
+          '<div class="context-head"><strong>' + escapeHtml(item.contextId) + '</strong><span class="status-chip ' + statusTone(item.status) + '">' + escapeHtml(displayStatus(item.status)) + '</span></div>' +
+          '<div class="context-raw">' + renderMarkedContextHtml(item.rawText || "", item.selectedSpans || []) + '</div>' +
+          '<div class="context-meta">' + escapeHtml(item.createdAt || "") + ' · ' + source + (item.userNote ? ' · ' + escapeHtml(item.userNote) : '') + '</div>' +
+          (proposals || (item.status === "pending" ? '<p class="intake-help">等待“整理语料”生成建议。</p>' : '<p class="intake-help">当前没有需要确认的学习项。</p>')) +
+        '</article>';
+      }
+
+      function renderMarkedContextHtml(rawText, spans) {
+        var safeSpans = (spans || []).slice().sort(function (a, b) { return a.start - b.start; });
+        var cursor = 0;
+        var html = "";
+        safeSpans.forEach(function (span) {
+          var start = Number(span.start);
+          var end = Number(span.end);
+          if (start < cursor || end <= start || rawText.slice(start, end) !== span.text) return;
+          html += escapeHtml(rawText.slice(cursor, start));
+          html += "<mark>" + escapeHtml(rawText.slice(start, end)) + "</mark>";
+          cursor = end;
+        });
+        return html + escapeHtml(rawText.slice(cursor));
+      }
+
+      function handleContextListAction(event) {
+        var button = event.target.closest("[data-context-action]");
+        if (!button) return;
+        var action = button.dataset.contextAction;
+        var editedCandidate = "";
+        if (action === "edit") {
+          editedCandidate = window.prompt("修改为适合复习的规范词块：", button.dataset.candidate || "") || "";
+          if (!editedCandidate.trim()) return;
+        }
+        button.disabled = true;
+        callServer("decideContextCandidateV4", [
+          button.dataset.contextId,
+          Number(button.dataset.proposalPosition),
+          action,
+          editedCandidate
+        ]).then(function (result) {
+          if (!result || result.ok === false) throw new Error("语料建议处理失败。");
+          if (result.decisionStatus === "duplicate") showToast("这个搭配已经存在，没有重复写入。");
+          else if (result.candidateId) showToast("已加入候选池：" + result.candidateId);
+          else showToast("已保存你的决定。");
+          app.dashboard = null;
+          return loadContextInbox(true);
+        }).catch(function (error) {
+          button.disabled = false;
+          showToast(error.message || String(error));
+        });
+      }
+
+      function statusTone(status) {
+        status = String(status || "").toLowerCase();
+        if (["committed", "processed", "accepted", "edited"].indexOf(status) !== -1) return "";
+        if (["error", "invalid"].indexOf(status) !== -1) return "bad";
+        if (["pending", "processing", "staged", "needs_review"].indexOf(status) !== -1) return "warn";
+        return "neutral";
+      }
+
+      function copyPlainText(value) {
+        if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(value);
+        return new Promise(function (resolve, reject) {
+          var area = document.createElement("textarea");
+          area.value = value;
+          area.style.position = "fixed";
+          area.style.opacity = "0";
+          document.body.appendChild(area);
+          area.select();
+          try {
+            document.execCommand("copy");
+            resolve();
+          } catch (error) {
+            reject(error);
+          } finally {
+            area.remove();
+          }
+        });
+      }
+
+      function renderSectionError(view, error) {
+        var target = view === "intake" ? el.contextList :
+          view === "analytics" ? el.analyticsMount :
+          view === "settings" ? el.settingsMount : el.phrasesMount;
+        target.innerHTML =
+          '<section class="state-card" style="margin-top:10px">' +
+            '<div class="state-icon" style="color:var(--red);background:var(--red-soft)">!</div>' +
+            '<h2>这一页暂时无法载入</h2>' +
+            '<p>' + escapeHtml(error && error.message ? error.message : String(error)) + '</p>' +
+            '<div class="state-actions"><button id="retrySection" class="btn primary" type="button">重新载入</button></div>' +
+          '</section>';
+        var button = document.getElementById("retrySection");
+        if (button) button.addEventListener("click", function () {
+          app.dashboard = null;
+          activateView(view);
+        });
+      }
+
+      function renderAnalytics(payload) {
+        var overview = payload.overview || {};
+        var todayAccuracy = overview.todayAccuracy || {};
+        var sevenAccuracy = overview.sevenDayAccuracy || {};
+        var thirtyAccuracy = overview.thirtyDayAccuracy || {};
+        el.analyticsFreshness.textContent = "数据更新于 " + (payload.generatedAt || "");
+        var cards = [
+          {
+            label: "今日首次作答正确率",
+            value: displayPercent(todayAccuracy.percent),
+            note: "答对 " + Number(todayAccuracy.correct || 0) + " / " + Number(todayAccuracy.total || 0) + " 道"
+          },
+          {
+            label: "最近 7 天",
+            value: displayPercent(sevenAccuracy.percent),
+            note: "共 " + Number(sevenAccuracy.total || 0) + " 次作答"
+          },
+          {
+            label: "最近 30 天",
+            value: displayPercent(thirtyAccuracy.percent),
+            note: "共 " + Number(thirtyAccuracy.total || 0) + " 次作答"
+          },
+          {
+            label: "当前逾期",
+            value: Number(overview.overdue || 0),
+            note: "未来 14 天的安排见下方"
+          },
+          {
+            label: "连续学习",
+            value: Number(overview.streak || 0) + " 天",
+            note: "已掌握 " + Number(overview.masteredPhrases || 0) + " / " + Number(overview.totalPhrases || 0) + " 个搭配"
+          }
+        ];
+        var cardHtml = cards.map(function (card) {
+          return '<article class="kpi-card"><span class="kpi-label">' + escapeHtml(card.label) +
+            '</span><strong class="kpi-value">' + escapeHtml(card.value) +
+            '</strong><span class="kpi-note">' + escapeHtml(card.note) + '</span></article>';
+        }).join("");
+        var trendHtml = buildTrendChart(payload.trend || []);
+        var dueHtml = buildFutureDueChart(payload.futureDue || []);
+        var masteryHtml = buildBarChart(payload.mastery || [], "label", "count", "blue");
+        var errorHtml = buildBarChart((payload.errorCategories || []).slice(0, 8).map(function (item) {
+          return { category: displayErrorCategory(item.category), count: item.count };
+        }), "category", "count", "amber");
+        var topErrors = (payload.topErrors || []).map(function (item, index) {
+          return '<button class="rank-row" type="button" data-phrase-id="' + escapeAttribute(item.phraseId) + '">' +
+            '<span class="rank-index">' + (index + 1) + '</span>' +
+            '<span><strong>' + escapeHtml(item.chunk || item.phraseId) + '</strong>' +
+              '<small>' + escapeHtml(item.chineseCue || "") + ' · 最近答对 ' +
+              Number(item.recentCorrect || 0) + "/" + Number(item.recentTotal || 0) + " 次" +
+              (item.nextReview ? " · 下次复习 " + escapeHtml(item.nextReview) : "") +
+              '</small></span>' +
+            '<span class="rank-value">' + Number(item.errorCount || 0) + " 次" + '</span>' +
+          '</button>';
+        }).join("");
+        el.analyticsMount.innerHTML =
+          '<div class="dashboard-grid">' +
+            '<div class="kpi-grid">' + cardHtml + '</div>' +
+            '<section class="panel">' +
+              '<div class="panel-head"><div><h3>每日首次作答正确率</h3>' +
+              '<p>统计最近 30 天每个搭配在每场练习中的第一次作答；“基本掌握”或“熟练掌握”记为答对。</p></div></div>' +
+              trendHtml +
+            '</section>' +
+            '<section class="panel">' +
+              '<div class="panel-head"><div><h3>未来 14 天复习负荷</h3>' +
+              '<p>根据搭配库中当前的下次复习日期统计；不含已暂停的搭配。</p></div></div>' +
+              dueHtml +
+            '</section>' +
+            '<section class="panel">' +
+              '<div class="panel-head"><div><h3>掌握阶段分布</h3>' +
+              '<p>困难项根据最近 5 次作答判断，并优先显示。</p></div></div>' +
+              masteryHtml +
+            '</section>' +
+            '<section class="panel">' +
+              '<div class="panel-head"><div><h3>错误类型</h3>' +
+              '<p>根据最近 30 天的错误记录统计；分类沿用批改结果。</p></div></div>' +
+              errorHtml +
+            '</section>' +
+            '<section class="panel wide">' +
+              '<div class="panel-head"><div><h3>高频错误搭配</h3>' +
+              '<p>按最近 30 天的错误次数排序，最多显示 10 项；点击可查看学习记录。</p></div></div>' +
+              (topErrors ? '<div class="rank-list">' + topErrors + '</div>' :
+                '<div class="chart-empty">最近 30 天没有错误记录。</div>') +
+            '</section>' +
+          '</div>';
+        attachPhraseLinks(el.analyticsMount);
+      }
+
+      function displayPercent(value) {
+        return value == null ? "—" : (Math.round(Number(value) * 10) / 10) + "%";
+      }
+
+      function buildTrendChart(rows) {
+        var width = 640;
+        var height = 245;
+        var left = 40;
+        var right = 14;
+        var top = 12;
+        var bottom = 30;
+        var innerWidth = width - left - right;
+        var innerHeight = height - top - bottom;
+        var valid = rows.filter(function (row) { return row.total && row.accuracy != null; });
+        if (valid.length < 2) {
+          return '<div class="chart-empty">有效学习日不足 2 天，暂不绘制趋势线。</div>';
+        }
+        var path = "";
+        var dots = "";
+        var previousIndex = -2;
+        rows.forEach(function (row, index) {
+          if (!row.total || row.accuracy == null) {
+            previousIndex = -2;
+            return;
+          }
+          var x = left + (rows.length === 1 ? 0 : index / (rows.length - 1) * innerWidth);
+          var y = top + (100 - Number(row.accuracy)) / 100 * innerHeight;
+          path += (index === previousIndex + 1 ? " L " : " M ") + x.toFixed(1) + " " + y.toFixed(1);
+          dots += '<circle class="chart-dot" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) +
+            '" r="3"><title>' + escapeHtml(row.date + " · " + displayPercent(row.accuracy) +
+            " · " + row.correct + "/" + row.total) + '</title></circle>';
+          previousIndex = index;
+        });
+        var grid = [0, 50, 100].map(function (value) {
+          var y = top + (100 - value) / 100 * innerHeight;
+          return '<line class="chart-grid-line" x1="' + left + '" y1="' + y + '" x2="' +
+            (width - right) + '" y2="' + y + '"></line>' +
+            '<text class="chart-label" x="' + (left - 8) + '" y="' + (y + 3) +
+            '" text-anchor="end">' + value + '%</text>';
+        }).join("");
+        var labelIndexes = [0, Math.floor((rows.length - 1) / 2), rows.length - 1];
+        var labels = labelIndexes.map(function (index) {
+          var x = left + index / (rows.length - 1) * innerWidth;
+          return '<text class="chart-label" x="' + x + '" y="' + (height - 7) +
+            '" text-anchor="' + (index === 0 ? "start" : index === rows.length - 1 ? "end" : "middle") +
+            '">' + escapeHtml(shortDate(rows[index].date)) + '</text>';
+        }).join("");
+        return '<svg class="line-chart" viewBox="0 0 ' + width + " " + height +
+          '" role="img" aria-label="最近 30 天每日首次作答正确率折线图">' +
+          grid + '<path class="chart-line" d="' + path + '"></path>' + dots + labels + '</svg>';
+      }
+
+      function buildFutureDueChart(rows) {
+        if (!rows.length) return '<div class="chart-empty">没有可显示的到期计划。</div>';
+        var max = Math.max.apply(null, rows.map(function (row) { return Number(row.count || 0); }).concat([1]));
+        return '<div class="date-bars" role="img" aria-label="未来 14 天到期数量柱状图">' +
+          rows.map(function (row, index) {
+            var count = Number(row.count || 0);
+            var height = count ? Math.max(5, count / max * 100) : 2;
+            return '<div class="date-bar" title="' + escapeAttribute(row.date + " · " + count + " 个") + '">' +
+              '<strong>' + count + '</strong>' +
+              '<div class="date-bar-track"><div class="date-bar-fill" style="height:' + height + '%"></div></div>' +
+              '<span>' + (index === 0 ? "今天" : shortDate(row.date)) + '</span>' +
+            '</div>';
+          }).join("") +
+        '</div>';
+      }
+
+      function buildBarChart(rows, labelKey, valueKey, tone) {
+        if (!rows.length) return '<div class="chart-empty">没有可显示的数据。</div>';
+        var max = Math.max.apply(null, rows.map(function (row) { return Number(row[valueKey] || 0); }).concat([1]));
+        return '<div class="bar-list">' + rows.map(function (row) {
+          var value = Number(row[valueKey] || 0);
+          var width = value ? Math.max(2, value / max * 100) : 0;
+          return '<div class="bar-row">' +
+            '<span class="bar-label" title="' + escapeAttribute(row[labelKey]) + '">' + escapeHtml(row[labelKey]) + '</span>' +
+            '<div class="bar-track"><div class="bar-fill ' + escapeAttribute(tone || "") +
+              '" style="width:' + width + '%"></div></div>' +
+            '<span class="bar-value">' + value + '</span>' +
+          '</div>';
+        }).join("") + '</div>';
+      }
+
+      function shortDate(value) {
+        var parts = String(value || "").split("-");
+        return parts.length === 3 ? Number(parts[1]) + "/" + Number(parts[2]) : String(value || "");
+      }
+
+      function displayStatus(value) {
+        var raw = String(value || "").trim();
+        if (!raw) return "暂无记录";
+        if (/[一-鿿]/.test(raw)) return raw;
+        return STATUS_LABELS[raw.toLowerCase()] || "其他状态";
+      }
+
+      function displayPipelineStep(value) {
+        var raw = String(value || "").trim();
+        if (!raw) return "暂无进度";
+        if (/[一-鿿]/.test(raw)) return raw;
+        return PIPELINE_STEP_LABELS[raw.toLowerCase()] || "处理中";
+      }
+
+      function displayErrorCategory(value) {
+        var raw = String(value || "").trim();
+        if (!raw) return "未分类";
+        if (/[一-鿿]/.test(raw)) return raw;
+        return ERROR_CATEGORY_LABELS[raw.toLowerCase()] || "其他错误";
+      }
+
+      function displayTopic(value) {
+        var raw = String(value || "").trim();
+        if (!raw) return "—";
+        if (/[一-鿿]/.test(raw)) return raw;
+        var normalized = raw.toLowerCase();
+        if (TOPIC_LABELS[normalized]) return TOPIC_LABELS[normalized];
+        var parts = normalized.split("/").map(function (part) { return part.trim(); }).filter(Boolean);
+        if (parts.length && parts.every(function (part) { return Boolean(TOPIC_LABELS[part]); })) {
+          return parts.map(function (part) { return TOPIC_LABELS[part]; }).join(" / ");
+        }
+        return "其他主题";
+      }
+
+      function renderPhraseList() {
+        if (!app.dashboard) {
+          el.phrasesMount.innerHTML = '<div class="chart-empty">正在载入搭配库…</div>';
+          return;
+        }
+        var queryValue = String(el.phraseSearch.value || "").trim().toLowerCase();
+        var filter = el.phraseFilter.value || "all";
+        var phrases = (app.dashboard.phrases || []).filter(function (phrase) {
+          var searchable = [phrase.id, phrase.chunk, phrase.chineseCue, phrase.topic].join(" ").toLowerCase();
+          if (queryValue && searchable.indexOf(queryValue) === -1) return false;
+          if (filter === "due") return phrase.dueState === "overdue" || phrase.dueState === "due_today";
+          if (filter === "hard") return Boolean(phrase.hard);
+          if (filter === "mastered") return phrase.status === "mastered";
+          if (filter === "learning") return phrase.status !== "mastered" && phrase.status !== "suspended";
+          if (filter === "paused") return phrase.status === "suspended";
+          return true;
+        });
+        el.phraseCount.textContent = phrases.length + " / " + (app.dashboard.phrases || []).length + " 个";
+        el.phrasesMount.innerHTML = phrases.map(function (phrase) {
+          var tone = phrase.hard ? "warn" :
+            phrase.dueState === "overdue" ? "bad" :
+            phrase.status === "suspended" ? "neutral" : "";
+          var status = phrase.hard ? "困难项" :
+            phrase.dueState === "overdue" ? "已逾期" :
+            phrase.dueState === "due_today" ? "今日到期" :
+            phrase.masteryBand || displayStatus(phrase.status);
+          return '<button class="phrase-card" type="button" data-phrase-id="' + escapeAttribute(phrase.id) + '">' +
+            '<span><strong>' + escapeHtml(phrase.chunk || phrase.id) + '</strong>' +
+            '<p>' + escapeHtml(phrase.chineseCue || "") +
+              (phrase.topic ? " · " + escapeHtml(displayTopic(phrase.topic)) : "") +
+              (phrase.nextReview ? " · 下次复习 " + escapeHtml(phrase.nextReview) : "") +
+            '</p></span>' +
+            '<span class="status-chip ' + tone + '">' + escapeHtml(status) + '</span>' +
+          '</button>';
+        }).join("");
+        if (!phrases.length) {
+          el.phrasesMount.innerHTML = '<div class="chart-empty">没有符合当前搜索和筛选条件的搭配。</div>';
+        }
+        attachPhraseLinks(el.phrasesMount);
+      }
+
+      function attachPhraseLinks(container) {
+        Array.prototype.forEach.call(container.querySelectorAll("[data-phrase-id]"), function (button) {
+          button.addEventListener("click", function () { openPhraseDetail(button.dataset.phraseId); });
+        });
+      }
+
+      function openPhraseDetail(phraseId) {
+        el.phraseDetailModal.classList.remove("hidden");
+        document.body.style.overflow = "hidden";
+        el.phraseDetailSheet.innerHTML =
+          '<button class="btn secondary detail-close" type="button" aria-label="关闭">×</button>' +
+          '<div class="chart-empty">正在读取学习记录…</div>';
+        el.phraseDetailSheet.querySelector(".detail-close").addEventListener("click", closePhraseDetail);
+        callServer("getPhraseDetailV4", [phraseId]).then(renderPhraseDetail).catch(function (error) {
+          el.phraseDetailSheet.innerHTML =
+            '<button class="btn secondary detail-close" type="button" aria-label="关闭">×</button>' +
+            '<h2 id="phraseDetailTitle">详情载入失败</h2><p>' +
+            escapeHtml(error && error.message ? error.message : String(error)) + '</p>';
+          el.phraseDetailSheet.querySelector(".detail-close").addEventListener("click", closePhraseDetail);
+        });
+      }
+
+      function renderPhraseDetail(payload) {
+        var phrase = payload.phrase || {};
+        var origin = payload.origin || null;
+        var accuracy = phrase.timesSeen ? Math.round(Number(phrase.timesCorrect || 0) / Number(phrase.timesSeen) * 100) + "%" : "—";
+        var history = (payload.history || []).map(function (item) {
+          return '<article class="history-row">' +
+            '<div class="result-head"><strong>' + escapeHtml(item.date || "") +
+              " · 第 " + Number(item.position || 0) + " 题" + '</strong>' +
+              '<span class="result-label ' + escapeAttribute(item.result || "") + '">' +
+              escapeHtml(RESULT_LABELS[item.result] || item.result || "") + '</span></div>' +
+            '<p><strong>你的答案：</strong>' + escapeHtml(item.userAnswer || "") + '</p>' +
+            '<p><strong>参考答案：</strong>' + escapeHtml(item.expectedAnswer || "") + '</p>' +
+            (item.notes ? '<p>' + escapeHtml(item.notes) + '</p>' : "") +
+          '</article>';
+        }).join("");
+        var errors = (payload.errors || []).map(function (item) {
+          return '<article class="history-row"><strong>' + escapeHtml(item.date || "") +
+            " · " + escapeHtml(displayErrorCategory(item.type)) + '</strong>' +
+            '<p>' + escapeHtml(item.userAnswer || "") + " → " + escapeHtml(item.correction || "") + '</p>' +
+            (item.explanation ? '<p>' + escapeHtml(item.explanation) + '</p>' : "") +
+          '</article>';
+        }).join("");
+        el.phraseDetailSheet.innerHTML =
+          '<button class="btn secondary detail-close" type="button" aria-label="关闭">×</button>' +
+          '<h2 id="phraseDetailTitle">' + escapeHtml(phrase.chunk || phrase.id) + '</h2>' +
+          '<p>' + escapeHtml(phrase.chineseCue || "") +
+            (phrase.naturalExample ? '<br><em>' + escapeHtml(phrase.naturalExample) + '</em>' : "") + '</p>' +
+          '<div class="detail-grid">' +
+            detailStat("当前状态", displayStatus(phrase.status)) +
+            detailStat("复习阶段", phrase.stage || "—") +
+            detailStat("累计正确率", accuracy) +
+            detailStat("下次复习", phrase.nextReview || "—") +
+            detailStat("累计复习", phrase.timesSeen || 0) +
+            detailStat("连续熟练次数", phrase.masteryStreak || 0) +
+            detailStat("主题", phrase.topic ? displayTopic(phrase.topic) : "—") +
+            detailStat("最近结果", RESULT_LABELS[phrase.lastResult] || phrase.lastResult || "—") +
+          '</div>' +
+          (phrase.commonMistake ? '<section><h3>常见错误</h3><p class="muted">' +
+            escapeHtml(phrase.commonMistake) + '</p></section>' : "") +
+          (origin && origin.type === "user_context" ? '<section><h3>最初遇到它的语境</h3>' +
+            '<article class="history-row"><strong>' + escapeHtml(origin.contextId || "") +
+            (origin.capturedAt ? " · " + escapeHtml(origin.capturedAt) : "") + '</strong>' +
+            (origin.selectedText ? '<p><strong>当时标记：</strong>' + escapeHtml(origin.selectedText) + '</p>' : '') +
+            (origin.rawText ? '<p>' + escapeHtml(origin.rawText) + '</p>' : '') +
+            (origin.sourceUrl ? '<p><a href="' + escapeAttribute(origin.sourceUrl) + '" target="_blank" rel="noopener">' + escapeHtml(origin.sourceTitle || "查看原始来源") + '</a></p>' : '') +
+            '</article></section>' : '') +
+          '<section><h3>最近学习记录</h3><div class="history-list">' +
+            (history || '<div class="chart-empty">暂无学习记录。</div>') + '</div></section>' +
+          '<section><h3>错误记录</h3><div class="history-list">' +
+            (errors || '<div class="chart-empty">暂无错误记录。</div>') + '</div></section>';
+        el.phraseDetailSheet.querySelector(".detail-close").addEventListener("click", closePhraseDetail);
+        el.phraseDetailSheet.querySelector(".detail-close").focus();
+      }
+
+      function detailStat(label, value) {
+        return '<div class="detail-stat"><span>' + escapeHtml(label) + '</span><strong>' +
+          escapeHtml(value) + '</strong></div>';
+      }
+
+      function closePhraseDetail() {
+        el.phraseDetailModal.classList.add("hidden");
+        el.phraseDetailSheet.innerHTML = "";
+        document.body.style.overflow = "";
+      }
+
+      function renderSettings(payload) {
+        var system = payload.system || {};
+        el.settingsFreshness.textContent = "数据更新于 " + (payload.generatedAt || "");
+        var tone = system.tone || "neutral";
+        var toneLabel = tone === "good" ? "正常" : tone === "warn" ? "需检查" : "等待今日队列";
+        var rows = [
+          ["整体状态", toneLabel, tone],
+          ["数据规则版本", system.contractVersion || "—", system.contractVersion === "4.0" ? "good" : "bad"],
+          ["今日题组", Number(system.queueCount || 0) + " / 20 · " + displayStatus(system.queueStatus),
+            Number(system.queueCount || 0) === 20 ? "good" : "warn"],
+          ["今日题目", Number(system.questionCount || 0) + " / 20 · " + Number(system.generationCount || 0) + " 个生成批次",
+            Number(system.questionCount || 0) === 20 && Number(system.generationCount || 0) === 1 ? "good" : "warn"],
+          ["批改结果", Number(system.gradeCount || 0) + " 条 · 待处理 " + Number(system.pendingGradeCount || 0),
+            Number(system.pendingGradeCount || 0) === 0 ? "good" : "warn"],
+          ["语料待整理", Number(system.pendingContextCount || 0) + " 条 · 待确认 " + Number(system.pendingContextDecisionCount || 0),
+            Number(system.contextErrorCount || 0) === 0 ? (Number(system.pendingContextCount || 0) ? "warn" : "good") : "bad"],
+          ["最近语料批次", system.latestContextBatch || "—",
+            Number(system.contextErrorCount || 0) === 0 ? "neutral" : "bad"],
+          ["保存进度", displayStatus(system.journalStatus) + " · " + displayPipelineStep(system.journalStep),
+            system.journalStatus === "committed" ? "good" : "warn"],
+          ["学习记录核验", displayStatus(system.sessionWrite) + " / " + displayStatus(system.sessionReadback),
+            system.sessionWrite === "verified" && system.sessionReadback === "verified" ? "good" : "warn"],
+          ["最近一次处理", system.latestActivity || "—", "neutral"]
+        ];
+        el.settingsMount.innerHTML =
+          '<div class="dashboard-grid">' +
+            '<section class="panel wide">' +
+              '<div class="panel-head"><div><h3>今日数据处理</h3>' +
+              '<p>临时数据和正式学习记录分开显示；只有通过核验才算保存完成。</p></div>' +
+              '<span class="status-chip ' + escapeAttribute(tone) + '">' + escapeHtml(toneLabel) + '</span></div>' +
+              '<div class="diagnostic-list">' +
+                rows.map(function (row) {
+                  return '<div class="diagnostic-row"><span>' + escapeHtml(row[0]) + '</span>' +
+                    '<span class="status-chip ' + escapeAttribute(row[2]) + '">' + escapeHtml(row[1]) + '</span></div>';
+                }).join("") +
+              '</div>' +
+            '</section>' +
+            '<section class="panel wide">' +
+              '<div class="panel-head"><div><h3>指标口径</h3>' +
+              '<p>学习分析只统计正式学习记录；临时数据只用于上方的状态检查。</p></div></div>' +
+              '<div class="diagnostic-list">' +
+                Object.keys(payload.definitions || {}).map(function (key) {
+                  var labels = { firstCorrect: "首次作答正确率", difficult: "困难项", overdue: "逾期" };
+                  return '<div class="diagnostic-row"><span>' + escapeHtml(labels[key] || key) +
+                    '</span><strong>' + escapeHtml(payload.definitions[key]) + '</strong></div>';
+                }).join("") +
+              '</div>' +
+            '</section>' +
+          '</div>';
+      }
+
+      function handlePayload(payload) {
+        app.payload = payload;
+        app.busy = false;
+        stopPolling();
+        hideQuiz();
+        el.stateMount.innerHTML = "";
+        if (!payload || payload.ok === false) {
+          showFatal(new Error(payload && payload.message ? payload.message : "载入失败"));
+          return;
+        }
+        renderTodayStrip(payload);
+        if (payload.state === "answering") {
+          startAnswering(payload);
+          return;
+        }
+        if (payload.state === "awaiting_chatgpt") {
+          renderHandoff(payload);
+          startPolling();
+          return;
+        }
+        if (["grading_validated", "writing", "verifying"].indexOf(payload.state) !== -1) {
+          renderWorking(payload);
+          startPolling();
+          return;
+        }
+        if (payload.state === "write_incomplete") {
+          renderWriteIncomplete(payload);
+          startPolling();
+          return;
+        }
+        if (payload.state === "needs_confirmation") {
+          renderConfirmation(payload);
+          return;
+        }
+        if (payload.state === "committed") {
+          renderResults(payload.result || {});
+          return;
+        }
+        renderWaiting(payload);
+      }
+
+      function renderTodayStrip(payload) {
+        var planned = 0;
+        var due = 0;
+        var fresh = 0;
+        var completed = 0;
+        var status = payload && payload.state ? payload.state : "";
+        if (payload && payload.queueMeta) {
+          planned = Number(payload.queueMeta.planned || 0);
+          due = Number(payload.queueMeta.due || 0);
+          fresh = Number(payload.queueMeta.fresh || 0);
+          var questionSource = app.questions.length ? app.questions : (payload.questions || []);
+          completed = questionSource.filter(function (question) {
+            return question.locked == null ? question.revealed : question.locked;
+          }).length;
+        } else if (payload && payload.result) {
+          planned = Number(payload.result.dueCount || 0) + Number(payload.result.newCount || 0);
+          due = Number(payload.result.dueCount || 0);
+          fresh = Number(payload.result.newCount || 0);
+          completed = planned;
+        }
+        if (!planned) {
+          el.todayStrip.classList.add("hidden");
+          el.todayStrip.innerHTML = "";
+          return;
+        }
+        var statusLabel = status === "committed" ? "学习记录已保存" :
+          status === "answering" ? "答题中" :
+          status === "awaiting_chatgpt" ? "等待批改" :
+          "处理中";
+        el.todayStrip.innerHTML =
+          '<div class="today-strip-parts"><span><strong>今日 ' + planned + " 题</strong></span>" +
+          '<span>到期复习 ' + due + '</span><span>新搭配 ' + fresh + '</span>' +
+          '<span>已完成 ' + completed + " / " + planned + '</span></div>' +
+          '<span class="status-chip">' + escapeHtml(statusLabel) + '</span>';
+        el.todayStrip.classList.remove("hidden");
+      }
+
+      function startAnswering(payload) {
+        app.questions = (payload.questions || []).slice().sort(function (a, b) {
+          return a.position - b.position;
+        });
+        app.answers = {};
+        app.revisions = {};
+        app.dirty = {};
+        app.localVersions = {};
+        app.savedAnswers = {};
+        app.savePromises = {};
+        app.conflicts = {};
+        app.questions.forEach(function (question) {
+          question.revealed = Boolean(question.revealed);
+          question.locked = question.locked == null ? question.revealed : Boolean(question.locked);
+          question.syncing = false;
+          question.syncError = false;
+          app.answers[question.position] = question.answer || "";
+          app.revisions[question.position] = Number(question.revision || 0);
+          app.localVersions[question.position] = 0;
+          app.savedAnswers[question.position] = question.answer || "";
+        });
+        app.current = Math.max(0, app.questions.findIndex(function (question) {
+          return !question.locked;
+        }));
+        if (app.current < 0) app.current = 0;
+        el.stateMount.innerHTML = "";
+        el.quizLayout.style.display = "";
+        el.quizLayout.classList.remove("hidden");
+        el.progressWrap.style.display = "flex";
+        buildNumberNavigation();
+        renderQuestion();
+        setSaveState("草稿已恢复", "good");
+      }
+
+      function hideQuiz() {
+        el.quizLayout.classList.add("hidden");
+        el.progressWrap.style.display = "none";
+      }
+
+      function buildNumberNavigation() {
+        el.desktopNumbers.innerHTML = "";
+        el.mobileNumbers.innerHTML = "";
+        app.questions.forEach(function (question, index) {
+          [el.desktopNumbers, el.mobileNumbers].forEach(function (container) {
+            var button = document.createElement("button");
+            button.type = "button";
+            button.className = "q-number";
+            button.textContent = question.position;
+            button.setAttribute("aria-label", "第 " + question.position + " 题");
+            button.addEventListener("click", function () { navigateTo(index); });
+            container.appendChild(button);
+          });
+        });
+      }
+
+      function renderQuestion() {
+        var question = app.questions[app.current];
+        if (!question) return;
+        el.questionEyebrow.textContent = "第 " + question.position + " 题，共 " + app.questions.length + " 题";
+        el.questionType.textContent = TYPE_LABELS[question.questionType] || question.questionType || "题目";
+        el.promptZh.textContent = question.promptZh || "";
+        el.promptEn.textContent = question.promptEn || "";
+        el.promptEn.classList.toggle("hidden", !question.promptEn);
+        el.answerBox.value = app.answers[question.position] || "";
+        el.answerBox.disabled = Boolean(question.revealed || app.busy);
+        el.expectedAnswer.textContent = question.revealed ? (question.expectedAnswer || "") : "";
+        el.answerReveal.classList.toggle("hidden", !question.revealed);
+        el.prevBtn.disabled = app.current === 0;
+        var allRevealed = app.questions.every(function (item) { return item.revealed; });
+        var allLocked = app.questions.every(function (item) { return item.locked; });
+        el.revealBtn.classList.toggle("hidden", Boolean(question.locked));
+        el.revealBtn.textContent = question.revealed ?
+          (question.syncing ? "正在保存本题…" : "重试保存本题") : "锁定并查看标准答案";
+        el.revealBtn.disabled = Boolean(app.busy || question.syncing);
+        el.nextBtn.classList.toggle(
+          "hidden",
+          !question.revealed || app.current === app.questions.length - 1
+        );
+        el.nextBtn.disabled = app.busy;
+        el.submitBtn.classList.toggle("hidden", !allRevealed);
+        el.submitBtn.disabled = Boolean(app.busy || !allLocked);
+        updateProgress();
+        updateNumberNavigation();
+        if (!question.revealed && !app.busy) {
+          window.setTimeout(function () { el.answerBox.focus({ preventScroll: true }); }, 30);
+        }
+      }
+
+      function updateProgress() {
+        var completed = app.questions.filter(function (question) {
+          return question.locked;
+        }).length;
+        var total = app.questions.length || 20;
+        el.progressBar.style.width = (completed / total * 100) + "%";
+        el.progressLabel.textContent = completed + " / " + total;
+        el.answeredCount.textContent = completed + " / " + total;
+        if (app.payload && app.payload.state === "answering") renderTodayStrip(app.payload);
+      }
+
+      function updateNumberNavigation() {
+        [el.desktopNumbers, el.mobileNumbers].forEach(function (container) {
+          Array.prototype.forEach.call(container.children, function (button, index) {
+            var question = app.questions[index];
+            var answered = String(app.answers[question.position] || "").trim();
+            button.classList.toggle("answered", !!answered);
+            button.classList.toggle("revealed", Boolean(question.revealed));
+            button.classList.toggle("sync-error", Boolean(question.syncError && !question.locked));
+            button.classList.toggle("current", index === app.current);
+            button.setAttribute("aria-current", index === app.current ? "step" : "false");
+          });
+        });
+        var activeMobile = el.mobileNumbers.children[app.current];
+        if (activeMobile) activeMobile.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }
+
+      function onAnswerInput() {
+        var question = app.questions[app.current];
+        if (!question || question.revealed || app.busy) return;
+        app.answers[question.position] = el.answerBox.value;
+        app.dirty[question.position] = true;
+        app.localVersions[question.position] = Number(app.localVersions[question.position] || 0) + 1;
+        setSaveState("未保存", "warn");
+        updateProgress();
+        updateNumberNavigation();
+        window.clearTimeout(app.timers[question.position]);
+        app.timers[question.position] = window.setTimeout(function () {
+          savePosition(question.position);
+        }, 700);
+      }
+
+      function savePosition(position) {
+        if (app.conflicts[position]) return Promise.resolve({ conflict: true });
+        if (!app.dirty[position]) return app.savePromises[position] || Promise.resolve();
+        if (app.savePromises[position]) {
+          return app.savePromises[position].then(function () {
+            return app.dirty[position] ? savePosition(position) : null;
+          });
+        }
+        var answer = app.answers[position] || "";
+        var localVersion = Number(app.localVersions[position] || 0);
+        setSaveState("保存中…", "warn");
+        var request = callServer("saveDraftV4", [
+          app.payload.sessionId,
+          position,
+          answer,
+          app.revisions[position] || 0
+        ]).then(function (result) {
+          if (result && result.locked) {
+            app.dirty[position] = false;
+            return callServer("getReviewBootstrapV4").then(function (payload) {
+              handlePayload(payload);
+              showToast("这道题已在另一台设备锁定，已载入标准答案。");
+              return result;
+            });
+          }
+          if (result && result.conflict) {
+            resolveDraftConflict(position, result);
+            return result;
+          }
+          app.revisions[position] = Number(result.revision || app.revisions[position] || 0);
+          app.savedAnswers[position] = result.answer == null ? answer : result.answer;
+          app.dirty[position] = !(
+            Number(app.localVersions[position] || 0) === localVersion &&
+            String(app.answers[position] || "") === answer
+          );
+          refreshSaveState();
+          return result;
+        }).catch(function (error) {
+          app.dirty[position] = true;
+          setSaveState("保存失败", "bad");
+          showToast(error.message || "草稿保存失败");
+          throw error;
+        });
+        app.savePromises[position] = request.then(function (result) {
+          delete app.savePromises[position];
+          if (app.dirty[position] && !app.conflicts[position]) {
+            return savePosition(position).then(function () { return result; });
+          }
+          refreshSaveState();
+          return result;
+        }, function (error) {
+          delete app.savePromises[position];
+          throw error;
+        });
+        return app.savePromises[position];
+      }
+
+      function resolveDraftConflict(position, result) {
+        var serverAnswer = result.answer || "";
+        var localAnswer = app.answers[position] || "";
+        app.conflicts[position] = true;
+        app.revisions[position] = Number(result.revision || 0);
+        setSaveState("需要处理同步冲突", "warn");
+        var keepLocal = window.confirm(
+          "云端草稿与当前页面的答案不一致。\n\n" +
+          "点“确定”保留当前页面的完整答案并更新云端；" +
+          "点“取消”才载入云端草稿。"
+        );
+        delete app.conflicts[position];
+        app.localVersions[position] = Number(app.localVersions[position] || 0) + 1;
+        if (keepLocal) {
+          app.answers[position] = localAnswer;
+          app.dirty[position] = true;
+          showToast("已保留当前页面的完整答案，正在更新云端草稿。");
+        } else {
+          app.answers[position] = serverAnswer;
+          app.savedAnswers[position] = serverAnswer;
+          app.dirty[position] = false;
+          showToast("已载入云端草稿。");
+        }
+        if (app.questions[app.current] && app.questions[app.current].position === position) {
+          el.answerBox.value = app.answers[position];
+        }
+        refreshSaveState();
+        updateProgress();
+        updateNumberNavigation();
+      }
+
+      function refreshSaveState() {
+        if (Object.keys(app.conflicts).length) {
+          setSaveState("需要处理同步冲突", "warn");
+          return;
+        }
+        if (app.questions.some(function (question) { return question.syncing; })) {
+          setSaveState("正在保存本题…", "warn");
+          return;
+        }
+        if (app.questions.some(function (question) { return question.syncError && !question.locked; })) {
+          setSaveState("有题目尚未同步", "bad");
+          return;
+        }
+        if (Object.keys(app.savePromises).length) {
+          setSaveState("保存中…", "warn");
+          return;
+        }
+        if (Object.keys(app.dirty).some(function (position) { return app.dirty[position]; })) {
+          setSaveState("未保存", "warn");
+          return;
+        }
+        setSaveState("已保存", "good");
+      }
+
+      function saveCurrent(silent) {
+        var question = app.questions[app.current];
+        if (!question) return Promise.resolve();
+        window.clearTimeout(app.timers[question.position]);
+        var promise = savePosition(question.position);
+        if (silent) promise.catch(function () {});
+        return promise;
+      }
+
+      function saveAllDirty() {
+        var chain = Promise.resolve();
+        app.questions.forEach(function (question) {
+          window.clearTimeout(app.timers[question.position]);
+          chain = chain.then(function () { return savePosition(question.position); });
+        });
+        return chain;
+      }
+
+      function navigateTo(index) {
+        if (index < 0 || index >= app.questions.length || index === app.current) return;
+        saveCurrent(true);
+        app.current = index;
+        renderQuestion();
+      }
+
+      function goNext() {
+        var question = app.questions[app.current];
+        if (question && !question.revealed) {
+          revealCurrentAnswer();
+          return;
+        }
+        if (app.current < app.questions.length - 1) navigateTo(app.current + 1);
+        else reviewBeforeSubmit();
+      }
+
+      function revealCurrentAnswer() {
+        if (app.busy) return;
+        var question = app.questions[app.current];
+        if (!question || question.locked || question.syncing) return;
+        var answer = String(app.answers[question.position] || "").trim();
+        if (!answer) {
+          showToast("请先写下你的答案，再查看标准答案。");
+          el.answerBox.focus();
+          return;
+        }
+        window.clearTimeout(app.timers[question.position]);
+        question.revealed = true;
+        question.syncing = true;
+        question.syncError = false;
+        renderQuestion();
+        setSaveState("标准答案已显示，正在保存本题…", "warn");
+        var answerToLock = answer;
+        // The debounced autosave may still be writing an earlier partial
+        // answer. Drain that per-position save queue first, including any
+        // newer local edit it schedules, then lock the exact saved revision.
+        savePosition(question.position).then(function (saveResult) {
+          var liveQuestion = app.questions.filter(function (item) {
+            return item.position === question.position;
+          })[0];
+          if ((saveResult && saveResult.locked) || (liveQuestion && liveQuestion.locked)) {
+            return { alreadyLocked: true };
+          }
+          answerToLock = String(app.answers[question.position] || "").trim();
+          if (!answerToLock) throw new Error("本题答案为空，无法锁定");
+          return callServer("revealAnswerV4", [
+            app.payload.sessionId,
+            question.position,
+            answerToLock,
+            app.revisions[question.position] || 0
+          ]);
+        }).then(function (result) {
+          if (result && result.alreadyLocked) {
+            refreshSaveState();
+            renderQuestion();
+            return;
+          }
+          if (!result || result.ok === false && !result.conflict) {
+            throw new Error("本题锁定没有完成。");
+          }
+          if (result.conflict) {
+            question.syncing = false;
+            question.syncError = true;
+            resolveDraftConflict(question.position, result);
+            renderQuestion();
+            showToast("标准答案已显示，但云端答案版本发生变化，请处理冲突后重试保存。");
+            return;
+          }
+          question.locked = true;
+          question.syncing = false;
+          question.syncError = false;
+          app.answers[question.position] = result.answer == null ? answerToLock : result.answer;
+          app.savedAnswers[question.position] = app.answers[question.position];
+          app.revisions[question.position] = Number(result.revision || 0);
+          app.dirty[question.position] = false;
+          refreshSaveState();
+          renderQuestion();
+        }).catch(function (error) {
+          question.syncing = false;
+          question.syncError = true;
+          setSaveState("标准答案已显示，但本题尚未同步", "bad");
+          renderQuestion();
+          showToast((error && error.message ? error.message : "本题没有锁定") + "。请点击“重试保存本题”。");
+        });
+      }
+
+      function reviewBeforeSubmit() {
+        var unrevealed = app.questions.filter(function (question) {
+          return !question.revealed;
+        });
+        if (unrevealed.length) {
+          app.current = app.questions.indexOf(unrevealed[0]);
+          renderQuestion();
+          showToast("还有 " + unrevealed.length + " 题尚未锁定并查看标准答案。");
+          return;
+        }
+        var unlocked = app.questions.filter(function (question) {
+          return !question.locked;
+        });
+        if (unlocked.length) {
+          app.current = app.questions.indexOf(unlocked[0]);
+          renderQuestion();
+          showToast("标准答案已显示，但还有 " + unlocked.length + " 题尚未完成云端锁定，请等待同步或重试。");
+          return;
+        }
+        hideQuiz();
+        var rows = app.questions.map(function (question) {
+          return (
+            '<div class="review-row">' +
+              '<div class="row-index">' + question.position + '</div>' +
+              '<div><strong>' + escapeHtml(question.promptZh || question.promptEn) + '</strong>' +
+              '<p><span class="muted">你的答案：</span>' + escapeHtml(app.answers[question.position]) + '</p>' +
+              '<p><span class="muted">标准答案：</span>' + escapeHtml(question.expectedAnswer || "") + '</p></div>' +
+            '</div>'
+          );
+        }).join("");
+        el.stateMount.innerHTML =
+          '<section class="state-card" style="max-width:820px">' +
+            '<div class="state-icon">✓</div>' +
+            '<h2>提交前检查</h2>' +
+            '<p>20 道原始答案均已逐题锁定。提交后回到 ChatGPT，只需发送“批改”。</p>' +
+            '<div class="review-list">' + rows + '</div>' +
+            '<div class="state-actions">' +
+              '<button id="backToQuiz" class="btn secondary" type="button">返回查看</button>' +
+              '<button id="confirmSubmit" class="btn primary" type="button">确认提交 20 题</button>' +
+            '</div>' +
+          '</section>';
+        document.getElementById("backToQuiz").addEventListener("click", function () {
+          el.stateMount.innerHTML = "";
+          el.quizLayout.classList.remove("hidden");
+          el.progressWrap.style.display = "flex";
+          renderQuestion();
+        });
+        document.getElementById("confirmSubmit").addEventListener("click", submitAnswers);
+      }
+
+      function submitAnswers() {
+        if (app.busy) return;
+        var unlocked = app.questions.filter(function (question) { return !question.locked; });
+        if (unlocked.length) {
+          app.current = app.questions.indexOf(unlocked[0]);
+          renderQuestion();
+          showToast("还有题目尚未完成云端锁定，暂时不能提交。");
+          return;
+        }
+        app.busy = true;
+        setSaveState("正在提交…", "warn");
+        var button = document.getElementById("confirmSubmit");
+        if (button) button.disabled = true;
+        saveAllDirty().then(function () {
+          return callServer("submitSessionV4", [
+            app.payload.sessionId,
+            app.questions.map(function (question) {
+              return { position: question.position, answer: app.answers[question.position] };
+            })
+          ]);
+        }).then(handlePayload).catch(function (error) {
+          app.busy = false;
+          showFatal(error, "提交没有完成");
+        });
+      }
+
+      function renderHandoff(payload) {
+        setSaveState("答案已冻结", "good");
+        el.stateMount.innerHTML =
+          '<section class="state-card">' +
+            '<div class="state-icon">↗</div>' +
+            '<h2>答案已提交</h2>' +
+            '<p>现在打开 ChatGPT 的“每日英语搭配复习”，直接发送下面两个字。无需输入场次编号，也无需复制任何其他信息。</p>' +
+            '<div class="command">批改</div>' +
+            '<div class="state-actions">' +
+              '<button id="copyCommand" class="btn secondary" type="button">复制“批改”</button>' +
+              '<a class="btn primary" href="' + escapeAttribute(payload.chatGptTaskUrl || "https://chatgpt.com/scheduled") + '" target="_blank" rel="noopener">打开 ChatGPT</a>' +
+              '<button id="refreshStatus" class="btn secondary" type="button">检查结果</button>' +
+            '</div>' +
+            '<p class="fine-print">这个页面会自动检查批改结果；你可以先切到 ChatGPT，之后再回来。</p>' +
+          '</section>';
+        document.getElementById("copyCommand").addEventListener("click", copyCommand);
+        document.getElementById("refreshStatus").addEventListener("click", pollOnce);
+      }
+
+      function renderWorking(payload) {
+        setSaveState("正在保存", "warn");
+        el.stateMount.innerHTML =
+          '<section class="state-card">' +
+            '<div class="state-icon spin">⋯</div>' +
+            '<h2>正在检查并保存学习记录</h2>' +
+            '<p>批改结果已经收到。系统正在保存学习记录、更新复习进度，并逐项核对结果。</p>' +
+            '<p class="fine-print">当前进度：' + escapeHtml(displayPipelineStep(payload.lastCompletedStep)) + '</p>' +
+            '<div class="state-actions"><button id="refreshWorking" class="btn secondary" type="button">立即检查</button></div>' +
+          '</section>';
+        document.getElementById("refreshWorking").addEventListener("click", pollOnce);
+      }
+
+      function renderWriteIncomplete(payload) {
+        setSaveState("等待继续", "bad");
+        el.stateMount.innerHTML =
+          '<section class="state-card">' +
+            '<div class="state-icon" style="color:var(--amber);background:var(--amber-soft)">!</div>' +
+            '<h2>学习记录尚未完整保存</h2>' +
+            '<p>系统没有把本次学习标记为完成。保存计划已经锁定，可以从上次通过检查的位置继续，不会重复更新复习进度。</p>' +
+            '<p class="fine-print">' + escapeHtml(payload.errorDetail || "等待自动恢复") + '</p>' +
+            '<div class="state-actions"><button id="retryCommit" class="btn primary" type="button">立即恢复</button></div>' +
+          '</section>';
+        document.getElementById("retryCommit").addEventListener("click", function () {
+          setSaveState("正在恢复…", "warn");
+          callServer("retrySubmissionCommitV4", [payload.sessionId])
+            .then(handlePayload)
+            .catch(function (error) { showFatal(error, "恢复没有完成"); });
+        });
+      }
+
+      function renderConfirmation(payload) {
+        setSaveState("需要确认", "warn");
+        app.confirmationChoices = {};
+        var rows = (payload.confirmationItems || []).map(function (item) {
+          app.confirmationChoices[item.position] = item.result;
+          return (
+            '<article class="confirmation-row" data-position="' + item.position + '">' +
+              '<h3>第 ' + item.position + ' 题 · 批改把握度 ' + Math.round(Number(item.confidence) * 100) + '%</h3>' +
+              '<p><strong>建议：</strong>' + escapeHtml(RESULT_LABELS[item.result] || item.result) + '</p>' +
+              '<p><strong>参考：</strong>' + escapeHtml(item.expectedAnswer || "") + '</p>' +
+              '<p>' + escapeHtml(item.feedbackZh || "") + '</p>' +
+              '<div class="choice-grid">' +
+                ["forgotten", "difficult", "normal", "mastered"].map(function (result) {
+                  return '<button class="choice ' + (result === item.result ? "selected" : "") +
+                    '" type="button" data-result="' + result + '">' +
+                    RESULT_LABELS[result] + '</button>';
+                }).join("") +
+              '</div>' +
+            '</article>'
+          );
+        }).join("");
+        el.stateMount.innerHTML =
+          '<section class="state-card" style="max-width:820px">' +
+            '<div class="state-icon" style="color:var(--amber);background:var(--amber-soft)">?</div>' +
+            '<h2>有 ' + (payload.confirmationItems || []).length + ' 题需要你确认</h2>' +
+            '<p>只有系统判断不够确定的题目会出现在这里。选择最符合你实际掌握程度的结果，再继续保存学习记录。</p>' +
+            '<div class="confirmation-list">' + rows + '</div>' +
+            '<div class="state-actions"><button id="submitConfirmation" class="btn primary" type="button">确认并保存</button></div>' +
+          '</section>';
+        Array.prototype.forEach.call(document.querySelectorAll(".confirmation-row"), function (row) {
+          Array.prototype.forEach.call(row.querySelectorAll(".choice"), function (button) {
+            button.addEventListener("click", function () {
+              Array.prototype.forEach.call(row.querySelectorAll(".choice"), function (peer) {
+                peer.classList.remove("selected");
+              });
+              button.classList.add("selected");
+              app.confirmationChoices[Number(row.dataset.position)] = button.dataset.result;
+            });
+          });
+        });
+        document.getElementById("submitConfirmation").addEventListener("click", function () {
+          var decisions = Object.keys(app.confirmationChoices).map(function (position) {
+            return { position: Number(position), result: app.confirmationChoices[position] };
+          });
+          callServer("confirmGradesV4", [payload.sessionId, decisions])
+            .then(handlePayload)
+            .catch(function (error) { showFatal(error, "确认没有完成"); });
+        });
+      }
+
+      function renderResults(result) {
+        setSaveState("记录已保存", "good");
+        var counts = result.counts || {};
+        var metrics = ["forgotten", "difficult", "normal", "mastered"].map(function (key) {
+          return '<div class="metric"><strong>' + Number(counts[key] || 0) + '</strong><span>' +
+            RESULT_LABELS[key] + '</span></div>';
+        }).join("");
+        var dueItems = (result.items || []).filter(function (item) { return item.selectionType !== "new"; });
+        var newItems = (result.items || []).filter(function (item) { return item.selectionType === "new"; });
+        el.stateMount.innerHTML =
+          '<section class="state-card" style="max-width:900px">' +
+            '<div class="state-icon">✓</div>' +
+            '<h2>今天的复习已完成</h2>' +
+            '<p>20 道题的结果已经全部保存，并通过完整性检查。</p>' +
+            '<div class="result-bar">' + metrics + '</div>' +
+            renderResultSection("到期复习", dueItems) +
+            renderResultSection("今日新搭配", newItems) +
+            '<p class="fine-print">已补充待学搭配：' + Number(result.replenishedCandidateCount || 0) + ' 条 · 下次打开会自动载入下一场题组。</p>' +
+          '</section>';
+      }
+
+      function renderResultSection(title, items) {
+        if (!items.length) return "";
+        return '<section class="result-section"><h3>' + title + ' · ' + items.length + '</h3>' +
+          items.map(function (item) {
+            return (
+              '<article class="result-item">' +
+                '<div class="result-head"><strong>' + item.position + '. ' + escapeHtml(item.chunk || item.phraseId) + '</strong>' +
+                '<span class="result-label ' + escapeAttribute(item.result) + '">' +
+                  escapeHtml(RESULT_LABELS[item.result] || item.result) + '</span></div>' +
+                '<dl>' +
+                  '<dt>原题</dt><dd class="result-prompt">' + escapeHtml(item.prompt || "") + '</dd>' +
+                  '<dt>你的答案</dt><dd>' + escapeHtml(item.answer || "") + '</dd>' +
+                  '<dt>参考答案</dt><dd>' + escapeHtml(item.expectedAnswer || "") + '</dd>' +
+                  '<dt>反馈</dt><dd>' + escapeHtml(item.feedbackZh || "") + '</dd>' +
+                  '<dt>下次复习</dt><dd>' + escapeHtml(item.nextReview || "") + '</dd>' +
+                '</dl>' +
+              '</article>'
+            );
+          }).join("") +
+        '</section>';
+      }
+
+      function renderWaiting(payload) {
+        setSaveState("", "");
+        var preparing = payload.state === "preparing";
+        var title = preparing ? "今天的题组正在准备" :
+          payload.state === "waiting_next_queue" ? "今天没有待开始的题组" :
+          payload.state === "committed_without_result" ? "本次学习已提交" :
+          "题组暂时不可用";
+        var icon = preparing ? "⋯" : "i";
+        el.stateMount.innerHTML =
+          '<section class="state-card">' +
+            '<div class="state-icon ' + (preparing ? "spin" : "") + '">' + icon + '</div>' +
+            '<h2>' + escapeHtml(title) + '</h2>' +
+            '<p>' + escapeHtml(payload.message || "请稍后再检查。") + '</p>' +
+            '<div class="state-actions"><button id="reloadApp" class="btn secondary" type="button">重新检查</button></div>' +
+          '</section>';
+        document.getElementById("reloadApp").addEventListener("click", function () {
+          setSaveState("正在检查…", "warn");
+          var reload = payload.state === "committed_without_result" && payload.sessionId
+            ? callServer("getSubmissionStatusV4", [payload.sessionId])
+            : callServer("getReviewBootstrapV4");
+          reload.then(handlePayload).catch(showFatal);
+        });
+        if (preparing) window.setTimeout(function () {
+          callServer("getReviewBootstrapV4").then(handlePayload).catch(function () {});
+        }, 15000);
+      }
+
+      function pollOnce() {
+        if (!app.payload || !app.payload.sessionId) return;
+        setSaveState("正在检查…", "warn");
+        callServer("getSubmissionStatusV4", [app.payload.sessionId])
+          .then(handlePayload)
+          .catch(function (error) {
+            setSaveState("检查失败", "bad");
+            showToast(error.message || "暂时无法检查");
+          });
+      }
+
+      function startPolling() {
+        stopPolling();
+        app.pollingTimer = window.setTimeout(pollOnce, 10000);
+      }
+
+      function stopPolling() {
+        if (app.pollingTimer) window.clearTimeout(app.pollingTimer);
+        app.pollingTimer = null;
+      }
+
+      function copyCommand() {
+        var value = "批改";
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(value)
+            .then(function () { showToast("已复制“批改”"); })
+            .catch(function () { fallbackCopy(value); });
+        } else {
+          fallbackCopy(value);
+        }
+      }
+
+      function fallbackCopy(value) {
+        var input = document.createElement("textarea");
+        input.value = value;
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        input.remove();
+        showToast("已复制“批改”");
+      }
+
+      function setSaveState(text, tone) {
+        el.saveState.textContent = text || "";
+        el.saveState.dataset.tone = tone || "";
+      }
+
+      var toastTimer;
+      function showToast(message) {
+        window.clearTimeout(toastTimer);
+        el.toast.textContent = message;
+        el.toast.classList.add("show");
+        toastTimer = window.setTimeout(function () { el.toast.classList.remove("show"); }, 2800);
+      }
+
+      function showFatal(error, title) {
+        stopPolling();
+        hideQuiz();
+        app.busy = false;
+        setSaveState("未完成", "bad");
+        el.stateMount.innerHTML =
+          '<section class="state-card">' +
+            '<div class="state-icon" style="color:var(--red);background:var(--red-soft)">!</div>' +
+            '<h2>' + escapeHtml(title || "页面暂时无法继续") + '</h2>' +
+            '<p>' + escapeHtml(error && error.message ? error.message : String(error)) + '</p>' +
+            '<div class="state-actions"><button id="retryLoad" class="btn primary" type="button">重新载入</button></div>' +
+          '</section>';
+        document.getElementById("retryLoad").addEventListener("click", function () {
+          window.location.reload();
+        });
+      }
+
+      function escapeHtml(value) {
+        return String(value == null ? "" : value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function escapeAttribute(value) {
+        return escapeHtml(value).replace(/`/g, "&#096;");
+      }
+
+      initialize();
+    }());
+  </script>
+</body>
+</html>

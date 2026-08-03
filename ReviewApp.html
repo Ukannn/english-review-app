@@ -1421,7 +1421,7 @@
         commit_plan_frozen: "保存计划已锁定",
         review_log: "学习记录已保存",
         error_log: "错误记录已保存",
-        candidate_bank: "待学搭配已补充",
+        candidate_bank: "候选总库已核对",
         phrase_bank: "搭配库已更新",
         daily_queue: "今日题组已更新",
         pre_session_readback: "正在核对学习记录",
@@ -1824,7 +1824,9 @@
             sessionId: "DEMO-SESSION",
             dueCount: 12,
             newCount: 8,
-            replenishedCandidateCount: 8,
+            aiFallbackCandidateCount: 0,
+            personalReadyCandidateCount: 32,
+            personalIntakeBacklogCount: 3,
             counts: { forgotten: 2, difficult: 4, normal: 8, mastered: 6 },
             items: source.map(function (item, index) {
               return {
@@ -3542,6 +3544,14 @@
         }).join("");
         var dueItems = (result.items || []).filter(function (item) { return item.selectionType !== "new"; });
         var newItems = (result.items || []).filter(function (item) { return item.selectionType === "new"; });
+        var fallbackCount = Number(
+          result.aiFallbackCandidateCount !== undefined
+            ? result.aiFallbackCandidateCount
+            : (result.replenishedCandidateCount || 0)
+        );
+        var inventoryNote = fallbackCount > 0
+          ? '个人来源候选已经耗尽，本次新增个性化 AI 后备候选：' + fallbackCount + ' 条。'
+          : '本次没有生成新候选；系统将继续从现有候选总库按个人来源优先级取词。';
         el.stateMount.innerHTML =
           '<section class="state-card" style="max-width:900px">' +
             '<div class="state-icon">✓</div>' +
@@ -3550,7 +3560,7 @@
             '<div class="result-bar">' + metrics + '</div>' +
             renderResultSection("到期复习", dueItems) +
             renderResultSection("今日新搭配", newItems) +
-            '<p class="fine-print">已补充待学搭配：' + Number(result.replenishedCandidateCount || 0) + ' 条 · 下次打开会自动载入下一场题组。</p>' +
+            '<p class="fine-print">' + inventoryNote + ' 下次打开会自动载入下一场题组。</p>' +
           '</section>';
       }
 

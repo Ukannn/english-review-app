@@ -23,7 +23,7 @@ var ER4 = {
   contextSheet: 'Context Inbox',
   contextCandidateSheet: 'Context Candidate Inbox',
   maxQuestions: 20,
-  readyPoolTarget: 40,
+  aiFallbackPoolTarget: 20,
   maxContextLength: 12000,
   maxContextProposals: 3,
   lowConfidenceThreshold: 0.75,
@@ -517,15 +517,16 @@ function updateConfigV4_(ss) {
     ['context_candidate_inbox_sheet', ER4.contextCandidateSheet, 'ChatGPT context-processing staging only; Candidate Bank remains Apps Script-only.'],
     ['context_processing_command', 'retired', 'A bare 整理语料 message in the Scheduled Task conversation does not load the task prompt and must not be used.'],
     ['context_processing_entrypoint', 'Web App button: copy full prompt and open Work conversation', 'The user pastes and sends the complete one-time prompt; ChatGPT stages zero to three reusable chunks per pending Context.'],
-    ['context_user_candidate_daily_limit', DQ3.maxUserContextPerDay, 'Due reviews stay first; user_context fills at most four new-item slots per Daily Queue.'],
-    ['priority_order', 'scheduled due items; then up to 4 user_context chunks; then auto_replenishment chunks', 'High-priority user context is ordered first without displacing any due review.'],
-    ['queue_new_item_source', 'Candidate Bank ready chunks with Origin Type metadata', 'user_context and auto_replenishment share Candidate Bank but use bounded selection priority.'],
+    ['context_user_candidate_daily_limit', 'retired', 'Personal source candidates may fill every new-item slot left after due reviews.'],
+    ['priority_order', 'scheduled due items; then user_context → learning_evidence → conversation_derived → legacy → ai_fallback', 'Candidate Bank is the durable master inventory; personal sources always outrank generated fallback content.'],
+    ['queue_new_item_source', 'Candidate Bank ready chunks with Origin Type metadata', 'Daily Queue selects the existing master inventory and never creates a replacement candidate.'],
     ['commit_journal_sheet', ER4.journalSheet, 'Submission idempotency, recovery checkpoints, and verified result.'],
     ['formal_database_writer', 'Apps Script v4 commit worker', 'Only deterministic code updates formal logs, candidates, phrase state, queue, and Session Log.'],
     ['database_write_order', 'Review Log → Error Log → Candidate Bank → Phrase Bank state → Daily Queue → Session Log', 'Session Log remains last.'],
     ['web_app_url', 'YOUR_WEB_APP_URL', 'Updated after Web App deployment.'],
     ['chatgpt_task_url', ER4.chatGptTaskUrl, 'Return here after Web App submission and send only 批改.'],
-    ['candidate_ready_pool_target', ER4.readyPoolTarget, 'ChatGPT stages candidate suggestions; Apps Script validates and allocates IDs.'],
+    ['candidate_ready_pool_target', 'retired', 'Verified grading no longer creates candidates merely to maintain forty ready rows.'],
+    ['candidate_ai_fallback_target', ER4.aiFallbackPoolTarget, 'ChatGPT may stage personalized fallback candidates only after all personal inventory and personal intake backlog are exhausted.'],
     ['low_confidence_threshold', ER4.lowConfidenceThreshold, 'Only affected items require confirmation before formal commit.'],
     ['rollback_baseline', 'v3-pre-v4-20260728-155612', 'Restore behavior with the recorded rollback helper and artifacts; never rewrite committed history.']
   ]);
@@ -567,7 +568,7 @@ function updateReadmeV4_(ss) {
     ['Phrase Bank', 'Canonical phrase master and current SRS state', 'Formula columns I/K/L remain protected from ordinary writes.'],
     ['Review Log', 'Append-only primary/reinforcement attempts', 'Every primary question uses one stable Attempt ID.'],
     ['Error Log', 'Append-only linked error occurrences', 'References Phrase ID + Session ID + Attempt ID.'],
-    ['Candidate Bank', 'Ready intake and promoted identity links', 'ChatGPT suggests; Apps Script validates, allocates IDs, and writes.'],
+    ['Candidate Bank', 'Durable master inventory for all candidate chunks', 'Personal sources are selected first; AI fallback is allowed only after personal inventory and intake backlog are exhausted.'],
     ['Context Inbox', 'Immutable real-world source material', 'Raw Text and UTF-16 selection offsets are Apps Script-validated and never overwritten by AI.'],
     ['Context Candidate Inbox', 'AI staging for context-derived chunks', 'Launch from the Web App one-time prompt; user acceptance is required before Apps Script writes Candidate Bank.'],
     ['Session Log', 'One formal row per committed session', 'Written last only after exact readback.'],
@@ -2242,7 +2243,7 @@ function parseCandidateSuggestionsV4_(value) {
       candidate: candidate,
       chineseCue: chineseCue,
       candidateType: stringValue_(item.candidateType) || 'chunk',
-      source: stringValue_(item.source) || 'ChatGPT v4 replenishment',
+      source: stringValue_(item.source) || 'ChatGPT personalized fallback',
       context: stringValue_(item.context),
       whyUseful: stringValue_(item.whyUseful) || 'Practical reusable English chunk.',
       topic: topic,
@@ -2251,6 +2252,44 @@ function parseCandidateSuggestionsV4_(value) {
       commonMistake: stringValue_(item.commonMistake)
     };
   });
+}
+
+function countPersonalCandidateBacklogV4_(ss) {
+  var count = 0;
+  var contextSheet = requireSheet_(ss, ER4.contextSheet);
+  var contextValues = contextSheet.getDataRange().getValues();
+  var contextHeaders = headerMap_(contextValues[0]);
+  requireHeaders_(contextHeaders, ['Context ID', 'Processing Status'], ER4.contextSheet);
+  for (var i = 1; i < contextValues.length; i++) {
+    if (!stringValue_(contextValues[i][contextHeaders['Context ID']])) continue;
+    var processingStatus = stringValue_(
+      contextValues[i][contextHeaders['Processing Status']]
+    ).toLowerCase();
+    if (['pending', 'processing', 'staged', 'needs_review'].indexOf(processingStatus) !== -1) {
+      count++;
+    }
+  }
+
+  var proposalSheet = requireSheet_(ss, ER4.contextCandidateSheet);
+  var proposalValues = proposalSheet.getDataRange().getValues();
+  var proposalHeaders = headerMap_(proposalValues[0]);
+  requireHeaders_(proposalHeaders, ['Context ID', 'Decision Status'], ER4.contextCandidateSheet);
+  for (var p = 1; p < proposalValues.length; p++) {
+    if (!stringValue_(proposalValues[p][proposalHeaders['Context ID']])) continue;
+    var decisionStatus = stringValue_(
+      proposalValues[p][proposalHeaders['Decision Status']]
+    ).toLowerCase();
+    if (['staged', 'accepted', 'edited'].indexOf(decisionStatus) !== -1) count++;
+  }
+  return count;
+}
+
+function shouldGenerateAiFallbackV4_(personalReadyCount, totalReadyCount, backlogCount) {
+  return (
+    Number(personalReadyCount) === 0 &&
+    Number(backlogCount) === 0 &&
+    Number(totalReadyCount) < ER4.aiFallbackPoolTarget
+  );
 }
 
 function commitSubmissionV4_(ss, journal) {
@@ -2378,6 +2417,7 @@ function createCommitPlanV4_(ss, journal, snapshot) {
   var candidateById = {};
   var nextCandidateNumber = 0;
   var readyCountAfterPromotion = 0;
+  var personalReadyCountAfterPromotion = 0;
   var selectedCandidateIds = {};
   queue.rows.forEach(function(item) {
     var candidateId = stringValue_(item.values[queue.headers['Candidate ID']]);
@@ -2396,6 +2436,11 @@ function createCommitPlanV4_(ss, journal, snapshot) {
       !selectedCandidateIds[candidateId]
     ) {
       readyCountAfterPromotion++;
+      if (isPersonalCandidateOrigin_(
+        candidateValues[c][candidateHeaders['Origin Type']]
+      )) {
+        personalReadyCountAfterPromotion++;
+      }
     }
   }
 
@@ -2529,7 +2574,15 @@ function createCommitPlanV4_(ss, journal, snapshot) {
     });
   });
 
-  var neededSuggestions = Math.max(0, ER4.readyPoolTarget - readyCountAfterPromotion);
+  var personalBacklogCount = countPersonalCandidateBacklogV4_(ss);
+  var aiFallbackEligible = shouldGenerateAiFallbackV4_(
+    personalReadyCountAfterPromotion,
+    readyCountAfterPromotion,
+    personalBacklogCount
+  );
+  var neededSuggestions = aiFallbackEligible
+    ? Math.max(0, ER4.aiFallbackPoolTarget - readyCountAfterPromotion)
+    : 0;
   var suggestionPlans = [];
   snapshot.candidateSuggestions.forEach(function(suggestion) {
     if (suggestionPlans.length >= neededSuggestions) return;
@@ -2552,12 +2605,6 @@ function createCommitPlanV4_(ss, journal, snapshot) {
       commonMistake: suggestion.commonMistake
     });
   });
-  if (suggestionPlans.length < neededSuggestions) {
-    throw new Error(
-      'Candidate ready-pool validation needs ' + neededSuggestions +
-      ' unique suggestions, but only ' + suggestionPlans.length + ' passed.'
-    );
-  }
   return {
     submissionId: journal.submissionId,
     sessionId: journal.sessionId,
@@ -2569,6 +2616,11 @@ function createCommitPlanV4_(ss, journal, snapshot) {
     items: items,
     suggestionPlans: suggestionPlans,
     readyPoolBeforeSuggestions: readyCountAfterPromotion,
+    personalReadyBeforeSuggestions: personalReadyCountAfterPromotion,
+    personalBacklogCount: personalBacklogCount,
+    aiFallbackEligible: aiFallbackEligible,
+    aiFallbackNeeded: neededSuggestions,
+    aiFallbackShortfall: Math.max(0, neededSuggestions - suggestionPlans.length),
     contractVersion: ER4.contractVersion
   };
 }
@@ -2829,11 +2881,11 @@ function writeCandidateBankV4_(ss, plan) {
       suggestion.difficulty,
       suggestion.naturalExample,
       suggestion.commonMistake,
-      'auto_replenishment',
+      'ai_fallback',
       '',
       '',
       '',
-      'normal'
+      'fallback'
     ]);
   });
   if (rows.length) {
@@ -3040,7 +3092,9 @@ function writeSessionLogV4_(ss, plan) {
     'verified',
     ER4.contractVersion,
     'v4 Web App submission; ChatGPT staged grading; deterministic Apps Script commit; ' +
-    plan.suggestionPlans.length + ' ready candidates replenished.'
+    plan.suggestionPlans.length + ' personalized AI fallback candidates added; ' +
+    plan.personalReadyBeforeSuggestions + ' personal ready candidates remained before fallback; ' +
+    plan.personalBacklogCount + ' personal intake items were pending.'
   ]);
   var rowNumber = sheet.getLastRow();
   sheet.getRange(rowNumber, headers.Date + 1).setNumberFormat('yyyy-mm-dd');
@@ -3146,9 +3200,11 @@ function verifyCandidateBankV4_(ss, plan) {
     if (
       !row ||
       normalizeChunk_(row[h.Candidate]) !== normalizeChunk_(suggestion.candidate) ||
-      stringValue_(row[h.Status]).toLowerCase() !== 'ready'
+      stringValue_(row[h.Status]).toLowerCase() !== 'ready' ||
+      normalizedCandidateOriginType_(row[h['Origin Type']]) !== 'ai_fallback' ||
+      stringValue_(row[h['Intake Priority']]).toLowerCase() !== 'fallback'
     ) {
-      throw new Error('Candidate replenishment readback failed: ' + suggestion.candidateId + '.');
+      throw new Error('AI fallback Candidate readback failed: ' + suggestion.candidateId + '.');
     }
   });
 }
@@ -3251,7 +3307,10 @@ function buildCommittedResultV4_(plan) {
     newCount: plan.items.filter(function(item) {
       return item.selectionType === 'new';
     }).length,
-    replenishedCandidateCount: plan.suggestionPlans.length,
+    aiFallbackCandidateCount: plan.suggestionPlans.length,
+    personalReadyCandidateCount: plan.personalReadyBeforeSuggestions,
+    personalIntakeBacklogCount: plan.personalBacklogCount,
+    aiFallbackShortfall: plan.aiFallbackShortfall,
     items: plan.items.map(function(item) {
       return {
         position: item.position,
@@ -4629,6 +4688,12 @@ function selfTestReviewWebAppV4() {
   expect('reveal lock validates', isDraftRevealedV4_(revealDraft, 'SESSION-1'), true);
   revealDraft.answer = 'changed after reveal';
   expect('reveal lock rejects edits', isDraftRevealedV4_(revealDraft, 'SESSION-1'), false);
+  expect('personal origin precedes fallback', candidateOriginRank_('user_context') < candidateOriginRank_('ai_fallback'), true);
+  expect('learning evidence precedes legacy', candidateOriginRank_('learning_evidence') < candidateOriginRank_('legacy'), true);
+  expect('fallback blocked by personal inventory', shouldGenerateAiFallbackV4_(1, 1, 0), false);
+  expect('fallback blocked by personal backlog', shouldGenerateAiFallbackV4_(0, 0, 1), false);
+  expect('fallback allowed after personal exhaustion', shouldGenerateAiFallbackV4_(0, 0, 0), true);
+  expect('fallback not duplicated above target', shouldGenerateAiFallbackV4_(0, 20, 0), false);
   if (failures.length) throw new Error('v4 self-test failed: ' + failures.join('; '));
-  return { ok: true, tests: 12, contractVersion: ER4.contractVersion };
+  return { ok: true, tests: 18, contractVersion: ER4.contractVersion };
 }

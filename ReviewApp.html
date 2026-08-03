@@ -878,6 +878,33 @@
     .proposal-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
     .proposal-actions .btn { min-height: 38px; padding: 8px 11px; font-size: 12px; }
     .intake-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+    .context-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      margin: 0 0 14px;
+      padding: 5px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: #f5f7f4;
+    }
+    .context-tab {
+      min-height: 40px;
+      padding: 8px 12px;
+      border: 0;
+      border-radius: 9px;
+      color: var(--muted);
+      background: transparent;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .context-tab[aria-selected="true"] {
+      color: var(--ink);
+      background: #fff;
+      box-shadow: 0 1px 5px rgba(34, 51, 39, .1);
+    }
 
     .review-list, .confirmation-list {
       display: grid;
@@ -1289,14 +1316,27 @@
           <p id="intakeFormStatus" class="intake-help" aria-live="polite">原文保存后不会被 AI 改写覆盖。</p>
         </section>
         <section class="intake-card">
-          <h3>待处理与提取结果</h3>
+          <h3>整理语料</h3>
           <p>点击按钮会复制完整的一次性整理指令并打开关联 Work 对话。到新页面粘贴并发送；不再依赖每日定时任务，也不要只发送“整理语料”。</p>
           <div id="intakeSummary" class="intake-summary"></div>
           <div class="intake-actions" style="margin-bottom:14px">
             <button id="copyContextCommandBtn" class="btn primary" type="button">准备整理并打开对话</button>
             <button id="refreshContextBtn" class="btn secondary" type="button">刷新结果</button>
           </div>
-          <div id="contextList" class="context-list"></div>
+          <div class="context-tabs" role="tablist" aria-label="语料整理状态">
+            <button id="unprocessedContextTab" class="context-tab" type="button" role="tab" aria-selected="true" aria-controls="unprocessedContextPanel">待整理 <span id="unprocessedContextCount">0</span></button>
+            <button id="reviewContextTab" class="context-tab" type="button" role="tab" aria-selected="false" aria-controls="reviewContextPanel">待确认 <span id="reviewContextCount">0</span></button>
+            <button id="archivedContextTab" class="context-tab" type="button" role="tab" aria-selected="false" aria-controls="archivedContextPanel">已归档 <span id="archivedContextCount">0</span></button>
+          </div>
+          <div id="unprocessedContextPanel" role="tabpanel" aria-labelledby="unprocessedContextTab">
+            <div id="contextList" class="context-list"></div>
+          </div>
+          <div id="reviewContextPanel" class="hidden" role="tabpanel" aria-labelledby="reviewContextTab">
+            <div id="reviewContextList" class="context-list"></div>
+          </div>
+          <div id="archivedContextPanel" class="hidden" role="tabpanel" aria-labelledby="archivedContextTab">
+            <div id="archivedContextList" class="context-list"></div>
+          </div>
         </section>
       </div>
     </section>
@@ -1474,6 +1514,7 @@
         dashboardPromise: null,
         contextInbox: null,
         contextPromise: null,
+        contextInboxView: "unprocessed",
         contextSpans: [],
         contextMarkingText: "",
         contextRequestId: "",
@@ -1545,7 +1586,18 @@
         intakeSummary: document.getElementById("intakeSummary"),
         copyContextCommandBtn: document.getElementById("copyContextCommandBtn"),
         refreshContextBtn: document.getElementById("refreshContextBtn"),
+        unprocessedContextTab: document.getElementById("unprocessedContextTab"),
+        reviewContextTab: document.getElementById("reviewContextTab"),
+        archivedContextTab: document.getElementById("archivedContextTab"),
+        unprocessedContextCount: document.getElementById("unprocessedContextCount"),
+        reviewContextCount: document.getElementById("reviewContextCount"),
+        archivedContextCount: document.getElementById("archivedContextCount"),
+        unprocessedContextPanel: document.getElementById("unprocessedContextPanel"),
+        reviewContextPanel: document.getElementById("reviewContextPanel"),
+        archivedContextPanel: document.getElementById("archivedContextPanel"),
         contextList: document.getElementById("contextList"),
+        reviewContextList: document.getElementById("reviewContextList"),
+        archivedContextList: document.getElementById("archivedContextList"),
         phraseDetailModal: document.getElementById("phraseDetailModal"),
         phraseDetailSheet: document.getElementById("phraseDetailSheet"),
         toast: document.getElementById("toast")
@@ -2093,7 +2145,11 @@
         el.resetContextBtn.addEventListener("click", resetContextForm);
         el.refreshContextBtn.addEventListener("click", function () { loadContextInbox(true); });
         el.copyContextCommandBtn.addEventListener("click", launchContextProcessing);
+        el.unprocessedContextTab.addEventListener("click", function () { setContextInboxView("unprocessed"); });
+        el.reviewContextTab.addEventListener("click", function () { setContextInboxView("review"); });
+        el.archivedContextTab.addEventListener("click", function () { setContextInboxView("archived"); });
         el.contextList.addEventListener("click", handleContextListAction);
+        el.reviewContextList.addEventListener("click", handleContextListAction);
         el.phraseDetailModal.addEventListener("click", function (event) {
           if (event.target === el.phraseDetailModal) closePhraseDetail();
         });
@@ -2194,7 +2250,9 @@
           return Promise.resolve(app.contextInbox);
         }
         if (app.contextPromise) return app.contextPromise;
-        el.contextList.innerHTML = '<div class="state-card"><p>正在载入语料箱…</p></div>';
+        el.contextList.innerHTML = '<div class="state-card"><p>正在载入尚未生成建议的语料…</p></div>';
+        el.reviewContextList.innerHTML = '<div class="state-card"><p>正在载入等待确认的建议…</p></div>';
+        el.archivedContextList.innerHTML = '<div class="state-card"><p>正在载入已归档语料…</p></div>';
         app.contextPromise = callServer("getContextInboxV4").then(function (payload) {
           if (!payload || payload.ok === false) throw new Error("语料箱载入失败。");
           app.contextInbox = payload;
@@ -2390,11 +2448,85 @@
           return '<span class="status-chip ' + item[2] + '">' + escapeHtml(item[0]) + " " + Number(item[1]) + "</span>";
         }).join("");
         var items = payload.items || [];
-        if (!items.length) {
-          el.contextList.innerHTML = '<div class="state-card"><h2>还没有语料</h2><p>把真实阅读中看不懂的完整句子或自然段保存在左侧。</p></div>';
-          return;
-        }
-        el.contextList.innerHTML = items.map(renderContextCard).join("");
+        var unprocessedItems = items.filter(contextHasNoSuggestions);
+        var reviewItems = items.filter(contextHasOpenSuggestions);
+        var archivedItems = items.filter(contextSuggestionsAreArchived);
+        el.unprocessedContextCount.textContent = String(unprocessedItems.length);
+        el.reviewContextCount.textContent = String(reviewItems.length);
+        el.archivedContextCount.textContent = String(archivedItems.length);
+        el.contextList.innerHTML = unprocessedItems.length
+          ? unprocessedItems.map(renderContextCard).join("")
+          : '<div class="state-card"><h2>没有等待生成建议的语料</h2><p>新保存且尚未经过 ChatGPT 整理的语料会出现在这里。</p></div>';
+        el.reviewContextList.innerHTML = reviewItems.length
+          ? reviewItems.map(renderContextCard).join("")
+          : '<div class="state-card"><h2>没有等待确认的建议</h2><p>ChatGPT 已生成、但还没有全部处理完的建议会出现在这里。</p></div>';
+        el.archivedContextList.innerHTML = archivedItems.length
+          ? archivedItems.map(renderContextCard).join("")
+          : '<div class="state-card"><h2>还没有已归档语料</h2><p>一条语料的全部建议处理完后，会自动移到这里。</p></div>';
+        setContextInboxView(app.contextInboxView);
+      }
+
+      function contextHasNoSuggestions(item) {
+        return !(item && Array.isArray(item.proposals) && item.proposals.length);
+      }
+
+      function contextHasOpenSuggestions(item) {
+        return !!(item && Array.isArray(item.proposals) && item.proposals.length) &&
+          item.proposals.some(function (proposal) {
+            return !isTerminalContextDecision(proposal.decisionStatus);
+          });
+      }
+
+      function contextSuggestionsAreArchived(item) {
+        return !!(item && Array.isArray(item.proposals) && item.proposals.length) &&
+          item.proposals.every(function (proposal) {
+            return isTerminalContextDecision(proposal.decisionStatus);
+          });
+      }
+
+      function isTerminalContextDecision(status) {
+        return ["committed", "duplicate", "rejected", "known", "explanation_only", "invalid"]
+          .indexOf(String(status || "").toLowerCase()) !== -1;
+      }
+
+      function setContextInboxView(view) {
+        app.contextInboxView = ["review", "archived"].indexOf(view) !== -1 ? view : "unprocessed";
+        var showUnprocessed = app.contextInboxView === "unprocessed";
+        var showReview = app.contextInboxView === "review";
+        var showArchived = app.contextInboxView === "archived";
+        el.unprocessedContextTab.setAttribute("aria-selected", showUnprocessed ? "true" : "false");
+        el.reviewContextTab.setAttribute("aria-selected", showReview ? "true" : "false");
+        el.archivedContextTab.setAttribute("aria-selected", showArchived ? "true" : "false");
+        el.unprocessedContextPanel.classList.toggle("hidden", !showUnprocessed);
+        el.reviewContextPanel.classList.toggle("hidden", !showReview);
+        el.archivedContextPanel.classList.toggle("hidden", !showArchived);
+      }
+
+      function updateContextInboxAfterDecision(contextId, proposalPosition, action, editedCandidate, result) {
+        if (!app.contextInbox || !Array.isArray(app.contextInbox.items)) return;
+        app.contextInbox.items.some(function (item) {
+          if (item.contextId !== contextId) return false;
+          return (item.proposals || []).some(function (proposal) {
+            if (Number(proposal.position) !== Number(proposalPosition)) return false;
+            proposal.decisionStatus = result.decisionStatus;
+            if (result.candidateId) proposal.candidateId = result.candidateId;
+            else if (result.duplicate && result.duplicate.candidateId) proposal.candidateId = result.duplicate.candidateId;
+            if (action === "edit") proposal.editedCandidate = editedCandidate;
+            return true;
+          });
+        });
+        var nextCounts = { pending: 0, needsDecision: 0, committed: 0, errors: 0 };
+        app.contextInbox.items.forEach(function (item) {
+          var status = String(item.status || "").toLowerCase();
+          if (status === "pending" || status === "processing") nextCounts.pending++;
+          if (status === "error" || status === "needs_review") nextCounts.errors++;
+          (item.proposals || []).forEach(function (proposal) {
+            if (proposal.decisionStatus === "staged") nextCounts.needsDecision++;
+            if (proposal.decisionStatus === "committed") nextCounts.committed++;
+          });
+        });
+        app.contextInbox.counts = nextCounts;
+        renderContextInbox(app.contextInbox);
       }
 
       function renderContextCard(item) {
@@ -2402,7 +2534,7 @@
           ? '<a href="' + escapeAttribute(item.sourceUrl) + '" target="_blank" rel="noopener">' + escapeHtml(item.sourceTitle || "查看来源") + "</a>"
           : escapeHtml(item.sourceTitle || "无来源信息");
         var proposals = (item.proposals || []).map(function (proposal) {
-          var terminal = ["committed", "duplicate", "rejected", "known", "explanation_only", "invalid"].indexOf(proposal.decisionStatus) !== -1;
+          var terminal = isTerminalContextDecision(proposal.decisionStatus);
           var title = proposal.candidateType === "explanation_only"
             ? "无需加入复习库"
             : (proposal.editedCandidate || proposal.candidate || "待检查建议");
@@ -2481,9 +2613,11 @@
           if (!editedCandidate.trim()) return;
         }
         button.disabled = true;
+        var contextId = button.dataset.contextId;
+        var proposalPosition = Number(button.dataset.proposalPosition);
         callServer("decideContextCandidateV4", [
-          button.dataset.contextId,
-          Number(button.dataset.proposalPosition),
+          contextId,
+          proposalPosition,
           action,
           editedCandidate
         ]).then(function (result) {
@@ -2492,7 +2626,7 @@
           else if (result.candidateId) showToast("已加入候选池：" + result.candidateId);
           else showToast("已保存你的决定。");
           app.dashboard = null;
-          return loadContextInbox(true);
+          updateContextInboxAfterDecision(contextId, proposalPosition, action, editedCandidate, result);
         }).catch(function (error) {
           button.disabled = false;
           showToast(error.message || String(error));

@@ -1290,10 +1290,10 @@
         </section>
         <section class="intake-card">
           <h3>待处理与提取结果</h3>
-          <p>发送“整理语料”后，ChatGPT 只会把 0–3 条建议写入暂存区；你确认后，Apps Script 才会正式加入候选池。</p>
+          <p>点击按钮会复制完整的一次性整理指令并打开关联 Work 对话。到新页面粘贴并发送；不再依赖每日定时任务，也不要只发送“整理语料”。</p>
           <div id="intakeSummary" class="intake-summary"></div>
           <div class="intake-actions" style="margin-bottom:14px">
-            <button id="copyContextCommandBtn" class="btn secondary" type="button">复制“整理语料”</button>
+            <button id="copyContextCommandBtn" class="btn primary" type="button">准备整理并打开对话</button>
             <button id="refreshContextBtn" class="btn secondary" type="button">刷新结果</button>
           </div>
           <div id="contextList" class="context-list"></div>
@@ -2015,8 +2015,8 @@
           generatedAt: "2026-08-03 12:00:00",
           counts: counts,
           items: demoContextItems,
-          processingCommand: "整理语料",
-          chatGptTaskUrl: "https://chatgpt.com/scheduled"
+          processingPrompt: "你正在执行一次性的真实语料整理。请从 Context Inbox 读取 pending 语料，不要要求用户重新粘贴原文。",
+          contextProcessingConversationUrl: "https://chatgpt.com/"
         };
       }
 
@@ -2090,9 +2090,7 @@
         el.saveContextBtn.addEventListener("click", saveContextFromForm);
         el.resetContextBtn.addEventListener("click", resetContextForm);
         el.refreshContextBtn.addEventListener("click", function () { loadContextInbox(true); });
-        el.copyContextCommandBtn.addEventListener("click", function () {
-          copyPlainText("整理语料").then(function () { showToast("已复制：整理语料"); });
-        });
+        el.copyContextCommandBtn.addEventListener("click", launchContextProcessing);
         el.contextList.addEventListener("click", handleContextListAction);
         el.phraseDetailModal.addEventListener("click", function (event) {
           if (event.target === el.phraseDetailModal) closePhraseDetail();
@@ -2430,8 +2428,30 @@
           '<div class="context-head"><strong>' + escapeHtml(item.contextId) + '</strong><span class="status-chip ' + statusTone(item.status) + '">' + escapeHtml(displayStatus(item.status)) + '</span></div>' +
           '<div class="context-raw">' + renderMarkedContextHtml(item.rawText || "", item.selectedSpans || []) + '</div>' +
           '<div class="context-meta">' + escapeHtml(item.createdAt || "") + ' · ' + source + (item.userNote ? ' · ' + escapeHtml(item.userNote) : '') + '</div>' +
-          (proposals || (item.status === "pending" ? '<p class="intake-help">等待“整理语料”生成建议。</p>' : '<p class="intake-help">当前没有需要确认的学习项。</p>')) +
+          (proposals || (item.status === "pending" ? '<p class="intake-help">点击上方“准备整理并打开对话”，粘贴完整指令后生成建议。</p>' : '<p class="intake-help">当前没有需要确认的学习项。</p>')) +
         '</article>';
+      }
+
+      function launchContextProcessing() {
+        var payload = app.contextInbox || {};
+        var prompt = String(payload.processingPrompt || "");
+        var conversationUrl = String(payload.contextProcessingConversationUrl || "");
+        if (!prompt || !conversationUrl) {
+          showToast("整理入口尚未载入，请先刷新结果。");
+          return;
+        }
+        if (payload.counts && Number(payload.counts.pending || 0) < 1) {
+          showToast("当前没有待整理的语料。");
+          return;
+        }
+        var copyJob = copyPlainText(prompt);
+        var opened = window.open(conversationUrl, "_blank");
+        if (opened) opened.opener = null;
+        copyJob.then(function () {
+          showToast(opened ? "完整整理指令已复制；请在新页面粘贴并发送。" : "完整整理指令已复制；浏览器未打开新页面，请手动打开关联对话。", 5600);
+        }).catch(function () {
+          showToast("无法复制整理指令，请检查浏览器的剪贴板权限。", 5600);
+        });
       }
 
       function renderMarkedContextHtml(rawText, spans) {
@@ -3633,11 +3653,11 @@
       }
 
       var toastTimer;
-      function showToast(message) {
+      function showToast(message, duration) {
         window.clearTimeout(toastTimer);
         el.toast.textContent = message;
         el.toast.classList.add("show");
-        toastTimer = window.setTimeout(function () { el.toast.classList.remove("show"); }, 2800);
+        toastTimer = window.setTimeout(function () { el.toast.classList.remove("show"); }, Number(duration || 2800));
       }
 
       function showFatal(error, title) {

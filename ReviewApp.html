@@ -1211,7 +1211,7 @@
         <div class="mark" aria-hidden="true">E</div>
         <div>
           <h1>英语搭配复习</h1>
-          <p>逐题即时标准答案 · 20 题统一批改</p>
+          <p>逐题即时标准答案 · 按实际完成数统一批改</p>
         </div>
       </div>
       <nav class="app-nav" aria-label="主要导航">
@@ -1228,12 +1228,12 @@
       <div id="todayStrip" class="today-strip hidden" aria-live="polite"></div>
       <section id="progressWrap" class="progress-wrap" aria-label="答题进度">
         <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
-        <div id="progressLabel" class="progress-label">0 / 20</div>
+        <div id="progressLabel" class="progress-label">0 / —</div>
       </section>
 
       <section id="quizLayout" class="quiz-layout hidden">
         <aside class="navigator" aria-label="题号导航">
-          <div class="navigator-title"><span>题目</span><span id="answeredCount">0 / 20</span></div>
+          <div class="navigator-title"><span>题目</span><span id="answeredCount">0 / —</span></div>
           <div id="desktopNumbers" class="number-grid"></div>
         </aside>
 
@@ -1241,7 +1241,7 @@
           <nav id="mobileNumbers" class="mobile-navigator" aria-label="题号导航"></nav>
           <article class="question-card">
             <div class="question-meta">
-              <span id="questionEyebrow" class="eyebrow">第 1 题，共 20 题</span>
+              <span id="questionEyebrow" class="eyebrow">第 1 题</span>
               <span id="questionType" class="type-pill">回忆作答</span>
             </div>
             <h2 id="promptZh" class="prompt-zh"></h2>
@@ -1265,7 +1265,7 @@
               <div class="action-group">
                 <button id="revealBtn" class="btn primary" type="button">锁定并查看标准答案</button>
                 <button id="nextBtn" class="btn secondary hidden" type="button">下一题</button>
-                <button id="submitBtn" class="btn primary hidden" type="button">检查并提交 20 题</button>
+                <button id="submitBtn" class="btn primary hidden" type="button">检查并提交</button>
               </div>
             </div>
           </article>
@@ -1451,6 +1451,9 @@
         missing: "暂无记录",
         ambiguous: "状态异常",
         rejected: "已停用",
+        requested: "等待补充",
+        deferred: "本次未作答",
+        superseded: "已被新题组替代",
         failed: "失败",
         complete: "已完成"
       };
@@ -1534,6 +1537,8 @@
       };
       var demoCloudDrafts = {};
       var demoContextItems = [];
+      var demoQuestionCount = 20;
+      var demoDefaultQuestionCount = 20;
 
       var el = {
         saveState: document.getElementById("saveState"),
@@ -1708,6 +1713,7 @@
                 sessionId: "DEMO-SESSION",
                 submissionId: "DEMO-SUBMISSION",
                 chatGptTaskUrl: "https://chatgpt.com/scheduled",
+                chatGptManualUrl: "https://chatgpt.com/",
                 gradingCommand: "批改"
               });
               return;
@@ -1722,6 +1728,43 @@
             }
             if (name === "getLearningDashboardV4") {
               resolve(demoDashboardData());
+              return;
+            }
+            if (name === "getQuestionCountControlV4" || name === "setQuestionCountV4") {
+              if (name === "setQuestionCountV4") {
+                var demoModeName = String(args[1] || "today");
+                if (demoModeName === "today" || demoModeName === "both") {
+                  demoQuestionCount = Number(args[0]);
+                }
+                if (demoModeName === "future" || demoModeName === "both") {
+                  demoDefaultQuestionCount = Number(args[0]);
+                }
+              }
+              var demoCount = demoQuestionCount;
+              resolve({
+                ok: true,
+                date: "2026-08-09",
+                defaultCount: demoDefaultQuestionCount,
+                requestedCount: demoCount,
+                minCount: 1,
+                maxCount: 150,
+                maxBatchCount: 30,
+                completed: 0,
+                queueStatus: "presented",
+                plannedCount: Math.min(demoCount, 30),
+                adjustedTarget: Math.min(demoCount, 30),
+                lockedCount: app.questions.filter(function (question) { return question.locked; }).length,
+                shortfallCount: 0
+              });
+              return;
+            }
+            if (name === "getManualOperationPromptV4") {
+              resolve({
+                ok: true,
+                mode: args[0],
+                prompt: "DEMO standalone prompt\nRUN_MODE=" + args[0],
+                chatGptUrl: "https://chatgpt.com/"
+              });
               return;
             }
             if (name === "getContextInboxV4") {
@@ -1788,6 +1831,29 @@
 
       function demoBootstrap() {
         if (demoState === "committed") return demoCommittedPayload();
+        if (demoState === "candidate_shortfall") {
+          return {
+            ok: true,
+            state: "candidate_shortfall",
+            message: "这次题组还缺 7 条合适素材。",
+            requestId: "CGR-DEMO-001",
+            shortfallCount: 7,
+            requestedCount: 30,
+            dueCount: 8,
+            readyCandidateCount: 15,
+            chatGptManualUrl: "https://chatgpt.com/"
+          };
+        }
+        if (demoState === "preparing") {
+          return {
+            ok: true,
+            state: "preparing",
+            message: "当前批次需要准备 20 道题。",
+            queueId: "DEMO-QUEUE",
+            plannedCount: 20,
+            chatGptManualUrl: "https://chatgpt.com/"
+          };
+        }
         if (demoState === "needs_confirmation") {
           return {
             ok: true,
@@ -1841,20 +1907,30 @@
           sessionId: "DEMO-SESSION",
           queueId: "DEMO-QUEUE",
           presentedAt: "2026-07-29 09:02:18",
-          queueMeta: { planned: 20, due: 12, fresh: 8 },
+          queueMeta: {
+            planned: 20,
+            adjustedTarget: Math.min(demoQuestionCount, 20),
+            requested: demoQuestionCount,
+            completedBeforeBatch: 0,
+            queueKind: "primary",
+            due: 12,
+            fresh: 8
+          },
           questions: prompts.map(function (prompt, index) {
             var allRevealed = demoState === "all_revealed";
+            var partialRevealed = demoState === "partial15" && index < 15;
+            var isLocked = allRevealed || partialRevealed;
             return {
               position: index + 1,
               questionType: ["recall", "scenario", "cloze", "contrast"][index % 4],
               promptZh: prompt[0],
               promptEn: prompt[1],
-              answer: allRevealed
+              answer: isLocked
                 ? demoExpectedAnswer(index + 1)
                 : (index < 3 ? ["as planned", "The project is still on track.", "The meeting ran late."][index] : ""),
-              revision: allRevealed ? 2 : (index < 3 ? 1 : 0),
-              revealed: allRevealed,
-              locked: allRevealed,
+              revision: isLocked ? 2 : (index < 3 ? 1 : 0),
+              revealed: isLocked,
+              locked: isLocked,
               expectedAnswer: demoExpectedAnswer(index + 1)
             };
           })
@@ -1877,6 +1953,12 @@
             dueCount: 12,
             newCount: 8,
             aiFallbackCandidateCount: 0,
+            requestedCount: demoQuestionCount,
+            plannedCount: 20,
+            adjustedTarget: 20,
+            actualCount: 20,
+            completedBeforeBatch: 0,
+            completedToday: 20,
             personalReadyCandidateCount: 32,
             personalIntakeBacklogCount: 3,
             counts: { forgotten: 2, difficult: 4, normal: 8, mastered: 6 },
@@ -1961,7 +2043,7 @@
             overdue: "仍在学习或已经掌握、且下次复习日期早于今天的搭配数量。"
           },
           overview: {
-            todayPlanned: 20,
+            todayPlanned: demoQuestionCount,
             todayCompleted: 20,
             todayAccuracy: { correct: 13, total: 20, percent: 65 },
             sevenDayAccuracy: { correct: 88, total: 140, percent: 62.9 },
@@ -1972,7 +2054,21 @@
             overdue: 3,
             streak: 18
           },
-          todayPlan: { status: "committed", planned: 20, due: 20, fresh: 0, completed: 20 },
+          todayPlan: { status: "committed", planned: demoQuestionCount, due: 20, fresh: 0, completed: 20 },
+          questionCount: {
+            defaultCount: demoDefaultQuestionCount,
+            requestedCount: demoQuestionCount,
+            hasTodayOverride: false,
+            minCount: 1,
+            maxCount: 150,
+            maxBatchCount: 30,
+            completed: 20,
+            queueStatus: "committed",
+            plannedCount: 20,
+            adjustedTarget: Math.min(demoQuestionCount, 20),
+            lockedCount: 0,
+            shortfallCount: 0
+          },
           trend: trend,
           futureDue: Array.from({ length: 14 }, function (_, index) {
             var date = new Date(today.getTime() + index * 86400000);
@@ -2007,6 +2103,7 @@
             tone: "good",
             contractVersion: "4.0",
             queueCount: 20,
+            queueExpectedCount: 20,
             queueStatus: "committed",
             questionCount: 20,
             generationCount: 1,
@@ -2588,6 +2685,84 @@
         });
       }
 
+      function launchManualOperation(mode, identity) {
+        var opened = window.open("about:blank", "_blank");
+        if (opened) opened.opener = null;
+        setSaveState("正在准备完整提示词…", "warn");
+        callServer("getManualOperationPromptV4", [mode, identity || ""]).then(function (payload) {
+          if (!payload || !payload.prompt) throw new Error("完整提示词暂时不可用。");
+          return copyPlainText(payload.prompt).then(function () {
+            var url = payload.chatGptUrl || "https://chatgpt.com/";
+            if (opened) opened.location.href = url;
+            setSaveState("提示词已复制", "good");
+            showToast(
+              opened
+                ? "完整提示词已复制；请在新页面选择模型、粘贴并发送。"
+                : "完整提示词已复制；请手动打开 ChatGPT、粘贴并发送。",
+              5600
+            );
+          });
+        }).catch(function (error) {
+          if (opened) opened.close();
+          setSaveState("提示词准备失败", "bad");
+          showToast(error && error.message ? error.message : "无法准备提示词", 5600);
+        });
+      }
+
+      function adjustTodayQuestionCount() {
+        var meta = app.payload && app.payload.queueMeta ? app.payload.queueMeta : {};
+        var result = app.payload && app.payload.result ? app.payload.result : {};
+        var current = Number(
+          meta.requested || result.requestedCount || app.payload && app.payload.requestedCount ||
+          meta.adjustedTarget || app.questions.length || 20
+        );
+        var input = window.prompt("这次想做几题？请输入 1–150 的整数。超过 30 题会自动分批。", String(current));
+        if (input === null) return;
+        var count = Number(String(input).trim());
+        if (!Number.isInteger(count) || count < 1 || count > 150) {
+          showToast("请输入 1–150 的整数。");
+          return;
+        }
+        saveCurrent(true).then(function () {
+          setSaveState("正在调整题数…", "warn");
+          return callServer("setQuestionCountV4", [count, "today"]);
+        }).then(function (control) {
+          if (control && control.shortfallCount) {
+            showToast("已保存题数；当前还缺 " + control.shortfallCount + " 条素材。", 5200);
+          } else {
+            showToast("这次题数已调整为 " + count + "。", 4200);
+          }
+          return callServer("getReviewBootstrapV4");
+        }).then(handlePayload).catch(function (error) {
+          setSaveState("题数调整失败", "bad");
+          showToast(error && error.message ? error.message : "题数没有调整", 5200);
+        });
+      }
+
+      function saveQuestionCountFromSettings(mode) {
+        var input = document.getElementById("questionCountInput");
+        if (!input) return;
+        var count = Number(input.value);
+        if (!Number.isInteger(count) || count < 1 || count > 150) {
+          showToast("请输入 1–150 的整数。");
+          input.focus();
+          return;
+        }
+        setSaveState("正在保存题数…", "warn");
+        callServer("setQuestionCountV4", [count, mode]).then(function (control) {
+          showToast(mode === "future" ? "以后默认题数已保存。" : "题数设置已保存。", 4200);
+          app.dashboard = null;
+          app.dashboardPromise = null;
+          app.todayLoaded = false;
+          app.payload = null;
+          app.questions = [];
+          return loadDashboard();
+        }).then(renderSettings).catch(function (error) {
+          setSaveState("题数保存失败", "bad");
+          showToast(error && error.message ? error.message : "题数没有保存", 5200);
+        });
+      }
+
       function renderMarkedContextHtml(rawText, spans) {
         var safeSpans = (spans || []).slice().sort(function (a, b) { return a.start - b.start; });
         var cursor = 0;
@@ -3019,16 +3194,23 @@
 
       function renderSettings(payload) {
         var system = payload.system || {};
+        var countControl = payload.questionCount || {};
+        var currentBatchTarget = countControl.adjustedTarget === undefined || countControl.adjustedTarget === null
+          ? Number(countControl.plannedCount || 0)
+          : Number(countControl.adjustedTarget);
         el.settingsFreshness.textContent = "数据更新于 " + (payload.generatedAt || "");
         var tone = system.tone || "neutral";
         var toneLabel = tone === "good" ? "正常" : tone === "warn" ? "需检查" : "等待今日队列";
         var rows = [
           ["整体状态", toneLabel, tone],
           ["数据规则版本", system.contractVersion || "—", system.contractVersion === "4.0" ? "good" : "bad"],
-          ["今日题组", Number(system.queueCount || 0) + " / 20 · " + displayStatus(system.queueStatus),
-            Number(system.queueCount || 0) === 20 ? "good" : "warn"],
-          ["今日题目", Number(system.questionCount || 0) + " / 20 · " + Number(system.generationCount || 0) + " 个生成批次",
-            Number(system.questionCount || 0) === 20 && Number(system.generationCount || 0) === 1 ? "good" : "warn"],
+          ["当前题组", Number(system.queueCount || 0) + " / " + Number(system.queueExpectedCount || 0) + " · " + displayStatus(system.queueStatus),
+            Number(system.queueCount || 0) === Number(system.queueExpectedCount || 0) ? "good" : "warn"],
+          ["当前题目", Number(system.questionCount || 0) + " / " + Number(system.queueExpectedCount || 0) + " · " + Number(system.generationCount || 0) + " 个生成批次",
+            Number(system.questionCount || 0) === Number(system.queueExpectedCount || 0) && Number(system.generationCount || 0) <= 1 ? "good" : "warn"],
+          ["素材缺口", Number(system.materialShortfallCount || 0) + " 条" +
+            (system.materialShortfallStatus ? " · " + displayStatus(system.materialShortfallStatus) : ""),
+            Number(system.materialShortfallCount || 0) === 0 ? "good" : "warn"],
           ["批改结果", Number(system.gradeCount || 0) + " 条 · 待处理 " + Number(system.pendingGradeCount || 0),
             Number(system.pendingGradeCount || 0) === 0 ? "good" : "warn"],
           ["语料待整理", Number(system.pendingContextCount || 0) + " 条 · 待确认 " + Number(system.pendingContextDecisionCount || 0),
@@ -3043,6 +3225,30 @@
         ];
         el.settingsMount.innerHTML =
           '<div class="dashboard-grid">' +
+            '<section class="panel wide">' +
+              '<div class="panel-head"><div><h3>题数设置</h3>' +
+              '<p>填写这次想做的题数，范围 1–150；每 30 题自动拆成一个稳定批次。已经完成的题不会被撤销。</p></div></div>' +
+              '<label class="intake-field"><span>题数</span>' +
+                '<input id="questionCountInput" type="number" min="1" max="150" step="1" value="' +
+                  Number(countControl.requestedCount || countControl.defaultCount || 20) + '"></label>' +
+              '<div class="diagnostic-list" style="margin-bottom:14px">' +
+                '<div class="diagnostic-row"><span>以后默认</span><strong>' + Number(countControl.defaultCount || 20) + ' 题</strong></div>' +
+                '<div class="diagnostic-row"><span>这次想做</span><strong>' + Number(countControl.requestedCount || 20) + ' 题</strong></div>' +
+                '<div class="diagnostic-row"><span>今天实际完成</span><strong>' + Number(countControl.completed || 0) + ' 题</strong></div>' +
+                '<div class="diagnostic-row"><span>当前批次</span><strong>' + Number(countControl.lockedCount || 0) + ' / ' +
+                  currentBatchTarget + '（最多 ' + Number(countControl.plannedCount || 0) + '）</strong></div>' +
+              '</div>' +
+              '<div class="state-actions">' +
+                '<button id="saveTodayCount" class="btn primary" type="button">只改这次</button>' +
+                '<button id="saveFutureCount" class="btn secondary" type="button">只改以后默认</button>' +
+                '<button id="saveBothCount" class="btn secondary" type="button">这次和以后都改</button>' +
+                '<button id="restoreFixed20" class="btn secondary" type="button">恢复固定 20 题</button>' +
+              '</div>' +
+              (Number(countControl.shortfallCount || 0) > 0
+                ? '<p class="fine-print">当前还缺 ' + Number(countControl.shortfallCount) +
+                  ' 条合适素材。返回“今日学习”可复制完整补充素材提示词。</p>'
+                : '') +
+            '</section>' +
             '<section class="panel wide">' +
               '<div class="panel-head"><div><h3>今日数据处理</h3>' +
               '<p>临时数据和正式学习记录分开显示；只有通过核验才算保存完成。</p></div>' +
@@ -3066,6 +3272,19 @@
               '</div>' +
             '</section>' +
           '</div>';
+        document.getElementById("saveTodayCount").addEventListener("click", function () {
+          saveQuestionCountFromSettings("today");
+        });
+        document.getElementById("saveFutureCount").addEventListener("click", function () {
+          saveQuestionCountFromSettings("future");
+        });
+        document.getElementById("saveBothCount").addEventListener("click", function () {
+          saveQuestionCountFromSettings("both");
+        });
+        document.getElementById("restoreFixed20").addEventListener("click", function () {
+          document.getElementById("questionCountInput").value = "20";
+          saveQuestionCountFromSettings("both");
+        });
       }
 
       function handlePayload(payload) {
@@ -3110,26 +3329,46 @@
       }
 
       function renderTodayStrip(payload) {
+        var requested = 0;
         var planned = 0;
+        var target = 0;
         var due = 0;
         var fresh = 0;
         var completed = 0;
         var status = payload && payload.state ? payload.state : "";
         if (payload && payload.queueMeta) {
           planned = Number(payload.queueMeta.planned || 0);
+          target = Number(payload.queueMeta.adjustedTarget == null
+            ? planned
+            : payload.queueMeta.adjustedTarget);
+          requested = Number(payload.queueMeta.requested || target || planned);
           due = Number(payload.queueMeta.due || 0);
           fresh = Number(payload.queueMeta.fresh || 0);
           var questionSource = app.questions.length ? app.questions : (payload.questions || []);
-          completed = questionSource.filter(function (question) {
+          var completedInBatch = payload.queueMeta.completedInBatch == null
+            ? questionSource.filter(function (question) {
             return question.locked == null ? question.revealed : question.locked;
-          }).length;
+            }).length
+            : Number(payload.queueMeta.completedInBatch);
+          if (payload.result && payload.result.actualCount != null) {
+            completedInBatch = Number(payload.result.actualCount);
+          }
+          completed = Number(payload.queueMeta.completedBeforeBatch || 0) + completedInBatch;
         } else if (payload && payload.result) {
           planned = Number(payload.result.dueCount || 0) + Number(payload.result.newCount || 0);
+          target = Number(payload.result.adjustedTarget == null
+            ? planned
+            : payload.result.adjustedTarget);
+          requested = Number(payload.result.requestedCount || target || planned);
           due = Number(payload.result.dueCount || 0);
           fresh = Number(payload.result.newCount || 0);
-          completed = planned;
+          completed = Number(payload.result.completedToday || payload.result.actualCount || planned);
+        } else if (payload && payload.state === "candidate_shortfall") {
+          requested = Number(payload.requestedCount || 0);
+          target = requested;
+          due = Number(payload.dueCount || 0);
         }
-        if (!planned) {
+        if (!requested && !planned) {
           el.todayStrip.classList.add("hidden");
           el.todayStrip.innerHTML = "";
           return;
@@ -3137,13 +3376,20 @@
         var statusLabel = status === "committed" ? "学习记录已保存" :
           status === "answering" ? "答题中" :
           status === "awaiting_chatgpt" ? "等待批改" :
+          status === "candidate_shortfall" ? "等待补充素材" :
           "处理中";
+        var batchNote = planned
+          ? '<span>本批 ' + planned + ' 题' + (target !== planned ? ' · 提交线 ' + target + ' 题' : '') + '</span>'
+          : '';
         el.todayStrip.innerHTML =
-          '<div class="today-strip-parts"><span><strong>今日 ' + planned + " 题</strong></span>" +
-          '<span>到期复习 ' + due + '</span><span>新搭配 ' + fresh + '</span>' +
-          '<span>已完成 ' + completed + " / " + planned + '</span></div>' +
-          '<span class="status-chip">' + escapeHtml(statusLabel) + '</span>';
+          '<div class="today-strip-parts"><span><strong>今天想做 ' + requested + " 题</strong></span>" +
+          batchNote + '<span>到期复习 ' + due + '</span>' +
+          (planned ? '<span>本批新搭配 ' + fresh + '</span>' : '') +
+          '<span>今天已完成 ' + completed + " / " + requested + '</span></div>' +
+          '<div class="today-strip-parts"><button id="adjustTodayCount" class="nav-link" type="button">调整题数</button>' +
+          '<span class="status-chip">' + escapeHtml(statusLabel) + '</span></div>';
         el.todayStrip.classList.remove("hidden");
+        document.getElementById("adjustTodayCount").addEventListener("click", adjustTodayQuestionCount);
       }
 
       function startAnswering(payload) {
@@ -3214,8 +3460,11 @@
         el.expectedAnswer.textContent = question.revealed ? (question.expectedAnswer || "") : "";
         el.answerReveal.classList.toggle("hidden", !question.revealed);
         el.prevBtn.disabled = app.current === 0;
-        var allRevealed = app.questions.every(function (item) { return item.revealed; });
-        var allLocked = app.questions.every(function (item) { return item.locked; });
+        var lockedCount = app.questions.filter(function (item) { return item.locked; }).length;
+        var target = currentBatchSubmissionTarget();
+        var revealPending = app.questions.some(function (item) {
+          return item.revealed && !item.locked;
+        });
         el.revealBtn.classList.toggle("hidden", Boolean(question.locked));
         el.revealBtn.textContent = question.revealed ?
           (question.syncing ? "正在保存本题…" : "重试保存本题") : "锁定并查看标准答案";
@@ -3225,8 +3474,14 @@
           !question.revealed || app.current === app.questions.length - 1
         );
         el.nextBtn.disabled = app.busy;
-        el.submitBtn.classList.toggle("hidden", !allRevealed);
-        el.submitBtn.disabled = Boolean(app.busy || !allLocked);
+        el.submitBtn.classList.toggle(
+          "hidden",
+          lockedCount === 0 || lockedCount < target
+        );
+        el.submitBtn.disabled = Boolean(app.busy || revealPending || !lockedCount || lockedCount < target);
+        el.submitBtn.textContent = lockedCount > target
+          ? "提交已完成的 " + lockedCount + " 题"
+          : "检查并提交 " + lockedCount + " 题";
         updateProgress();
         updateNumberNavigation();
         if (!question.revealed && !app.busy) {
@@ -3238,11 +3493,19 @@
         var completed = app.questions.filter(function (question) {
           return question.locked;
         }).length;
-        var total = app.questions.length || 20;
+        var total = app.questions.length || 1;
         el.progressBar.style.width = (completed / total * 100) + "%";
         el.progressLabel.textContent = completed + " / " + total;
         el.answeredCount.textContent = completed + " / " + total;
         if (app.payload && app.payload.state === "answering") renderTodayStrip(app.payload);
+      }
+
+      function currentBatchSubmissionTarget() {
+        var meta = app.payload && app.payload.queueMeta ? app.payload.queueMeta : {};
+        var raw = meta.adjustedTarget;
+        if (raw === undefined || raw === null || raw === "") raw = meta.planned;
+        var target = Number(raw);
+        return Number.isFinite(target) ? Math.max(0, target) : app.questions.length;
       }
 
       function updateNumberNavigation() {
@@ -3494,26 +3757,28 @@
       }
 
       function reviewBeforeSubmit() {
-        var unrevealed = app.questions.filter(function (question) {
-          return !question.revealed;
+        var target = currentBatchSubmissionTarget();
+        var locked = app.questions.filter(function (question) {
+          return question.locked;
         });
-        if (unrevealed.length) {
-          app.current = app.questions.indexOf(unrevealed[0]);
+        if (locked.length < target || !locked.length) {
+          var firstUnlocked = app.questions.filter(function (question) { return !question.locked; })[0];
+          if (firstUnlocked) app.current = app.questions.indexOf(firstUnlocked);
           renderQuestion();
-          showToast("还有 " + unrevealed.length + " 题尚未锁定并查看标准答案。");
+          showToast("这次至少需要完成 " + target + " 题，目前已锁定 " + locked.length + " 题。");
           return;
         }
-        var unlocked = app.questions.filter(function (question) {
-          return !question.locked;
+        var pendingLocks = app.questions.filter(function (question) {
+          return question.revealed && !question.locked;
         });
-        if (unlocked.length) {
-          app.current = app.questions.indexOf(unlocked[0]);
+        if (pendingLocks.length) {
+          app.current = app.questions.indexOf(pendingLocks[0]);
           renderQuestion();
-          showToast("标准答案已显示，但还有 " + unlocked.length + " 题尚未完成云端锁定，请等待同步或重试。");
+          showToast("还有 " + pendingLocks.length + " 道已查看答案的题尚未完成云端锁定，请等待同步或重试。");
           return;
         }
         hideQuiz();
-        var rows = app.questions.map(function (question) {
+        var rows = locked.map(function (question) {
           return (
             '<div class="review-row">' +
               '<div class="row-index">' + question.position + '</div>' +
@@ -3523,15 +3788,18 @@
             '</div>'
           );
         }).join("");
+        var completionNote = locked.length > target
+          ? "你原本准备做到 " + target + " 题，现在已完成 " + locked.length + " 题；多做的 " + (locked.length - target) + " 题也会正常计入。"
+          : "本次已完成并锁定 " + locked.length + " 题。";
         el.stateMount.innerHTML =
           '<section class="state-card" style="max-width:820px">' +
             '<div class="state-icon">✓</div>' +
             '<h2>提交前检查</h2>' +
-            '<p>20 道原始答案均已逐题锁定。提交后回到 ChatGPT，只需发送“批改”。</p>' +
+            '<p>' + escapeHtml(completionNote) + ' 提交后可等待自动化，也可复制完整提示词交给 ChatGPT 高模型批改。</p>' +
             '<div class="review-list">' + rows + '</div>' +
             '<div class="state-actions">' +
               '<button id="backToQuiz" class="btn secondary" type="button">返回查看</button>' +
-              '<button id="confirmSubmit" class="btn primary" type="button">确认提交 20 题</button>' +
+              '<button id="confirmSubmit" class="btn primary" type="button">确认提交 ' + locked.length + ' 题</button>' +
             '</div>' +
           '</section>';
         document.getElementById("backToQuiz").addEventListener("click", function () {
@@ -3545,11 +3813,13 @@
 
       function submitAnswers() {
         if (app.busy) return;
-        var unlocked = app.questions.filter(function (question) { return !question.locked; });
-        if (unlocked.length) {
-          app.current = app.questions.indexOf(unlocked[0]);
+        var target = currentBatchSubmissionTarget();
+        var locked = app.questions.filter(function (question) { return question.locked; });
+        if (locked.length < target || !locked.length) {
+          var firstUnlocked = app.questions.filter(function (question) { return !question.locked; })[0];
+          if (firstUnlocked) app.current = app.questions.indexOf(firstUnlocked);
           renderQuestion();
-          showToast("还有题目尚未完成云端锁定，暂时不能提交。");
+          showToast("本次至少需要完成 " + target + " 题，目前已锁定 " + locked.length + " 题。");
           return;
         }
         app.busy = true;
@@ -3559,7 +3829,7 @@
         saveAllDirty().then(function () {
           return callServer("submitSessionV4", [
             app.payload.sessionId,
-            app.questions.map(function (question) {
+            locked.map(function (question) {
               return { position: question.position, answer: app.answers[question.position] };
             })
           ]);
@@ -3575,16 +3845,18 @@
           '<section class="state-card">' +
             '<div class="state-icon">↗</div>' +
             '<h2>答案已提交</h2>' +
-            '<p>现在打开 ChatGPT 的“每日英语搭配复习”，直接发送下面两个字。无需输入场次编号，也无需复制任何其他信息。</p>' +
-            '<div class="command">批改</div>' +
+            '<p>自动化可以继续处理；如果你想立即使用更高模型，就复制完整批改提示词并打开 ChatGPT。两种方式任选一种即可。</p>' +
+            '<div class="command">完整提示词会包含本次场次、已提交题号和数据库写入规则</div>' +
             '<div class="state-actions">' +
-              '<button id="copyCommand" class="btn secondary" type="button">复制“批改”</button>' +
-              '<a class="btn primary" href="' + escapeAttribute(payload.chatGptTaskUrl || "https://chatgpt.com/scheduled") + '" target="_blank" rel="noopener">打开 ChatGPT</a>' +
+              '<button id="manualGradePrompt" class="btn primary" type="button">复制完整批改提示词并打开 ChatGPT</button>' +
+              '<a class="btn secondary" href="' + escapeAttribute(payload.chatGptTaskUrl || "https://chatgpt.com/scheduled") + '" target="_blank" rel="noopener">查看自动化</a>' +
               '<button id="refreshStatus" class="btn secondary" type="button">检查结果</button>' +
             '</div>' +
-            '<p class="fine-print">这个页面会自动检查批改结果；你可以先切到 ChatGPT，之后再回来。</p>' +
+            '<p class="fine-print">为避免重复写入，请不要同时让自动化和手动对话处理同一场。这个页面会自动检查结果。</p>' +
           '</section>';
-        document.getElementById("copyCommand").addEventListener("click", copyCommand);
+        document.getElementById("manualGradePrompt").addEventListener("click", function () {
+          launchManualOperation("grading", payload.submissionId || payload.sessionId || "");
+        });
         document.getElementById("refreshStatus").addEventListener("click", pollOnce);
       }
 
@@ -3678,24 +3950,57 @@
         }).join("");
         var dueItems = (result.items || []).filter(function (item) { return item.selectionType !== "new"; });
         var newItems = (result.items || []).filter(function (item) { return item.selectionType === "new"; });
+        var actual = Number(result.actualCount || (result.items || []).length);
+        var completedToday = Number(result.completedToday || actual);
+        var liveMeta = app.payload && app.payload.queueMeta ? app.payload.queueMeta : {};
+        var requested = Number(liveMeta.requested || result.requestedCount || completedToday);
+        var overage = Math.max(0, completedToday - requested);
+        var finishedToday = completedToday >= requested;
+        var nextShortfall = Number(result.nextMaterialShortfall || 0);
+        var hasNextBatch = Boolean(
+          result.nextBatch && result.nextBatch.state !== "daily_target_met" && !nextShortfall
+        );
         var fallbackCount = Number(
           result.aiFallbackCandidateCount !== undefined
             ? result.aiFallbackCandidateCount
             : (result.replenishedCandidateCount || 0)
         );
         var inventoryNote = fallbackCount > 0
-          ? '个人来源候选已经耗尽，本次新增个性化 AI 后备候选：' + fallbackCount + ' 条。'
-          : '本次没有生成新候选；系统将继续从现有候选总库按个人来源优先级取词。';
+          ? '本批新增个性化 AI 补充素材 ' + fallbackCount + ' 条。'
+          : '选材始终优先使用你自己收集的内容；只有实际缺少时才请求 AI 按缺口补充。';
+        var completionNote = '本批实际完成并保存 ' + actual + ' 题；今天累计 ' +
+          completedToday + ' / ' + requested + ' 题。';
+        if (overage > 0) {
+          completionNote += ' 多做的 ' + overage + ' 题已经正常计入。';
+        }
+        var actions = nextShortfall > 0
+          ? '<div class="state-actions"><button id="materialAfterResults" class="btn primary" type="button">补充缺少的 ' + nextShortfall + ' 条素材</button><button id="adjustAfterResults" class="btn secondary" type="button">调整今天题数</button></div>'
+          : (hasNextBatch
+            ? '<div class="state-actions"><button id="continueNextBatch" class="btn primary" type="button">继续下一批</button><button id="adjustAfterResults" class="btn secondary" type="button">调整今天题数</button></div>'
+            : '<div class="state-actions"><button id="adjustAfterResults" class="btn secondary" type="button">今天再加题或调整题数</button></div>');
         el.stateMount.innerHTML =
           '<section class="state-card" style="max-width:900px">' +
             '<div class="state-icon">✓</div>' +
-            '<h2>今天的复习已完成</h2>' +
-            '<p>20 道题的结果已经全部保存，并通过完整性检查。</p>' +
+            '<h2>' + (finishedToday ? '今天想做的题已完成' : '这一批已经保存') + '</h2>' +
+            '<p>' + escapeHtml(completionNote) + ' 数据已通过完整性检查。</p>' +
             '<div class="result-bar">' + metrics + '</div>' +
             renderResultSection("到期复习", dueItems) +
             renderResultSection("今日新搭配", newItems) +
-            '<p class="fine-print">' + inventoryNote + ' 下次打开会自动载入下一场题组。</p>' +
+            '<p class="fine-print">' + inventoryNote +
+              (result.nextBatchError ? ' 下一批准备提示：' + escapeHtml(result.nextBatchError) : '') +
+            '</p>' + actions +
           '</section>';
+        var materialButton = document.getElementById("materialAfterResults");
+        if (materialButton) materialButton.addEventListener("click", function () {
+          launchManualOperation("candidate_generation", result.nextMaterialRequestId || "");
+        });
+        var continueButton = document.getElementById("continueNextBatch");
+        if (continueButton) continueButton.addEventListener("click", function () {
+          setSaveState("正在载入下一批…", "warn");
+          callServer("getReviewBootstrapV4").then(handlePayload).catch(showFatal);
+        });
+        var adjustButton = document.getElementById("adjustAfterResults");
+        if (adjustButton) adjustButton.addEventListener("click", adjustTodayQuestionCount);
       }
 
       function renderResultSection(title, items) {
@@ -3723,18 +4028,41 @@
       function renderWaiting(payload) {
         setSaveState("", "");
         var preparing = payload.state === "preparing";
-        var title = preparing ? "今天的题组正在准备" :
+        var shortage = payload.state === "candidate_shortfall";
+        var invalidQuestions = payload.state === "question_invalid";
+        var title = shortage ? "还缺 " + Number(payload.shortfallCount || 0) + " 条合适素材" :
+          preparing ? "今天的题组正在准备" :
+          invalidQuestions ? "这批题需要重新准备" :
           payload.state === "waiting_next_queue" ? "今天没有待开始的题组" :
           payload.state === "committed_without_result" ? "本次学习已提交" :
           "题组暂时不可用";
-        var icon = preparing ? "⋯" : "i";
+        var icon = preparing ? "⋯" : (shortage ? "+" : "i");
+        var detail = shortage
+          ? "你自己收集的素材仍然最优先。当前库存不足时，可以让 ChatGPT 根据你的聊天话题、真实生活需求和既往掌握情况，严格按这次缺少的数量生成补充素材。"
+          : (payload.message || "请稍后再检查。");
+        var manualAction = shortage
+          ? '<button id="manualMaterialPrompt" class="btn primary" type="button">复制补充素材提示词并打开 ChatGPT</button><button id="adjustShortageCount" class="btn secondary" type="button">改少一点题数</button>'
+          : (preparing || invalidQuestions
+            ? '<button id="manualQuestionPrompt" class="btn primary" type="button">复制出题提示词并打开 ChatGPT</button>'
+            : '');
         el.stateMount.innerHTML =
           '<section class="state-card">' +
             '<div class="state-icon ' + (preparing ? "spin" : "") + '">' + icon + '</div>' +
             '<h2>' + escapeHtml(title) + '</h2>' +
-            '<p>' + escapeHtml(payload.message || "请稍后再检查。") + '</p>' +
-            '<div class="state-actions"><button id="reloadApp" class="btn secondary" type="button">重新检查</button></div>' +
+            '<p>' + escapeHtml(detail) + '</p>' +
+            (shortage ? '<p class="fine-print">本次精确缺口：' + Number(payload.shortfallCount || 0) + ' 条；系统不会维持固定 AI 备选库存。</p>' : '') +
+            '<div class="state-actions">' + manualAction + '<button id="reloadApp" class="btn secondary" type="button">重新检查</button></div>' +
           '</section>';
+        var materialPrompt = document.getElementById("manualMaterialPrompt");
+        if (materialPrompt) materialPrompt.addEventListener("click", function () {
+          launchManualOperation("candidate_generation", payload.requestId || "");
+        });
+        var questionPrompt = document.getElementById("manualQuestionPrompt");
+        if (questionPrompt) questionPrompt.addEventListener("click", function () {
+          launchManualOperation("question_prepare", payload.queueId || "");
+        });
+        var adjustShortage = document.getElementById("adjustShortageCount");
+        if (adjustShortage) adjustShortage.addEventListener("click", adjustTodayQuestionCount);
         document.getElementById("reloadApp").addEventListener("click", function () {
           setSaveState("正在检查…", "warn");
           var reload = payload.state === "committed_without_result" && payload.sessionId

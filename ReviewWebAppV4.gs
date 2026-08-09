@@ -22,12 +22,18 @@ var ER4 = {
   journalSheet: 'Commit Journal',
   contextSheet: 'Context Inbox',
   contextCandidateSheet: 'Context Candidate Inbox',
-  maxQuestions: 20,
-  aiFallbackPoolTarget: 20,
+  candidateGenerationSheet: 'Candidate Generation Inbox',
+  legacyQuestionCount: 20,
+  minQuestionCount: 1,
+  maxDailyQuestionCount: 150,
+  maxBatchQuestionCount: 30,
+  aiFallbackPoolTarget: 0,
+  maxCandidateGenerationCount: 150,
   maxContextLength: 12000,
   maxContextProposals: 3,
   lowConfidenceThreshold: 0.75,
   chatGptTaskUrl: 'https://chatgpt.com/scheduled',
+  chatGptManualUrl: 'https://chatgpt.com/',
   contextProcessingConversationUrl: 'https://chatgpt.com/'
 };
 
@@ -148,6 +154,32 @@ var ER4_CONTEXT_CANDIDATE_HEADERS = [
   'Contract Version'
 ];
 
+var ER4_CANDIDATE_GENERATION_HEADERS = [
+  'Request ID',
+  'Queue Date',
+  'Requested Count',
+  'Available Count',
+  'Shortfall Count',
+  'Position',
+  'Candidate',
+  'Chinese Cue',
+  'Candidate Type',
+  'Source',
+  'Context',
+  'Why Useful',
+  'Topic',
+  'Difficulty',
+  'Natural Example',
+  'Common Mistake',
+  'Generation Batch ID',
+  'Model ID',
+  'Generation Status',
+  'Created At',
+  'Committed At',
+  'Candidate ID',
+  'Contract Version'
+];
+
 var ER4_RESULTS = ['forgotten', 'difficult', 'normal', 'mastered'];
 var ER4_CONTEXT_PROCESSING_PROMPT = [
   "你正在执行一次性的“真实语料整理”。这不是 Scheduled Task，也不是每日出题或批改。请立即通过当前 Work 对话中的 @Google Drive 连接器读取 Google Sheet；不要要求用户在聊天里重新粘贴原文。",
@@ -253,6 +285,7 @@ function setupReviewWebAppV4() {
     assertNoUnsafePresentedQueueV4_(ss);
     ensureCandidateMetadataColumns_(ss);
     ensureDailyQueueSheet_(ss);
+    ensureDynamicQuestionCountSchemaV4_(ss);
     ensureV4DataSurfaces_(ss);
     formatContractVersionColumnsV4_(ss);
     updateConfigV4_(ss);
@@ -295,7 +328,8 @@ function verifyReviewWebAppV4Setup_() {
     [ER4.gradeSheet, ER4_GRADE_HEADERS],
     [ER4.journalSheet, ER4_JOURNAL_HEADERS],
     [ER4.contextSheet, ER4_CONTEXT_HEADERS],
-    [ER4.contextCandidateSheet, ER4_CONTEXT_CANDIDATE_HEADERS]
+    [ER4.contextCandidateSheet, ER4_CONTEXT_CANDIDATE_HEADERS],
+    [ER4.candidateGenerationSheet, ER4_CANDIDATE_GENERATION_HEADERS]
   ].map(function(item) {
     var sheet = requireSheet_(ss, item[0]);
     var headers = sheet.getRange(1, 1, 1, item[1].length).getValues()[0];
@@ -368,6 +402,12 @@ function ensureV4DataSurfaces_(ss) {
     ER4_CONTEXT_CANDIDATE_HEADERS,
     [145, 90, 240, 240, 220, 120, 300, 280, 140, 100, 300, 260, 320, 95, 140, 240, 190, 170, 170, 125, 105]
   );
+  ensureV4Sheet_(
+    ss,
+    ER4.candidateGenerationSheet,
+    ER4_CANDIDATE_GENERATION_HEADERS,
+    [180, 105, 110, 110, 105, 80, 240, 220, 120, 220, 300, 280, 150, 100, 300, 260, 190, 120, 140, 170, 170, 125, 105]
+  );
 
   var questionSheet = requireSheet_(ss, ER4.questionSheet);
   questionSheet.hideColumns(9, 4);
@@ -376,8 +416,8 @@ function ensureV4DataSurfaces_(ss) {
   gradeSheet.hideColumns(17, 1);
 
   applyListValidationV4_(questionSheet, 6, ER4_QUESTION_TYPES);
-  applyListValidationV4_(questionSheet, 17, ['staged', 'ready', 'bound', 'rejected']);
-  applyListValidationV4_(ER4Sheet_(ss, ER4.draftSheet), 9, ['draft', 'submitted']);
+  applyListValidationV4_(questionSheet, 17, ['staged', 'ready', 'bound', 'deferred', 'rejected']);
+  applyListValidationV4_(ER4Sheet_(ss, ER4.draftSheet), 9, ['draft', 'submitted', 'deferred']);
   applyListValidationV4_(gradeSheet, 7, ER4_RESULTS);
   applyListValidationV4_(gradeSheet, 15, ['staged', 'needs_confirmation', 'accepted', 'rejected', 'committed']);
   applyListValidationV4_(ER4Sheet_(ss, ER4.contextSheet), 7, [
@@ -393,6 +433,15 @@ function ensureV4DataSurfaces_(ss) {
   applyListValidationV4_(ER4Sheet_(ss, ER4.contextCandidateSheet), 15, [
     'staged', 'accepted', 'edited', 'rejected', 'known', 'explanation_only',
     'committed', 'duplicate', 'invalid'
+  ]);
+  applyListValidationV4_(ER4Sheet_(ss, ER4.candidateGenerationSheet), 9, [
+    'chunk'
+  ]);
+  applyListValidationV4_(ER4Sheet_(ss, ER4.candidateGenerationSheet), 14, [
+    'easy', 'medium', 'hard'
+  ]);
+  applyListValidationV4_(ER4Sheet_(ss, ER4.candidateGenerationSheet), 19, [
+    'requested', 'staged', 'committed', 'duplicate', 'rejected', 'superseded'
   ]);
   applyListValidationV4_(
     ER4Sheet_(ss, ER4.journalSheet),
@@ -417,6 +466,7 @@ function contractVersionSurfacesV4_() {
     ER4.journalSheet,
     ER4.contextSheet,
     ER4.contextCandidateSheet,
+    ER4.candidateGenerationSheet,
     DQ3.phraseSheet,
     'Review Log',
     'Error Log',
@@ -502,16 +552,110 @@ function applyListValidationV4_(sheet, column, values) {
   sheet.getRange(2, column, sheet.getMaxRows() - 1, 1).setDataValidation(rule);
 }
 
+function ensureDynamicQuestionCountSchemaV4_(ss) {
+  var queueSheet = ensureDailyQueueSheet_(ss);
+  var generationSheet = ensureV4Sheet_(
+    ss,
+    ER4.candidateGenerationSheet,
+    ER4_CANDIDATE_GENERATION_HEADERS,
+    [180, 105, 110, 110, 105, 80, 240, 220, 120, 220, 300, 280, 150, 100, 300, 260, 190, 120, 140, 170, 170, 125, 105]
+  );
+  applyListValidationV4_(generationSheet, 9, ['chunk']);
+  applyListValidationV4_(generationSheet, 14, ['easy', 'medium', 'hard']);
+  applyListValidationV4_(generationSheet, 19, [
+    'requested', 'staged', 'committed', 'duplicate', 'rejected', 'superseded'
+  ]);
+  var headers = headerMap_(
+    queueSheet.getRange(1, 1, 1, DQ3_QUEUE_HEADERS.length).getValues()[0]
+  );
+  requireHeaders_(headers, [
+    'Planned Count', 'Adjusted Target', 'Queue Kind', 'Plan Revision',
+    'Superseded By', 'Superseded At', 'Change Reason'
+  ], DQ3.queueSheet);
+  if (queueSheet.getMaxRows() > 1) {
+    queueSheet.getRange(2, headers['Planned Count'] + 1, queueSheet.getMaxRows() - 1, 2)
+      .setNumberFormat('0');
+    queueSheet.getRange(2, headers['Plan Revision'] + 1, queueSheet.getMaxRows() - 1, 1)
+      .setNumberFormat('0');
+    queueSheet.getRange(2, headers['Superseded At'] + 1, queueSheet.getMaxRows() - 1, 1)
+      .setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  }
+  applyListValidationV4_(queueSheet, headers['Queue Status'] + 1, [
+    'planned', 'presented', 'committed', 'deferred', 'superseded'
+  ]);
+  applyListValidationV4_(queueSheet, headers['Queue Kind'] + 1, [
+    'primary', 'supplemental'
+  ]);
+  ensureConfigDefaultsV4_(ss, [
+    ['default_question_count', ER4.legacyQuestionCount,
+      'Mutable default for future days; integer 1–150. Each Queue batch is capped at 30.'],
+    ['question_count_override_date', '',
+      'Optional Asia/Shanghai date whose daily target differs from the future default.'],
+    ['question_count_override_value', '',
+      'Optional 1–150 target used only when question_count_override_date matches the Queue date.']
+  ]);
+  ensureConfigContractRowsV4_(ss, [
+    ['daily_question_count_range', '1–150',
+      'The current day and future default can be adjusted independently. Targets above 30 continue in sequential Queue batches.'],
+    ['max_questions_per_queue_batch', ER4.maxBatchQuestionCount,
+      'Protects question generation, grading, staging writes, and exact verification from oversized one-shot batches.'],
+    ['candidate_ready_pool_target', 'retired',
+      'Candidate Bank is a persistent inventory, not a daily reserve that must be refilled to a target.'],
+    ['candidate_ai_fallback_target', 'on_demand_shortfall',
+      'No fixed AI reserve. Generate exactly the real shortfall only after due reviews and available personal material are used.']
+  ]);
+  return queueSheet;
+}
+
+function ensureConfigDefaultsV4_(ss, defaults) {
+  var sheet = requireSheet_(ss, DQ3.configSheet);
+  var values = sheet.getDataRange().getValues();
+  var existing = {};
+  for (var i = 1; i < values.length; i++) {
+    var key = stringValue_(values[i][0]);
+    if (key) existing[key] = true;
+  }
+  defaults.forEach(function(row) {
+    if (!existing[row[0]]) {
+      sheet.appendRow(row);
+      existing[row[0]] = true;
+    }
+  });
+}
+
+function ensureConfigContractRowsV4_(ss, requiredRows) {
+  var sheet = requireSheet_(ss, DQ3.configSheet);
+  var values = sheet.getDataRange().getValues();
+  var rowByKey = {};
+  for (var i = 1; i < values.length; i++) {
+    var key = stringValue_(values[i][0]);
+    if (key) rowByKey[key] = i + 1;
+  }
+  requiredRows.forEach(function(requiredRow) {
+    var rowNumber = rowByKey[requiredRow[0]];
+    if (!rowNumber) {
+      sheet.appendRow(requiredRow);
+      rowByKey[requiredRow[0]] = sheet.getLastRow();
+      return;
+    }
+    var current = sheet.getRange(rowNumber, 1, 1, 3).getValues()[0];
+    var changed = requiredRow.some(function(value, index) {
+      return stringValue_(current[index]) !== stringValue_(value);
+    });
+    if (changed) sheet.getRange(rowNumber, 1, 1, 3).setValues([requiredRow]);
+  });
+}
+
 function updateConfigV4_(ss) {
   upsertConfigRowsV4_(ss, [
     ['contract_version', ER4.contractVersion, 'Required by the Web App, ChatGPT staging prompts, queue builder, and commit worker.'],
     ['review_entrypoint', 'Apps Script Web App', 'One responsive URL serves phone and Mac.'],
-    ['ai_transport', 'Scheduled task for questions; one-time copied Work prompt for context; Google Sheet staging; no OpenAI API', 'ChatGPT writes Session Questions, Grade Inbox, or Context Candidate Inbox only within the matching workflow.'],
-    ['question_prepare_phase', 'scheduled ChatGPT task at 09:00', 'Reads the frozen Daily Queue and stages exactly 20 questions.'],
-    ['grading_trigger_command', '批改', 'ChatGPT resolves exactly one awaiting_chatgpt submission; the user never types a Session ID.'],
+    ['ai_transport', 'Optional scheduled task or full copied prompt in any capable ChatGPT conversation; Google Sheet staging; no OpenAI API', 'The Web App supplies standalone question/grading prompts, so the workflow is not tied to one Work conversation or model.'],
+    ['question_prepare_phase', 'scheduled task or Web App manual handoff', 'Reads the one active frozen Daily Queue and stages exactly its Planned Count (at most 30 per batch).'],
+    ['grading_trigger_command', 'full standalone grading prompt; legacy task conversation may still use 批改', 'ChatGPT resolves exactly one awaiting_chatgpt submission; the user never types a Session ID.'],
     ['question_staging_sheet', ER4.questionSheet, 'AI-authored question batch; this single-user app preloads answers into browser memory but does not render them before reveal.'],
     ['answer_draft_sheet', ER4.draftSheet, 'Versioned server drafts, per-question reveal locks, and frozen batch snapshots.'],
-    ['answer_reveal_flow', 'lock one answer → reveal its stored expected answer → continue', 'Displaying the stored expected answer does not trigger ChatGPT grading; all 20 locked answers are graded together after submission.'],
+    ['answer_reveal_flow', 'lock one answer → reveal its stored expected answer → continue', 'A session may be submitted once locked answers reach its Adjusted Target; extra locked answers are all graded and recorded.'],
     ['grade_inbox_sheet', ER4.gradeSheet, 'ChatGPT grading staging only; no formal SRS writes.'],
     ['context_inbox_sheet', ER4.contextSheet, 'Immutable user-captured source text and validated UTF-16 selection spans.'],
     ['context_candidate_inbox_sheet', ER4.contextCandidateSheet, 'ChatGPT context-processing staging only; Candidate Bank remains Apps Script-only.'],
@@ -524,9 +668,13 @@ function updateConfigV4_(ss) {
     ['formal_database_writer', 'Apps Script v4 commit worker', 'Only deterministic code updates formal logs, candidates, phrase state, queue, and Session Log.'],
     ['database_write_order', 'Review Log → Error Log → Candidate Bank → Phrase Bank state → Daily Queue → Session Log', 'Session Log remains last.'],
     ['web_app_url', 'YOUR_WEB_APP_URL', 'Updated after Web App deployment.'],
-    ['chatgpt_task_url', ER4.chatGptTaskUrl, 'Return here after Web App submission and send only 批改.'],
+    ['chatgpt_task_url', ER4.chatGptTaskUrl, 'Optional legacy Scheduled Task entry point.'],
+    ['chatgpt_manual_url', ER4.chatGptManualUrl, 'The Web App copies a complete standalone prompt before opening ChatGPT.'],
+    ['daily_question_count_range', '1–150', 'Daily targets above 30 are split into sequential primary/supplemental Queue batches.'],
+    ['max_questions_per_queue_batch', ER4.maxBatchQuestionCount, 'Protects ChatGPT generation, grading, connector writes, and verification from oversized one-shot batches.'],
     ['candidate_ready_pool_target', 'retired', 'Verified grading no longer creates candidates merely to maintain forty ready rows.'],
-    ['candidate_ai_fallback_target', ER4.aiFallbackPoolTarget, 'ChatGPT may stage personalized fallback candidates only after all personal inventory and personal intake backlog are exhausted.'],
+    ['candidate_ai_fallback_target', 'on_demand_shortfall', 'No fixed AI reserve. When an active Queue cannot be filled, the Web App creates one exact shortfall request and supplies a standalone ChatGPT prompt.'],
+    ['candidate_generation_sheet', ER4.candidateGenerationSheet, 'AI-authored material is staged here; Apps Script validates, deduplicates, assigns Candidate IDs, and only then writes Candidate Bank.'],
     ['low_confidence_threshold', ER4.lowConfidenceThreshold, 'Only affected items require confirmation before formal commit.'],
     ['rollback_baseline', 'v3-pre-v4-20260728-155612', 'Restore behavior with the recorded rollback helper and artifacts; never rewrite committed history.']
   ]);
@@ -673,12 +821,17 @@ function buildTomorrowDailyQueueV4() {
 function previewTomorrowDailyQueueV4() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   assertContractV4_(ss);
+  ensureDynamicQuestionCountSchemaV4_(ss);
   var targetDate = tomorrowDate_();
-  var plan = calculateDailyQueuePlan_(ss, targetDate);
+  var settings = readQuestionCountSettingsV4_(ss, formatDateKey_(targetDate));
+  var batchCount = Math.min(settings.targetCount, ER4.maxBatchQuestionCount);
+  var plan = calculateDailyQueuePlan_(ss, targetDate, batchCount);
   validatePlan_(plan);
   return {
     ok: true,
     date: formatDateKey_(targetDate),
+    dailyTarget: settings.targetCount,
+    batchCount: batchCount,
     dueCount: plan.dueCount,
     selectedDueCount: plan.selectedDueCount,
     newCount: plan.newCount,
@@ -695,60 +848,182 @@ function buildDailyQueueV4ForDate_(targetDate) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     assertContractV4_(ss);
     ensureCandidateMetadataColumns_(ss);
-    var queueSheet = ensureDailyQueueSheet_(ss);
-    var dateKey = formatDateKey_(targetDate);
-    var queueId = 'DQ-' + dateKey.replace(/-/g, '') + '-001';
-    var existing = readQueueRowsById_(queueSheet, queueId);
-    if (existing.length) {
-      validateMaterializedQueueV4_(existing, queueId);
-      return summarizeQueueRowsV4_(existing, queueId, true);
-    }
-
-    var plan = calculateDailyQueuePlan_(ss, targetDate);
-    validatePlan_(plan);
-    var createdAt = new Date();
-    var rows = plan.items.map(function(item, index) {
-      return [
-        parseDateKey_(dateKey),
-        queueId,
-        index + 1,
-        item.selectionType,
-        item.phraseId || '',
-        item.candidateId || '',
-        item.chunk,
-        item.chineseCue || '',
-        item.topic || '',
-        item.difficulty || '',
-        item.naturalExample || '',
-        item.originalNextReview || '',
-        item.priorityReason,
-        'planned',
-        '',
-        createdAt,
-        '',
-        ER4.contractVersion,
-        ''
-      ];
-    });
-    var startRow = Math.max(queueSheet.getLastRow() + 1, 2);
-    queueSheet.getRange(startRow, 1, rows.length, DQ3_QUEUE_HEADERS.length).setValues(rows);
-    queueSheet.getRange(startRow, 1, rows.length, 1).setNumberFormat('yyyy-mm-dd');
-    queueSheet.getRange(startRow, 12, rows.length, 1).setNumberFormat('yyyy-mm-dd');
-    queueSheet.getRange(startRow, 16, rows.length, 2).setNumberFormat('yyyy-mm-dd hh:mm:ss');
-    queueSheet.getRange(startRow, 19, rows.length, 1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
-    SpreadsheetApp.flush();
-
-    var written = readQueueRowsById_(queueSheet, queueId);
-    validateMaterializedQueueV4_(written, queueId);
-    return summarizeQueueRowsV4_(written, queueId, false);
+    ensureDynamicQuestionCountSchemaV4_(ss);
+    return ensureQueueForDateV4Unlocked_(ss, targetDate, 'automatic queue build');
   } finally {
     lock.releaseLock();
   }
 }
 
+function ensureQueueForDateV4Unlocked_(ss, targetDate, reason) {
+  var queueSheet = ensureDynamicQuestionCountSchemaV4_(ss);
+  var dateKey = formatDateKey_(targetDate);
+  var initialSettings = readQuestionCountSettingsV4_(ss, dateKey);
+  var activeMaterialRequest = findActiveCandidateGenerationRequestV4_(ss, dateKey);
+  if (
+    activeMaterialRequest &&
+    Number(activeMaterialRequest.requestedCount) !== Number(initialSettings.targetCount)
+  ) {
+    supersedeCandidateGenerationRequestsV4_(ss, dateKey);
+  }
+  processCandidateGenerationInboxV4_(ss, dateKey);
+  var existing = findQueueForDateV4_(ss, dateKey);
+  if (existing && existing.status === 'presented') {
+    validateMaterializedQueueV4_(existing.rows.map(function(item) { return item.values; }), existing.queueId);
+    return summarizeQueueRowsV4_(
+      existing.rows.map(function(item) { return item.values; }),
+      existing.queueId,
+      true
+    );
+  }
+
+  var settings = readQuestionCountSettingsV4_(ss, dateKey);
+  var completed = completedQuestionsForDateV4_(ss, dateKey, '');
+  if (completed >= settings.targetCount) {
+    supersedeCandidateGenerationRequestsV4_(ss, dateKey);
+    if (existing && existing.status === 'planned') {
+      supersedeQueueV4_(ss, existing, '', 'requested count already met');
+    }
+    return {
+      ok: true,
+      date: dateKey,
+      state: 'daily_target_met',
+      dailyTarget: settings.targetCount,
+      completed: completed,
+      reused: Boolean(existing)
+    };
+  }
+
+  var remaining = settings.targetCount - completed;
+  var batchCount = Math.min(remaining, ER4.maxBatchQuestionCount);
+  if (existing && existing.status === 'planned' && existing.plannedCount === batchCount) {
+    supersedeCandidateGenerationRequestsV4_(ss, dateKey);
+    validateMaterializedQueueV4_(existing.rows.map(function(item) { return item.values; }), existing.queueId);
+    var reusedSummary = summarizeQueueRowsV4_(
+      existing.rows.map(function(item) { return item.values; }),
+      existing.queueId,
+      true
+    );
+    reusedSummary.dailyTarget = settings.targetCount;
+    reusedSummary.completedBeforeBatch = completed;
+    reusedSummary.remainingAfterBatch = Math.max(0, remaining - batchCount);
+    return reusedSummary;
+  }
+  var plan = calculateDailyQueuePlan_(ss, targetDate, batchCount);
+  if (Number(plan.candidateShortfall) > 0) {
+    var request = ensureCandidateGenerationRequestV4_(ss, dateKey, plan, settings.targetCount);
+    return {
+      ok: true,
+      state: 'candidate_shortfall',
+      date: dateKey,
+      dailyTarget: settings.targetCount,
+      completed: completed,
+      batchCount: batchCount,
+      dueCount: plan.selectedDueCount,
+      readyCandidateCount: plan.readyCandidateCount,
+      shortfallCount: plan.candidateShortfall,
+      requestId: request.requestId,
+      requestStatus: request.status,
+      reusedRequest: request.reused
+    };
+  }
+  validatePlan_(plan);
+  supersedeCandidateGenerationRequestsV4_(ss, dateKey);
+  var queueId = allocateQueueIdV4_(queueSheet, dateKey);
+  var queueKind = completed > 0 ? 'supplemental' : 'primary';
+  appendQueuePlanV4_(
+    queueSheet,
+    dateKey,
+    queueId,
+    plan,
+    queueKind,
+    Number(queueId.slice(-3)) || 1,
+    reason || 'daily target queue build'
+  );
+  if (existing && existing.status === 'planned') {
+    supersedeQueueV4_(
+      ss,
+      existing,
+      queueId,
+      reason || 'requested count changed before session start'
+    );
+  }
+  var written = readQueueRowsById_(queueSheet, queueId);
+  validateMaterializedQueueV4_(written, queueId);
+  var summary = summarizeQueueRowsV4_(written, queueId, false);
+  summary.dailyTarget = settings.targetCount;
+  summary.completedBeforeBatch = completed;
+  summary.remainingAfterBatch = Math.max(0, remaining - batchCount);
+  return summary;
+}
+
+function appendQueuePlanV4_(queueSheet, dateKey, queueId, plan, queueKind, revision, reason) {
+  var createdAt = new Date();
+  var plannedCount = normalizeQuestionCount_(plan.targetCount, ER4.legacyQuestionCount);
+  var rows = plan.items.map(function(item, index) {
+    return [
+      parseDateKey_(dateKey),
+      queueId,
+      index + 1,
+      item.selectionType,
+      item.phraseId || '',
+      item.candidateId || '',
+      item.chunk,
+      item.chineseCue || '',
+      item.topic || '',
+      item.difficulty || '',
+      item.naturalExample || '',
+      item.originalNextReview || '',
+      item.priorityReason,
+      'planned',
+      '',
+      createdAt,
+      '',
+      ER4.contractVersion,
+      '',
+      plannedCount,
+      plannedCount,
+      queueKind || 'primary',
+      Number(revision) || 1,
+      '',
+      '',
+      reason || ''
+    ];
+  });
+  var startRow = Math.max(queueSheet.getLastRow() + 1, 2);
+  queueSheet.getRange(startRow, 1, rows.length, DQ3_QUEUE_HEADERS.length).setValues(rows);
+  queueSheet.getRange(startRow, 1, rows.length, 1).setNumberFormat('yyyy-mm-dd');
+  queueSheet.getRange(startRow, 12, rows.length, 1).setNumberFormat('yyyy-mm-dd');
+  queueSheet.getRange(startRow, 16, rows.length, 2).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  queueSheet.getRange(startRow, 18, rows.length, 1).setNumberFormat('@');
+  queueSheet.getRange(startRow, 19, rows.length, 1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  queueSheet.getRange(startRow, 20, rows.length, 2).setNumberFormat('0');
+  queueSheet.getRange(startRow, 23, rows.length, 1).setNumberFormat('0');
+  queueSheet.getRange(startRow, 25, rows.length, 1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  SpreadsheetApp.flush();
+}
+
+function allocateQueueIdV4_(queueSheet, dateKey) {
+  var values = queueSheet.getDataRange().getValues();
+  var headers = headerMap_(values[0]);
+  var prefix = 'DQ-' + dateKey.replace(/-/g, '') + '-';
+  var maxSequence = 0;
+  for (var i = 1; i < values.length; i++) {
+    var queueId = stringValue_(values[i][headers['Queue ID']]);
+    if (queueId.indexOf(prefix) !== 0) continue;
+    var suffix = queueId.slice(prefix.length);
+    if (/^\d{3}$/.test(suffix)) maxSequence = Math.max(maxSequence, Number(suffix));
+  }
+  return prefix + String(maxSequence + 1).padStart(3, '0');
+}
+
 function validateMaterializedQueueV4_(rows, queueId) {
-  if (rows.length !== ER4.maxQuestions) {
-    throw new Error(queueId + ' must contain exactly 20 rows; found ' + rows.length + '.');
+  var plannedCount = queuePlannedCountFromRows_(rows);
+  if (rows.length !== plannedCount) {
+    throw new Error(
+      queueId + ' must contain exactly ' + plannedCount +
+      ' rows; found ' + rows.length + '.'
+    );
   }
   var positions = {};
   var identities = {};
@@ -759,7 +1034,7 @@ function validateMaterializedQueueV4_(rows, queueId) {
     var selectionType = stringValue_(row[3]);
     var contract = stringValue_(row[17]);
     var status = stringValue_(row[13]).toLowerCase();
-    if (position < 1 || position > 20 || positions[position]) {
+    if (position < 1 || position > plannedCount || positions[position]) {
       throw new Error(queueId + ' has an invalid or duplicate position: ' + position + '.');
     }
     positions[position] = true;
@@ -774,10 +1049,28 @@ function validateMaterializedQueueV4_(rows, queueId) {
     if (contract !== ER4.contractVersion) {
       throw new Error(queueId + ' contains a non-v4 contract row.');
     }
-    if (['planned', 'presented', 'committed'].indexOf(status) === -1) {
+    if (['planned', 'presented', 'committed', 'deferred', 'superseded'].indexOf(status) === -1) {
       throw new Error(queueId + ' has an invalid Queue Status: ' + status + '.');
     }
   });
+  queueAdjustedTargetFromRowsV4_(rows, plannedCount);
+}
+
+function queueAdjustedTargetFromRowsV4_(rows, plannedCount) {
+  plannedCount = plannedCount || queuePlannedCountFromRows_(rows);
+  var column = DQ3_QUEUE_HEADERS.indexOf('Adjusted Target');
+  var values = {};
+  rows.forEach(function(row) {
+    var raw = column >= 0 ? stringValue_(row[column]) : '';
+    if (raw !== '') values[Number(raw)] = true;
+  });
+  var targets = Object.keys(values).map(Number);
+  if (targets.length > 1) throw new Error('Queue rows do not share one Adjusted Target.');
+  var target = targets.length ? targets[0] : plannedCount;
+  if (!isFinite(target) || Math.floor(target) !== target || target < 0 || target > plannedCount) {
+    throw new Error('Queue Adjusted Target must be an integer from 0 to Planned Count.');
+  }
+  return target;
 }
 
 function summarizeQueueRowsV4_(rows, queueId, reused) {
@@ -792,6 +1085,9 @@ function summarizeQueueRowsV4_(rows, queueId, reused) {
     queueId: queueId,
     date: formatDateKey_(rows[0][0]),
     count: rows.length,
+    plannedCount: queuePlannedCountFromRows_(rows),
+    adjustedTarget: queueAdjustedTargetFromRowsV4_(rows),
+    queueKind: stringValue_(rows[0][DQ3_QUEUE_HEADERS.indexOf('Queue Kind')]) || 'primary',
     dueCount: due,
     newCount: fresh,
     status: stringValue_(rows[0][13]),
@@ -800,18 +1096,667 @@ function summarizeQueueRowsV4_(rows, queueId, reused) {
   };
 }
 
+function normalizeDailyQuestionCountV4_(value, fallback) {
+  var fallbackCount = Number(fallback);
+  if (!isFinite(fallbackCount)) fallbackCount = ER4.legacyQuestionCount;
+  var raw = stringValue_(value);
+  var count = raw === '' ? fallbackCount : Number(value);
+  if (
+    !isFinite(count) || Math.floor(count) !== count ||
+    count < ER4.minQuestionCount || count > ER4.maxDailyQuestionCount
+  ) {
+    throw new Error(
+      'Daily question target must be an integer between ' + ER4.minQuestionCount +
+      ' and ' + ER4.maxDailyQuestionCount + '.'
+    );
+  }
+  return count;
+}
+
+function readQuestionCountSettingsV4_(ss, dateKey) {
+  var legacy = readConfigValueV4_(ss, 'max_questions_per_session');
+  var defaultRaw = readConfigValueV4_(ss, 'default_question_count') || legacy || ER4.legacyQuestionCount;
+  var defaultCount = normalizeDailyQuestionCountV4_(defaultRaw, ER4.legacyQuestionCount);
+  var overrideDate = readConfigValueV4_(ss, 'question_count_override_date');
+  var overrideRaw = readConfigValueV4_(ss, 'question_count_override_value');
+  var hasOverride = overrideDate === dateKey && stringValue_(overrideRaw) !== '';
+  var targetCount = hasOverride
+    ? normalizeDailyQuestionCountV4_(overrideRaw, defaultCount)
+    : defaultCount;
+  return {
+    date: dateKey,
+    defaultCount: defaultCount,
+    targetCount: targetCount,
+    hasOverride: hasOverride,
+    minCount: ER4.minQuestionCount,
+    maxCount: ER4.maxDailyQuestionCount,
+    maxBatchCount: ER4.maxBatchQuestionCount
+  };
+}
+
+function completedQuestionsForDateV4_(ss, dateKey, excludedSessionId) {
+  var sheet = requireSheet_(ss, 'Session Log');
+  var values = sheet.getDataRange().getValues();
+  var headers = headerMap_(values[0]);
+  requireHeaders_(headers, [
+    'Session ID', 'Date', 'Questions Logged', 'Database Write Status',
+    'Readback Status', 'Contract Version'
+  ], 'Session Log');
+  var total = 0;
+  for (var i = 1; i < values.length; i++) {
+    var sessionId = stringValue_(values[i][headers['Session ID']]);
+    if (!sessionId || sessionId === stringValue_(excludedSessionId)) continue;
+    if (!isDateValue_(values[i][headers.Date]) || formatDateKey_(values[i][headers.Date]) !== dateKey) continue;
+    if (
+      stringValue_(values[i][headers['Database Write Status']]).toLowerCase() !== 'verified' ||
+      stringValue_(values[i][headers['Readback Status']]).toLowerCase() !== 'verified' ||
+      stringValue_(values[i][headers['Contract Version']]) !== ER4.contractVersion
+    ) continue;
+    total += Math.max(0, Number(values[i][headers['Questions Logged']]) || 0);
+  }
+  return total;
+}
+
+function ensureCandidateGenerationRequestV4_(ss, dateKey, plan, requestedCount) {
+  var sheet = ensureV4Sheet_(
+    ss,
+    ER4.candidateGenerationSheet,
+    ER4_CANDIDATE_GENERATION_HEADERS,
+    [180, 105, 110, 110, 105, 80, 240, 220, 120, 220, 300, 280, 150, 100, 300, 260, 190, 120, 140, 170, 170, 125, 105]
+  );
+  var values = sheet.getDataRange().getValues();
+  var headers = headerMap_(values[0]);
+  var activeRequestRows = [];
+  for (var i = 1; i < values.length; i++) {
+    if (
+      Number(values[i][headers.Position]) === 0 &&
+      dashboardDateKeyV4_(values[i][headers['Queue Date']]) === dateKey &&
+      ['requested', 'staged'].indexOf(
+        stringValue_(values[i][headers['Generation Status']]).toLowerCase()
+      ) !== -1 &&
+      stringValue_(values[i][headers['Contract Version']]) === ER4.contractVersion
+    ) {
+      activeRequestRows.push({ rowNumber: i + 1, values: values[i] });
+    }
+  }
+  if (activeRequestRows.length > 1) {
+    throw new Error('More than one active candidate-generation request exists for ' + dateKey + '.');
+  }
+  var shortfall = Math.max(0, Number(plan.candidateShortfall) || 0);
+  if (activeRequestRows.length === 1) {
+    var active = activeRequestRows[0];
+    var sameShortfall = Number(active.values[headers['Shortfall Count']]) === shortfall;
+    var sameRequested = Number(active.values[headers['Requested Count']]) === Number(requestedCount);
+    if (sameShortfall && sameRequested) {
+      return {
+        requestId: stringValue_(active.values[headers['Request ID']]),
+        status: stringValue_(active.values[headers['Generation Status']]).toLowerCase(),
+        reused: true
+      };
+    }
+    var oldRequestId = stringValue_(active.values[headers['Request ID']]);
+    for (var oldIndex = 1; oldIndex < values.length; oldIndex++) {
+      if (stringValue_(values[oldIndex][headers['Request ID']]) === oldRequestId) {
+        sheet.getRange(oldIndex + 1, headers['Generation Status'] + 1).setValue('superseded');
+      }
+    }
+  }
+
+  var requestId = 'CGR-' + dateKey.replace(/-/g, '') + '-' + Utilities.getUuid().slice(0, 8);
+  sheet.appendRow([
+    requestId,
+    parseDateKey_(dateKey),
+    Number(requestedCount),
+    Number(plan.items.length),
+    shortfall,
+    0,
+    '',
+    '',
+    '',
+    'Web App shortage request',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    'requested',
+    new Date(),
+    '',
+    '',
+    ER4.contractVersion
+  ]);
+  var rowNumber = sheet.getLastRow();
+  sheet.getRange(rowNumber, headers['Queue Date'] + 1).setNumberFormat('yyyy-mm-dd');
+  sheet.getRange(rowNumber, headers['Created At'] + 1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  sheet.getRange(rowNumber, headers['Contract Version'] + 1)
+    .setNumberFormat('@')
+    .setValue(ER4.contractVersion);
+  SpreadsheetApp.flush();
+  return { requestId: requestId, status: 'requested', reused: false };
+}
+
+function processCandidateGenerationInboxV4_(ss, dateKey) {
+  var sheet = requireSheet_(ss, ER4.candidateGenerationSheet);
+  var values = sheet.getDataRange().getValues();
+  var headers = headerMap_(values[0]);
+  requireHeaders_(headers, ER4_CANDIDATE_GENERATION_HEADERS, ER4.candidateGenerationSheet);
+  var requests = {};
+  for (var i = 1; i < values.length; i++) {
+    var contract = stringValue_(values[i][headers['Contract Version']]);
+    if (contract !== ER4.contractVersion) continue;
+    var requestDate = dashboardDateKeyV4_(values[i][headers['Queue Date']]);
+    if (dateKey && requestDate !== dateKey) continue;
+    var requestId = stringValue_(values[i][headers['Request ID']]);
+    if (!requestId) continue;
+    if (!requests[requestId]) requests[requestId] = [];
+    requests[requestId].push({ rowNumber: i + 1, values: values[i] });
+  }
+  var active = Object.keys(requests).filter(function(requestId) {
+    return requests[requestId].some(function(item) {
+      return Number(item.values[headers.Position]) === 0 &&
+        ['requested', 'staged'].indexOf(
+          stringValue_(item.values[headers['Generation Status']]).toLowerCase()
+        ) !== -1;
+    });
+  });
+  if (!active.length) return { ok: true, processed: 0 };
+  if (active.length > 1) {
+    throw new Error('Candidate Generation Inbox contains more than one active request.');
+  }
+  var rows = requests[active[0]];
+  var requestRow = rows.filter(function(item) {
+    return Number(item.values[headers.Position]) === 0;
+  })[0];
+  if (!requestRow) throw new Error('Candidate-generation request metadata is missing.');
+  var shortfall = Number(requestRow.values[headers['Shortfall Count']]);
+  if (!isFinite(shortfall) || shortfall < 1 || shortfall > ER4.maxCandidateGenerationCount) {
+    throw new Error('Candidate-generation Shortfall Count is invalid.');
+  }
+  var staged = rows.filter(function(item) {
+    return Number(item.values[headers.Position]) > 0 &&
+      stringValue_(item.values[headers['Generation Status']]).toLowerCase() === 'staged';
+  });
+  if (!staged.length) {
+    return { ok: true, processed: 0, requestId: active[0], waiting: true };
+  }
+  if (staged.length !== shortfall) {
+    throw new Error(
+      'Candidate-generation batch must contain exactly ' + shortfall +
+      ' staged rows; found ' + staged.length + '.'
+    );
+  }
+  var positions = {};
+  var batchIds = {};
+  var normalizedInBatch = {};
+  staged.forEach(function(item) {
+    var row = item.values;
+    var position = Number(row[headers.Position]);
+    if (position < 1 || position > shortfall || positions[position]) {
+      throw new Error('Candidate-generation batch has an invalid or duplicate position.');
+    }
+    positions[position] = true;
+    var batchId = stringValue_(row[headers['Generation Batch ID']]);
+    if (!batchId) throw new Error('Candidate-generation batch ID is blank.');
+    batchIds[batchId] = true;
+    var candidate = stringValue_(row[headers.Candidate]);
+    var key = normalizeChunk_(candidate);
+    var difficulty = stringValue_(row[headers.Difficulty]).toLowerCase();
+    if (!candidate || !key || normalizedInBatch[key]) {
+      throw new Error('Candidate-generation batch contains a blank or duplicate Candidate.');
+    }
+    normalizedInBatch[key] = true;
+    if (stringValue_(row[headers['Candidate Type']]).toLowerCase() !== 'chunk') {
+      throw new Error('Generated material must use Candidate Type=chunk.');
+    }
+    if (['easy', 'medium', 'hard'].indexOf(difficulty) === -1) {
+      throw new Error('Generated material has an invalid Difficulty.');
+    }
+    ['Chinese Cue', 'Context', 'Why Useful', 'Topic', 'Natural Example'].forEach(function(header) {
+      if (!stringValue_(row[headers[header]])) {
+        throw new Error('Generated material is missing ' + header + ' at position ' + position + '.');
+      }
+    });
+  });
+  if (Object.keys(batchIds).length !== 1) {
+    throw new Error('Candidate-generation rows must share one Generation Batch ID.');
+  }
+
+  var phraseSheet = requireSheet_(ss, DQ3.phraseSheet);
+  var phraseValues = phraseSheet.getDataRange().getValues();
+  var phraseHeaders = headerMap_(phraseValues[0]);
+  var occupied = {};
+  for (var p = 1; p < phraseValues.length; p++) {
+    var phraseChunk = normalizeChunk_(phraseValues[p][phraseHeaders.Chunk]);
+    var canonical = normalizeChunk_(phraseValues[p][phraseHeaders['Canonical Pattern']]);
+    if (phraseChunk) occupied[phraseChunk] = { type: 'phrase', id: stringValue_(phraseValues[p][phraseHeaders.ID]) };
+    if (canonical) occupied[canonical] = { type: 'phrase', id: stringValue_(phraseValues[p][phraseHeaders.ID]) };
+  }
+
+  var candidateSheet = requireSheet_(ss, DQ3.candidateSheet);
+  var candidateValues = candidateSheet.getDataRange().getValues();
+  var candidateHeaders = headerMap_(candidateValues[0]);
+  var nextCandidateNumber = 0;
+  for (var c = 1; c < candidateValues.length; c++) {
+    var candidateId = stringValue_(candidateValues[c][candidateHeaders['Candidate ID']]);
+    if (candidateId) nextCandidateNumber = Math.max(nextCandidateNumber, numericSuffixV4_(candidateId, 'CAN-'));
+    var candidateKey = normalizeChunk_(candidateValues[c][candidateHeaders.Candidate]);
+    if (candidateKey) occupied[candidateKey] = { type: 'candidate', id: candidateId };
+  }
+
+  staged.sort(function(a, b) {
+    return Number(a.values[headers.Position]) - Number(b.values[headers.Position]);
+  });
+  var candidateRows = [];
+  var committed = [];
+  var duplicates = [];
+  staged.forEach(function(item) {
+    var row = item.values;
+    var key = normalizeChunk_(row[headers.Candidate]);
+    if (occupied[key]) {
+      duplicates.push({ item: item, existing: occupied[key] });
+      return;
+    }
+    nextCandidateNumber++;
+    var candidateId = 'CAN-' + String(nextCandidateNumber).padStart(4, '0');
+    occupied[key] = { type: 'candidate', id: candidateId };
+    candidateRows.push([
+      candidateId,
+      parseDateKey_(dashboardDateKeyV4_(requestRow.values[headers['Queue Date']])),
+      stringValue_(row[headers.Candidate]),
+      'chunk',
+      stringValue_(row[headers.Source]) || 'ChatGPT personalized on-demand',
+      stringValue_(row[headers.Context]),
+      stringValue_(row[headers['Why Useful']]),
+      'ready',
+      '',
+      '',
+      '',
+      '',
+      stringValue_(row[headers['Chinese Cue']]),
+      stringValue_(row[headers.Topic]),
+      stringValue_(row[headers.Difficulty]).toLowerCase(),
+      stringValue_(row[headers['Natural Example']]),
+      stringValue_(row[headers['Common Mistake']]),
+      'ai_fallback',
+      '',
+      '',
+      '',
+      'fallback'
+    ]);
+    committed.push({ item: item, candidateId: candidateId });
+  });
+  if (candidateRows.length) {
+    var startRow = candidateSheet.getLastRow() + 1;
+    candidateSheet.getRange(startRow, 1, candidateRows.length, 22).setValues(candidateRows);
+    candidateSheet.getRange(startRow, 2, candidateRows.length, 1).setNumberFormat('yyyy-mm-dd');
+  }
+  var committedAt = new Date();
+  committed.forEach(function(result) {
+    sheet.getRange(result.item.rowNumber, headers['Generation Status'] + 1).setValue('committed');
+    sheet.getRange(result.item.rowNumber, headers['Committed At'] + 1)
+      .setValue(committedAt)
+      .setNumberFormat('yyyy-mm-dd hh:mm:ss');
+    sheet.getRange(result.item.rowNumber, headers['Candidate ID'] + 1).setValue(result.candidateId);
+  });
+  duplicates.forEach(function(result) {
+    sheet.getRange(result.item.rowNumber, headers['Generation Status'] + 1).setValue('duplicate');
+    sheet.getRange(result.item.rowNumber, headers['Committed At'] + 1)
+      .setValue(committedAt)
+      .setNumberFormat('yyyy-mm-dd hh:mm:ss');
+    sheet.getRange(result.item.rowNumber, headers['Candidate ID'] + 1).setValue(result.existing.id || '');
+  });
+  sheet.getRange(requestRow.rowNumber, headers['Generation Status'] + 1).setValue('committed');
+  sheet.getRange(requestRow.rowNumber, headers['Committed At'] + 1)
+    .setValue(committedAt)
+    .setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  SpreadsheetApp.flush();
+
+  var candidateReadback = candidateSheet.getDataRange().getValues();
+  var readyReadbackCount = {};
+  for (var readbackIndex = 1; readbackIndex < candidateReadback.length; readbackIndex++) {
+    var readbackId = stringValue_(candidateReadback[readbackIndex][candidateHeaders['Candidate ID']]);
+    if (
+      readbackId &&
+      stringValue_(candidateReadback[readbackIndex][candidateHeaders.Status]).toLowerCase() === 'ready'
+    ) readyReadbackCount[readbackId] = (readyReadbackCount[readbackId] || 0) + 1;
+  }
+  committed.forEach(function(result) {
+    if (readyReadbackCount[result.candidateId] !== 1) {
+      throw new Error('Generated Candidate readback failed: ' + result.candidateId + '.');
+    }
+  });
+  return {
+    ok: true,
+    processed: 1,
+    requestId: active[0],
+    committedCount: committed.length,
+    duplicateCount: duplicates.length
+  };
+}
+
+function getQuestionCountControlV4() {
+  assertV4Enabled_();
+  assertAuthorizedV4_();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  assertContractV4_(ss);
+  ensureDynamicQuestionCountSchemaV4_(ss);
+  return buildQuestionCountControlV4_(ss, formatDateKey_(new Date()));
+}
+
+function setQuestionCountV4(count, mode) {
+  assertV4Enabled_();
+  assertAuthorizedV4_();
+  var lock = LockService.getDocumentLock();
+  lock.waitLock(30000);
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    assertContractV4_(ss);
+    ensureCandidateMetadataColumns_(ss);
+    ensureDynamicQuestionCountSchemaV4_(ss);
+    count = normalizeDailyQuestionCountV4_(count, ER4.legacyQuestionCount);
+    mode = stringValue_(mode).toLowerCase();
+    if (['today', 'future', 'both'].indexOf(mode) === -1) {
+      throw new Error('Question-count update mode must be today, future, or both.');
+    }
+    var dateKey = formatDateKey_(new Date());
+    var queue = findQueueForDateV4_(ss, dateKey);
+    var completed = completedQuestionsForDateV4_(ss, dateKey, '');
+    var adjustmentResult = null;
+
+    if (mode === 'today' || mode === 'both') {
+      if (completed >= count) supersedeCandidateGenerationRequestsV4_(ss, dateKey);
+      if (queue && queue.status === 'planned') {
+        var remaining = Math.max(0, count - completed);
+        if (remaining === 0) {
+          supersedeCandidateGenerationRequestsV4_(ss, dateKey);
+          supersedeQueueV4_(ss, queue, '', 'requested count already met');
+          queue = null;
+        } else {
+          var replacementCount = Math.min(remaining, ER4.maxBatchQuestionCount);
+          if (replacementCount !== queue.plannedCount) {
+            var replacementPlan = calculateDailyQueuePlan_(ss, parseDateKey_(dateKey), replacementCount);
+            if (Number(replacementPlan.candidateShortfall) > 0) {
+              adjustmentResult = ensureCandidateGenerationRequestV4_(
+                ss,
+                dateKey,
+                replacementPlan,
+                count
+              );
+            } else {
+              validatePlan_(replacementPlan);
+              supersedeCandidateGenerationRequestsV4_(ss, dateKey);
+              var replacementId = allocateQueueIdV4_(queue.sheet, dateKey);
+              appendQueuePlanV4_(
+                queue.sheet,
+                dateKey,
+                replacementId,
+                replacementPlan,
+                completed > 0 ? 'supplemental' : 'primary',
+                Number(replacementId.slice(-3)) || 1,
+                'question count changed before session start'
+              );
+              supersedeQueueV4_(
+                ss,
+                queue,
+                replacementId,
+                'question count changed before session start'
+              );
+              queue = null;
+            }
+          } else {
+            supersedeCandidateGenerationRequestsV4_(ss, dateKey);
+          }
+        }
+      } else if (queue && queue.status === 'presented') {
+        var completedBeforeSession = completedQuestionsForDateV4_(ss, dateKey, queue.sessionId);
+        var desiredForSession = Math.min(
+          queue.plannedCount,
+          Math.max(0, count - completedBeforeSession)
+        );
+        var lockedCount = countLockedDraftsV4_(ss, queue.sessionId);
+        if (desiredForSession === 0 && lockedCount === 0) {
+          supersedeQueueV4_(ss, queue, '', 'requested count already met before first locked answer');
+          queue = null;
+        } else {
+          setQueueAdjustedTargetV4_(queue, desiredForSession, 'question count changed during session');
+        }
+      }
+    }
+
+    if (mode === 'future' || mode === 'both') {
+      writeConfigValueV4_(
+        ss,
+        'default_question_count',
+        count,
+        'Mutable default for future sessions; daily work may be split into 30-question batches.'
+      );
+    }
+    if (mode === 'today' || mode === 'both') {
+      writeConfigValueV4_(
+        ss,
+        'question_count_override_date',
+        dateKey,
+        'Asia/Shanghai date for the current one-day requested-count override.'
+      );
+      writeConfigValueV4_(
+        ss,
+        'question_count_override_value',
+        count,
+        'Requested count for question_count_override_date.'
+      );
+      if ((!queue || queue.status === 'committed') && completed < count && !adjustmentResult) {
+        adjustmentResult = ensureQueueForDateV4Unlocked_(
+          ss,
+          parseDateKey_(dateKey),
+          'question count changed by user'
+        );
+      }
+    }
+    invalidateLearningDashboardCacheV4_();
+    var control = buildQuestionCountControlV4_(ss, dateKey);
+    control.ok = true;
+    if (adjustmentResult && adjustmentResult.requestId) {
+      control.shortfallRequestId = adjustmentResult.requestId;
+    }
+    return control;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function buildQuestionCountControlV4_(ss, dateKey) {
+  var settings = readQuestionCountSettingsV4_(ss, dateKey);
+  var queue = findQueueForDateV4_(ss, dateKey);
+  var completed = completedQuestionsForDateV4_(ss, dateKey, '');
+  var locked = queue && queue.status === 'presented'
+    ? countLockedDraftsV4_(ss, queue.sessionId)
+    : 0;
+  var request = findActiveCandidateGenerationRequestV4_(ss, dateKey);
+  return {
+    ok: true,
+    date: dateKey,
+    defaultCount: settings.defaultCount,
+    requestedCount: settings.targetCount,
+    hasTodayOverride: settings.hasOverride,
+    minCount: settings.minCount,
+    maxCount: settings.maxCount,
+    maxBatchCount: settings.maxBatchCount,
+    completed: completed,
+    queueId: queue ? queue.queueId : '',
+    queueStatus: queue ? queue.status : 'missing',
+    queueKind: queue ? queue.queueKind : '',
+    plannedCount: queue ? queue.plannedCount : 0,
+    adjustedTarget: queue ? queue.adjustedTarget : 0,
+    lockedCount: locked,
+    shortfallRequestId: request ? request.requestId : '',
+    shortfallCount: request ? request.shortfallCount : 0,
+    shortfallStatus: request ? request.status : ''
+  };
+}
+
+function writeConfigValueV4_(ss, key, value, note) {
+  var sheet = requireSheet_(ss, DQ3.configSheet);
+  var values = sheet.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    if (stringValue_(values[i][0]) === key) {
+      sheet.getRange(i + 1, 1, 1, 3).setValues([[key, value, note || stringValue_(values[i][2])]]);
+      return;
+    }
+  }
+  sheet.appendRow([key, value, note || '']);
+}
+
+function setQueueAdjustedTargetV4_(queue, target, reason) {
+  target = Number(target);
+  if (!isFinite(target) || Math.floor(target) !== target || target < 0 || target > queue.plannedCount) {
+    throw new Error('Adjusted session target is outside the current Queue batch.');
+  }
+  queue.rows.forEach(function(item) {
+    queue.sheet.getRange(item.rowNumber, queue.headers['Adjusted Target'] + 1).setValue(target);
+    queue.sheet.getRange(item.rowNumber, queue.headers['Change Reason'] + 1).setValue(reason || '');
+  });
+  SpreadsheetApp.flush();
+}
+
+function countLockedDraftsV4_(ss, sessionId) {
+  if (!sessionId) return 0;
+  return readDraftsForSessionV4_(ss, sessionId).filter(function(draft) {
+    return isDraftRevealedV4_(draft, sessionId);
+  }).length;
+}
+
+function supersedeQueueV4_(ss, queue, replacementId, reason) {
+  var supersededAt = new Date();
+  queue.rows.forEach(function(item) {
+    queue.sheet.getRange(item.rowNumber, queue.headers['Queue Status'] + 1).setValue('superseded');
+    queue.sheet.getRange(item.rowNumber, queue.headers['Superseded By'] + 1).setValue(replacementId || '');
+    queue.sheet.getRange(item.rowNumber, queue.headers['Superseded At'] + 1)
+      .setValue(supersededAt)
+      .setNumberFormat('yyyy-mm-dd hh:mm:ss');
+    queue.sheet.getRange(item.rowNumber, queue.headers['Change Reason'] + 1).setValue(reason || '');
+  });
+  var questionSheet = requireSheet_(ss, ER4.questionSheet);
+  var questionValues = questionSheet.getDataRange().getValues();
+  var questionHeaders = headerMap_(questionValues[0]);
+  for (var i = 1; i < questionValues.length; i++) {
+    if (
+      stringValue_(questionValues[i][questionHeaders['Queue ID']]) === queue.queueId &&
+      ['staged', 'ready', 'bound'].indexOf(
+        stringValue_(questionValues[i][questionHeaders['Question Status']]).toLowerCase()
+      ) !== -1
+    ) {
+      questionSheet.getRange(i + 1, questionHeaders['Question Status'] + 1).setValue('rejected');
+    }
+  }
+  if (queue.sessionId) {
+    var draftSheet = requireSheet_(ss, ER4.draftSheet);
+    var draftValues = draftSheet.getDataRange().getValues();
+    var draftHeaders = headerMap_(draftValues[0]);
+    for (var d = 1; d < draftValues.length; d++) {
+      if (
+        stringValue_(draftValues[d][draftHeaders['Session ID']]) === queue.sessionId &&
+        stringValue_(draftValues[d][draftHeaders['Submit Status']]).toLowerCase() === 'draft'
+      ) {
+        draftSheet.getRange(d + 1, draftHeaders['Submit Status'] + 1).setValue('deferred');
+      }
+    }
+  }
+  SpreadsheetApp.flush();
+}
+
+function findActiveCandidateGenerationRequestV4_(ss, dateKey) {
+  var sheet = ss.getSheetByName(ER4.candidateGenerationSheet);
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  var values = sheet.getDataRange().getValues();
+  var headers = headerMap_(values[0]);
+  var matches = [];
+  for (var i = 1; i < values.length; i++) {
+    if (
+      Number(values[i][headers.Position]) === 0 &&
+      dashboardDateKeyV4_(values[i][headers['Queue Date']]) === dateKey &&
+      ['requested', 'staged'].indexOf(
+        stringValue_(values[i][headers['Generation Status']]).toLowerCase()
+      ) !== -1 &&
+      stringValue_(values[i][headers['Contract Version']]) === ER4.contractVersion
+    ) {
+      matches.push(values[i]);
+    }
+  }
+  if (matches.length > 1) throw new Error('More than one active material-shortfall request exists.');
+  if (!matches.length) return null;
+  return {
+    requestId: stringValue_(matches[0][headers['Request ID']]),
+    requestedCount: Number(matches[0][headers['Requested Count']]) || 0,
+    shortfallCount: Number(matches[0][headers['Shortfall Count']]) || 0,
+    status: stringValue_(matches[0][headers['Generation Status']]).toLowerCase()
+  };
+}
+
+function supersedeCandidateGenerationRequestsV4_(ss, dateKey) {
+  var sheet = ss.getSheetByName(ER4.candidateGenerationSheet);
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  var values = sheet.getDataRange().getValues();
+  var headers = headerMap_(values[0]);
+  var activeIds = {};
+  for (var i = 1; i < values.length; i++) {
+    if (
+      Number(values[i][headers.Position]) === 0 &&
+      dashboardDateKeyV4_(values[i][headers['Queue Date']]) === dateKey &&
+      ['requested', 'staged'].indexOf(
+        stringValue_(values[i][headers['Generation Status']]).toLowerCase()
+      ) !== -1 &&
+      stringValue_(values[i][headers['Contract Version']]) === ER4.contractVersion
+    ) {
+      activeIds[stringValue_(values[i][headers['Request ID']])] = true;
+    }
+  }
+  var changed = 0;
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex++) {
+    var requestId = stringValue_(values[rowIndex][headers['Request ID']]);
+    var status = stringValue_(values[rowIndex][headers['Generation Status']]).toLowerCase();
+    if (activeIds[requestId] && ['requested', 'staged'].indexOf(status) !== -1) {
+      sheet.getRange(rowIndex + 1, headers['Generation Status'] + 1).setValue('superseded');
+      changed++;
+    }
+  }
+  if (changed) SpreadsheetApp.flush();
+  return changed;
+}
+
 function getReviewBootstrapV4() {
   assertV4Enabled_();
   assertAuthorizedV4_();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   assertContractV4_(ss);
-  var queue = findQueueForDateV4_(ss, formatDateKey_(new Date()));
+  ensureDynamicQuestionCountSchemaV4_(ss);
+  var today = new Date();
+  var ensured = buildDailyQueueV4ForDate_(today);
+  if (ensured && ensured.state === 'candidate_shortfall') {
+    return {
+      ok: true,
+      state: 'candidate_shortfall',
+      message:
+        '这次题组还缺 ' + ensured.shortfallCount +
+        ' 条合适素材。你的个人语料仍会优先；请让 ChatGPT 按当前缺口生成个性化补充素材。',
+      requestId: ensured.requestId,
+      shortfallCount: ensured.shortfallCount,
+      requestedCount: ensured.dailyTarget,
+      dueCount: ensured.dueCount,
+      readyCandidateCount: ensured.readyCandidateCount,
+      chatGptManualUrl: ER4.chatGptManualUrl
+    };
+  }
+  var queue = findQueueForDateV4_(ss, formatDateKey_(today));
   if (!queue) {
     return {
       ok: true,
       state: 'waiting_next_queue',
       message: '今天暂时没有可开始的题组。如果你今天已经完成练习，下一场题目会按计划准备。',
-      chatGptTaskUrl: ER4.chatGptTaskUrl
+      chatGptTaskUrl: ER4.chatGptTaskUrl,
+      chatGptManualUrl: ER4.chatGptManualUrl
     };
   }
   validateMaterializedQueueV4_(queue.rows.map(function(item) { return item.values; }), queue.queueId);
@@ -828,6 +1773,10 @@ function getReviewBootstrapV4() {
       queueId: queue.queueId,
       sessionId: queue.sessionId
     };
+  }
+  if (queue.sessionId) {
+    var activeJournal = findJournalBySessionV4_(ss, queue.sessionId);
+    if (activeJournal) return responseForJournalV4_(activeJournal);
   }
 
   var questionBatch;
@@ -846,9 +1795,13 @@ function getReviewBootstrapV4() {
     return {
       ok: true,
       state: 'preparing',
-      message: 'ChatGPT 正在准备今天的 20 道题。题目准备完成并通过检查后即可开始。',
+      message:
+        '当前批次需要准备 ' + queue.plannedCount +
+        ' 道题。自动化可以完成；你也可以复制完整出题提示词，交给任意可使用 Google Drive 的高模型。',
       queueId: queue.queueId,
-      chatGptTaskUrl: ER4.chatGptTaskUrl
+      plannedCount: queue.plannedCount,
+      chatGptTaskUrl: ER4.chatGptTaskUrl,
+      chatGptManualUrl: ER4.chatGptManualUrl
     };
   }
   return startOrResumeReviewSessionV4_(ss, queue, questionBatch);
@@ -860,46 +1813,72 @@ function findQueueForDateV4_(ss, dateKey) {
   var headers = headerMap_(values[0]);
   requireHeaders_(
     headers,
-    ['Queue Date', 'Queue ID', 'Position', 'Queue Status', 'Session ID', 'Contract Version', 'Presented At'],
+    ['Queue Date', 'Queue ID', 'Position', 'Queue Status', 'Session ID', 'Contract Version',
+      'Presented At', 'Planned Count', 'Adjusted Target', 'Queue Kind'],
     DQ3.queueSheet
   );
-  var matches = [];
+  var groups = {};
   for (var i = 1; i < values.length; i++) {
     if (
       isDateValue_(values[i][headers['Queue Date']]) &&
       formatDateKey_(values[i][headers['Queue Date']]) === dateKey &&
       stringValue_(values[i][headers['Contract Version']]) === ER4.contractVersion
     ) {
-      matches.push({ rowNumber: i + 1, values: values[i] });
+      var queueId = stringValue_(values[i][headers['Queue ID']]);
+      if (!queueId) throw new Error('Daily Queue contains a row without Queue ID.');
+      if (!groups[queueId]) groups[queueId] = [];
+      groups[queueId].push({ rowNumber: i + 1, values: values[i] });
     }
   }
-  if (!matches.length) return null;
-  var queueIds = {};
-  matches.forEach(function(item) {
-    queueIds[stringValue_(item.values[headers['Queue ID']])] = true;
+  var queueIds = Object.keys(groups);
+  if (!queueIds.length) return null;
+  var queues = queueIds.map(function(queueId) {
+    var matches = groups[queueId];
+    matches.sort(function(a, b) {
+      return Number(a.values[headers.Position]) - Number(b.values[headers.Position]);
+    });
+    validateMaterializedQueueV4_(matches.map(function(item) { return item.values; }), queueId);
+    var statuses = uniqueStringsV4_(matches.map(function(item) {
+      return stringValue_(item.values[headers['Queue Status']]).toLowerCase();
+    }));
+    var aggregateStatus;
+    if (statuses.length === 1 && ['planned', 'presented', 'superseded'].indexOf(statuses[0]) !== -1) {
+      aggregateStatus = statuses[0];
+    } else if (
+      statuses.length >= 1 &&
+      statuses.every(function(status) { return status === 'committed' || status === 'deferred'; }) &&
+      statuses.indexOf('committed') !== -1
+    ) {
+      aggregateStatus = 'committed';
+    } else {
+      throw new Error(queueId + ' rows do not form one valid aggregate Queue status.');
+    }
+    var sessions = uniqueStringsV4_(matches.map(function(item) {
+      return stringValue_(item.values[headers['Session ID']]);
+    }).filter(Boolean));
+    if (sessions.length > 1) throw new Error(queueId + ' rows do not share one Session ID.');
+    return {
+      sheet: sheet,
+      headers: headers,
+      rows: matches,
+      queueId: queueId,
+      status: aggregateStatus,
+      sessionId: sessions[0] || '',
+      dateKey: dateKey,
+      plannedCount: queuePlannedCountFromRows_(matches.map(function(item) { return item.values; })),
+      adjustedTarget: queueAdjustedTargetFromRowsV4_(matches.map(function(item) { return item.values; })),
+      queueKind: stringValue_(matches[0].values[headers['Queue Kind']]) || 'primary'
+    };
   });
-  var ids = Object.keys(queueIds);
-  if (ids.length !== 1) throw new Error('Today has more than one v4 Queue ID.');
-  matches.sort(function(a, b) {
-    return Number(a.values[headers.Position]) - Number(b.values[headers.Position]);
+  var active = queues.filter(function(queue) {
+    return queue.status === 'planned' || queue.status === 'presented';
   });
-  var statuses = uniqueStringsV4_(matches.map(function(item) {
-    return stringValue_(item.values[headers['Queue Status']]).toLowerCase();
-  }));
-  var sessions = uniqueStringsV4_(matches.map(function(item) {
-    return stringValue_(item.values[headers['Session ID']]);
-  }).filter(Boolean));
-  if (statuses.length !== 1) throw new Error('Queue rows do not share one status.');
-  if (sessions.length > 1) throw new Error('Queue rows do not share one Session ID.');
-  return {
-    sheet: sheet,
-    headers: headers,
-    rows: matches,
-    queueId: ids[0],
-    status: statuses[0],
-    sessionId: sessions[0] || '',
-    dateKey: dateKey
-  };
+  if (active.length > 1) throw new Error('Today has more than one active v4 Queue ID.');
+  if (active.length === 1) return active[0];
+  var completed = queues.filter(function(queue) { return queue.status === 'committed'; });
+  if (!completed.length) return null;
+  completed.sort(function(a, b) { return a.queueId < b.queueId ? 1 : -1; });
+  return completed[0];
 }
 
 function validatePreparedQuestionBatchV4_(ss, queue) {
@@ -985,8 +1964,12 @@ function validatePreparedQuestionBatchV4_(ss, queue) {
 }
 
 function validateQuestionItemsV4_(items, headers, queue) {
-  if (items.length !== ER4.maxQuestions) {
-    throw new Error('ChatGPT must stage exactly 20 questions; found ' + items.length + '.');
+  var plannedCount = queue.plannedCount || queue.rows.length;
+  if (items.length !== plannedCount) {
+    throw new Error(
+      'ChatGPT must stage exactly ' + plannedCount +
+      ' questions; found ' + items.length + '.'
+    );
   }
   var queueByPosition = {};
   queue.rows.forEach(function(item) {
@@ -996,7 +1979,7 @@ function validateQuestionItemsV4_(items, headers, queue) {
   items.forEach(function(item) {
     var row = item.values;
     var position = Number(row[headers.Position]);
-    if (position < 1 || position > 20 || positions[position]) {
+    if (position < 1 || position > plannedCount || positions[position]) {
       throw new Error('Question batch has an invalid or duplicate position: ' + position + '.');
     }
     positions[position] = true;
@@ -1080,7 +2063,7 @@ function startOrResumeReviewSessionV4_(ss, queue, batch) {
     if (
       readbackQueue.status !== 'presented' ||
       readbackQueue.sessionId !== sessionId ||
-      readbackQueue.rows.length !== 20
+      readbackQueue.rows.length !== readbackQueue.plannedCount
     ) {
       throw new Error('Session opening readback failed.');
     }
@@ -1142,6 +2125,8 @@ function buildQuizResponseV4_(ss, queue, batch, presentedAt) {
   });
   var journal = findJournalBySessionV4_(ss, queue.sessionId);
   if (journal) return responseForJournalV4_(journal);
+  var countSettings = readQuestionCountSettingsV4_(ss, queue.dateKey);
+  var completedBeforeBatch = completedQuestionsForDateV4_(ss, queue.dateKey, queue.sessionId);
   return {
     ok: true,
     state: 'answering',
@@ -1151,7 +2136,13 @@ function buildQuizResponseV4_(ss, queue, batch, presentedAt) {
     generationId: batch.generationId,
     contentHash: batch.contentHash,
     queueMeta: {
-      planned: queue.rows.length,
+      planned: queue.plannedCount || queue.rows.length,
+      adjustedTarget: queue.adjustedTarget == null
+        ? (queue.plannedCount || queue.rows.length)
+        : queue.adjustedTarget,
+      requested: countSettings.targetCount,
+      completedBeforeBatch: completedBeforeBatch,
+      queueKind: queue.queueKind || 'primary',
       due: queue.rows.filter(function(item) {
         return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() !== 'new';
       }).length,
@@ -1160,7 +2151,8 @@ function buildQuizResponseV4_(ss, queue, batch, presentedAt) {
       }).length
     },
     questions: questions,
-    chatGptTaskUrl: ER4.chatGptTaskUrl
+    chatGptTaskUrl: ER4.chatGptTaskUrl,
+    chatGptManualUrl: ER4.chatGptManualUrl
   };
 }
 
@@ -1219,7 +2211,9 @@ function saveDraftV4(sessionId, position, answer, expectedRevision) {
     position = Number(position);
     answer = stringValue_(answer);
     expectedRevision = Number(expectedRevision) || 0;
-    if (position < 1 || position > 20) throw new Error('Invalid question position.');
+    if (position < 1 || position > ER4.maxBatchQuestionCount) {
+      throw new Error('Invalid question position.');
+    }
     if (answer.length > 2000) throw new Error('Answer is too long.');
     var journal = findJournalBySessionV4_(ss, sessionId);
     if (journal) throw new Error('This answer batch is already frozen.');
@@ -1332,7 +2326,9 @@ function revealAnswerV4(sessionId, position, answer, expectedRevision) {
     position = Number(position);
     answer = stringValue_(answer);
     expectedRevision = Number(expectedRevision) || 0;
-    if (position < 1 || position > 20) throw new Error('Invalid question position.');
+    if (position < 1 || position > ER4.maxBatchQuestionCount) {
+      throw new Error('Invalid question position.');
+    }
     if (!answer) throw new Error('Answer ' + position + ' is blank.');
     if (answer.length > 2000) throw new Error('Answer ' + position + ' is too long.');
     if (findJournalBySessionV4_(ss, sessionId)) {
@@ -1493,7 +2489,13 @@ function submitSessionV4(sessionId, answers) {
     if (!queue || queue.status !== 'presented') {
       throw new Error('Session is not open for submission.');
     }
-    var normalized = normalizeAnswerBatchV4_(answers);
+    var normalized = normalizeAnswerBatchV4_(answers, queue.plannedCount);
+    if (normalized.length < queue.adjustedTarget) {
+      throw new Error(
+        'This session currently requires at least ' + queue.adjustedTarget +
+        ' locked answers; found ' + normalized.length + '.'
+      );
+    }
     var answerHash = hashV4_(normalized.map(function(item) {
       return [item.position, item.answer];
     }));
@@ -1519,9 +2521,6 @@ function submitSessionV4(sessionId, answers) {
         rowByPosition[draftPosition] = i + 1;
         draftByPosition[draftPosition] = draftValues[i];
       }
-    }
-    if (Object.keys(rowByPosition).length !== 20) {
-      throw new Error('All 20 answers must be locked and revealed before batch submission.');
     }
     normalized.forEach(function(item) {
       var stored = draftByPosition[item.position];
@@ -1570,7 +2569,6 @@ function submitSessionV4(sessionId, answers) {
         .setNumberFormat('@')
         .setValue(ER4.contractVersion);
     });
-
     var journalSheet = requireSheet_(ss, ER4.journalSheet);
     journalSheet.appendRow([
       submissionId,
@@ -1596,10 +2594,12 @@ function submitSessionV4(sessionId, answers) {
       .setValue(ER4.contractVersion);
     SpreadsheetApp.flush();
 
-    var drafts = readDraftsForSessionV4_(ss, sessionId);
+    var drafts = readDraftsForSessionV4_(ss, sessionId).filter(function(item) {
+      return item.submitStatus === 'submitted';
+    });
     if (
-      drafts.length !== 20 ||
-      drafts.some(function(item) { return item.submitStatus !== 'submitted'; })
+      drafts.length !== normalized.length ||
+      drafts.some(function(item) { return item.answerHash !== answerHash; })
     ) {
       throw new Error('Frozen answer readback failed.');
     }
@@ -1613,27 +2613,25 @@ function submitSessionV4(sessionId, answers) {
   }
 }
 
-function normalizeAnswerBatchV4_(answers) {
+function normalizeAnswerBatchV4_(answers, plannedCount) {
   if (!Array.isArray(answers)) throw new Error('Answer batch is missing.');
+  plannedCount = normalizeQuestionCount_(plannedCount, ER4.legacyQuestionCount);
+  if (!answers.length) throw new Error('At least one locked answer is required.');
   var byPosition = {};
   answers.forEach(function(item) {
     var position = Number(item && item.position);
     var answer = stringValue_(item && item.answer);
-    if (position < 1 || position > 20 || byPosition[position] !== undefined) {
+    if (position < 1 || position > plannedCount || byPosition[position] !== undefined) {
       throw new Error('Answer batch has an invalid or duplicate position.');
     }
     if (!answer) throw new Error('Answer ' + position + ' is blank.');
     if (answer.length > 2000) throw new Error('Answer ' + position + ' is too long.');
     byPosition[position] = answer;
   });
-  var normalized = [];
-  for (var position = 1; position <= 20; position++) {
-    if (byPosition[position] === undefined) {
-      throw new Error('Missing answer position: ' + position + '.');
-    }
-    normalized.push({ position: position, answer: byPosition[position] });
-  }
-  return normalized;
+  return Object.keys(byPosition).map(Number).sort(function(a, b) { return a - b; })
+    .map(function(position) {
+      return { position: position, answer: byPosition[position] };
+    });
 }
 
 function findQueueBySessionV4_(ss, sessionId) {
@@ -1656,7 +2654,20 @@ function findQueueBySessionV4_(ss, sessionId) {
   var statuses = uniqueStringsV4_(rows.map(function(item) {
     return stringValue_(item.values[headers['Queue Status']]).toLowerCase();
   }));
-  if (statuses.length !== 1) throw new Error('Session Queue status mismatch.');
+  var status;
+  if (statuses.length === 1 && statuses[0] === 'presented') {
+    status = 'presented';
+  } else if (
+    statuses.length >= 1 &&
+    statuses.every(function(value) { return value === 'committed' || value === 'deferred'; }) &&
+    statuses.indexOf('committed') !== -1
+  ) {
+    status = 'committed';
+  } else {
+    throw new Error('Session Queue status mismatch.');
+  }
+  var rawRows = rows.map(function(item) { return item.values; });
+  validateMaterializedQueueV4_(rawRows, stringValue_(rows[0].values[headers['Queue ID']]));
   return {
     sheet: sheet,
     headers: headers,
@@ -1664,7 +2675,10 @@ function findQueueBySessionV4_(ss, sessionId) {
     queueId: stringValue_(rows[0].values[headers['Queue ID']]),
     sessionId: sessionId,
     dateKey: formatDateKey_(rows[0].values[headers['Queue Date']]),
-    status: statuses[0]
+    status: status,
+    plannedCount: queuePlannedCountFromRows_(rawRows),
+    adjustedTarget: queueAdjustedTargetFromRowsV4_(rawRows),
+    queueKind: stringValue_(rows[0].values[headers['Queue Kind']]) || 'primary'
   };
 }
 
@@ -1734,8 +2748,30 @@ function responseForJournalV4_(journal) {
     errorCode: journal.errorCode,
     errorDetail: journal.errorDetail,
     chatGptTaskUrl: ER4.chatGptTaskUrl,
+    chatGptManualUrl: ER4.chatGptManualUrl,
     gradingCommand: '批改'
   };
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var queue = findQueueBySessionV4_(ss, journal.sessionId);
+  if (queue) {
+    var settings = readQuestionCountSettingsV4_(ss, queue.dateKey);
+    response.queueMeta = {
+      planned: queue.plannedCount,
+      adjustedTarget: queue.adjustedTarget,
+      requested: settings.targetCount,
+      completedBeforeBatch: completedQuestionsForDateV4_(ss, queue.dateKey, queue.sessionId),
+      completedInBatch: readDraftsForSessionV4_(ss, queue.sessionId).filter(function(item) {
+        return stringValue_(item.submitStatus).toLowerCase() === 'submitted';
+      }).length,
+      queueKind: queue.queueKind,
+      due: queue.rows.filter(function(item) {
+        return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() !== 'new';
+      }).length,
+      fresh: queue.rows.filter(function(item) {
+        return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() === 'new';
+      }).length
+    };
+  }
   if (journal.resultJson) {
     try { response.result = JSON.parse(journal.resultJson); } catch (ignore) {}
   }
@@ -1757,6 +2793,80 @@ function responseForJournalV4_(journal) {
     } catch (ignore2) {}
   }
   return response;
+}
+
+function getManualOperationPromptV4(mode, expectedIdentity) {
+  assertV4Enabled_();
+  assertAuthorizedV4_();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  assertContractV4_(ss);
+  ensureDynamicQuestionCountSchemaV4_(ss);
+  mode = stringValue_(mode).toLowerCase();
+  expectedIdentity = stringValue_(expectedIdentity);
+  if (['question_prepare', 'grading', 'candidate_generation'].indexOf(mode) === -1) {
+    throw new Error('Unsupported manual ChatGPT operation.');
+  }
+  var todayKey = formatDateKey_(new Date());
+  var details = {};
+  if (mode === 'question_prepare') {
+    var queue = findQueueForDateV4_(ss, todayKey);
+    if (!queue || queue.status !== 'planned') {
+      throw new Error('There is no planned Queue batch waiting for question preparation.');
+    }
+    if (expectedIdentity && queue.queueId !== expectedIdentity) {
+      throw new Error('The planned Queue changed before the manual prompt was prepared. Reload the page.');
+    }
+    details.queueId = queue.queueId;
+    details.count = queue.plannedCount;
+  } else if (mode === 'grading') {
+    var journalSheet = requireSheet_(ss, ER4.journalSheet);
+    var journalValues = journalSheet.getDataRange().getValues();
+    var journalHeaders = headerMap_(journalValues[0]);
+    var awaiting = [];
+    for (var i = 1; i < journalValues.length; i++) {
+      if (
+        stringValue_(journalValues[i][journalHeaders.Status]).toLowerCase() === 'awaiting_chatgpt' &&
+        stringValue_(journalValues[i][journalHeaders['Contract Version']]) === ER4.contractVersion
+      ) {
+        awaiting.push({
+          submissionId: stringValue_(journalValues[i][journalHeaders['Submission ID']]),
+          sessionId: stringValue_(journalValues[i][journalHeaders['Session ID']])
+        });
+      }
+    }
+    if (expectedIdentity) awaiting = awaiting.filter(function(item) {
+      return item.submissionId === expectedIdentity || item.sessionId === expectedIdentity;
+    });
+    if (awaiting.length !== 1) {
+      throw new Error('Manual grading requires exactly one awaiting submission; found ' + awaiting.length + '.');
+    }
+    details.submissionId = awaiting[0].submissionId;
+    details.sessionId = awaiting[0].sessionId;
+  } else {
+    var request = findActiveCandidateGenerationRequestV4_(ss, todayKey);
+    if (!request) throw new Error('There is no active material-shortfall request.');
+    if (expectedIdentity && request.requestId !== expectedIdentity) {
+      throw new Error('The material-shortfall request changed before the manual prompt was prepared. Reload the page.');
+    }
+    details.requestId = request.requestId;
+    details.count = request.shortfallCount;
+  }
+  var prompt = HtmlService.createTemplateFromFile('DailyTaskPrompt').getRawContent();
+  prompt += '\n\n====================\n本次手动执行模式\n====================\n';
+  prompt += 'RUN_MODE=' + mode + '\n';
+  prompt += '这是网页生成的完整独立提示词。立即执行对应模式，不要把本段当成需要解释的材料。\n';
+  if (details.queueId) prompt += 'EXPECTED_QUEUE_ID=' + details.queueId + '\n';
+  if (details.submissionId) prompt += 'EXPECTED_SUBMISSION_ID=' + details.submissionId + '\n';
+  if (details.sessionId) prompt += 'EXPECTED_SESSION_ID=' + details.sessionId + '\n';
+  if (details.requestId) prompt += 'EXPECTED_REQUEST_ID=' + details.requestId + '\n';
+  if (details.count) prompt += 'EXPECTED_COUNT=' + details.count + '\n';
+  return {
+    ok: true,
+    mode: mode,
+    prompt: prompt,
+    chatGptUrl: ER4.chatGptManualUrl,
+    details: details
+  };
 }
 
 function parseJsonArrayV4_(value, field, position) {
@@ -1825,6 +2935,26 @@ function processPendingGradeInboxV4() {
   }
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   assertContractV4_(ss);
+  var candidateGeneration;
+  var queueContinuation = null;
+  var queueLock = LockService.getDocumentLock();
+  queueLock.waitLock(30000);
+  try {
+    ensureDynamicQuestionCountSchemaV4_(ss);
+    candidateGeneration = processCandidateGenerationInboxV4_(
+      ss,
+      formatDateKey_(new Date())
+    );
+    if (candidateGeneration.processed) {
+      queueContinuation = ensureQueueForDateV4Unlocked_(
+        ss,
+        new Date(),
+        'candidate shortfall resolved'
+      );
+    }
+  } finally {
+    queueLock.releaseLock();
+  }
   var sheet = requireSheet_(ss, ER4.journalSheet);
   var values = sheet.getDataRange().getValues();
   var headers = headerMap_(values[0]);
@@ -1851,7 +2981,13 @@ function processPendingGradeInboxV4() {
       return { ok: false, sessionId: sessionId, error: error.message };
     }
   });
-  return { ok: true, processed: results.length, results: results };
+  return {
+    ok: true,
+    processed: results.length,
+    results: results,
+    candidateGeneration: candidateGeneration,
+    queueContinuation: queueContinuation
+  };
 }
 
 function processSubmissionForSessionV4_(sessionId) {
@@ -1952,20 +3088,20 @@ function readStagedGradesV4_(ss, journal) {
 }
 
 function validateStagedGradesV4_(ss, journal, staged) {
-  if (staged.rows.length !== ER4.maxQuestions) {
-    throw new Error(
-      'ChatGPT must stage exactly 20 grade rows for one submission; found ' +
-      staged.rows.length + '.'
-    );
-  }
   var queue = findQueueBySessionV4_(ss, journal.sessionId);
   if (!queue || ['presented', 'committed'].indexOf(queue.status) === -1) {
     throw new Error('The submitted Session Queue is unavailable.');
   }
-  if (queue.queueId !== journal.queueId || queue.rows.length !== 20) {
+  if (queue.queueId !== journal.queueId || queue.rows.length !== queue.plannedCount) {
     throw new Error('Commit Journal and Daily Queue identity mismatch.');
   }
   var drafts = readSubmittedDraftsV4_(ss, journal);
+  if (staged.rows.length !== drafts.length) {
+    throw new Error(
+      'ChatGPT must stage exactly ' + drafts.length +
+      ' grade rows for the submitted answers; found ' + staged.rows.length + '.'
+    );
+  }
   var draftByPosition = {};
   drafts.forEach(function(item) { draftByPosition[item.position] = item; });
   var gradeByPosition = {};
@@ -1976,7 +3112,7 @@ function validateStagedGradesV4_(ss, journal, staged) {
     var row = item.values;
     var h = item.headers;
     var position = Number(row[h.Position]);
-    if (position < 1 || position > 20 || gradeByPosition[position]) {
+    if (position < 1 || position > queue.plannedCount || gradeByPosition[position]) {
       throw new Error('Grade batch has an invalid or duplicate position: ' + position + '.');
     }
     if (
@@ -2032,11 +3168,12 @@ function validateStagedGradesV4_(ss, journal, staged) {
   if (suggestionJsons.length > 1) {
     throw new Error('Candidate Suggestions JSON must appear in at most one grade row.');
   }
-  var grades = [];
-  for (var position = 1; position <= 20; position++) {
-    if (!gradeByPosition[position]) throw new Error('Missing grade position: ' + position + '.');
-    grades.push(gradeByPosition[position]);
-  }
+  var grades = drafts.map(function(draft) {
+    if (!gradeByPosition[draft.position]) {
+      throw new Error('Missing grade position: ' + draft.position + '.');
+    }
+    return gradeByPosition[draft.position];
+  });
   var suggestions = suggestionJsons.length
     ? parseCandidateSuggestionsV4_(suggestionJsons[0])
     : [];
@@ -2092,10 +3229,18 @@ function readSubmittedDraftsV4_(ss, journal) {
       });
     }
   }
-  if (rows.length !== 20) {
-    throw new Error('Exactly 20 frozen submitted answers are required; found ' + rows.length + '.');
+  var queue = findQueueBySessionV4_(ss, journal.sessionId);
+  if (!queue || rows.length < 1 || rows.length > queue.plannedCount) {
+    throw new Error(
+      'Frozen submitted-answer count is invalid for this Queue; found ' + rows.length + '.'
+    );
   }
   rows.sort(function(a, b) { return a.position - b.position; });
+  var positions = {};
+  rows.forEach(function(item) {
+    if (positions[item.position]) throw new Error('Frozen submitted answers contain a duplicate position.');
+    positions[item.position] = true;
+  });
   return rows;
 }
 
@@ -2128,7 +3273,7 @@ function confirmGradesV4(sessionId, decisions) {
     decisions.forEach(function(decision) {
       var position = Number(decision && decision.position);
       var result = stringValue_(decision && decision.result).toLowerCase();
-      if (position < 1 || position > 20 || decisionByPosition[position]) {
+      if (position < 1 || position > ER4.maxBatchQuestionCount || decisionByPosition[position]) {
         throw new Error('Confirmation contains an invalid or duplicate position.');
       }
       if (ER4_RESULTS.indexOf(result) === -1) {
@@ -2201,7 +3346,12 @@ function parseConfirmationSnapshotV4_(journal) {
   } catch (error) {
     throw new Error('The verified grading snapshot is unavailable.');
   }
-  if (!snapshot || !Array.isArray(snapshot.grades) || snapshot.grades.length !== 20) {
+  if (
+    !snapshot ||
+    !Array.isArray(snapshot.grades) ||
+    snapshot.grades.length < 1 ||
+    snapshot.grades.length > ER4.maxBatchQuestionCount
+  ) {
     throw new Error('The verified grading snapshot is incomplete.');
   }
   if (!Array.isArray(snapshot.candidateSuggestions)) snapshot.candidateSuggestions = [];
@@ -2353,6 +3503,20 @@ function commitSubmissionV4_(ss, journal) {
 
   var result = verifyFormalWritesV4_(ss, plan, true);
   markGradeRowsCommittedV4_(ss, journal.submissionId, journal.sessionId);
+  try {
+    var nextBatch = ensureQueueForDateV4Unlocked_(
+      ss,
+      parseDateKey_(plan.queueDate),
+      'continue requested count after committed batch'
+    );
+    result.nextBatch = nextBatch || null;
+    if (nextBatch && nextBatch.state === 'candidate_shortfall') {
+      result.nextMaterialShortfall = Number(nextBatch.shortfallCount || 0);
+      result.nextMaterialRequestId = nextBatch.requestId || '';
+    }
+  } catch (nextBatchError) {
+    result.nextBatchError = nextBatchError.message;
+  }
   updateJournalV4_(journal, {
     Status: 'committed',
     'Last Completed Step': 'verified_complete',
@@ -2368,7 +3532,7 @@ function commitSubmissionV4_(ss, journal) {
 
 function createCommitPlanV4_(ss, journal, snapshot) {
   var queue = findQueueBySessionV4_(ss, journal.sessionId);
-  if (!queue || queue.status !== 'presented' || queue.rows.length !== 20) {
+  if (!queue || queue.status !== 'presented' || queue.rows.length !== queue.plannedCount) {
     throw new Error('A complete presented Queue is required before commit planning.');
   }
   if (queue.queueId !== journal.queueId) {
@@ -2419,7 +3583,13 @@ function createCommitPlanV4_(ss, journal, snapshot) {
   var readyCountAfterPromotion = 0;
   var personalReadyCountAfterPromotion = 0;
   var selectedCandidateIds = {};
+  var submittedPositions = {};
+  snapshot.grades.forEach(function(grade) {
+    submittedPositions[Number(grade.position)] = true;
+  });
   queue.rows.forEach(function(item) {
+    var queuePosition = Number(item.values[queue.headers.Position]);
+    if (!submittedPositions[queuePosition]) return;
     var candidateId = stringValue_(item.values[queue.headers['Candidate ID']]);
     if (candidateId) selectedCandidateIds[candidateId] = true;
   });
@@ -2463,7 +3633,7 @@ function createCommitPlanV4_(ss, journal, snapshot) {
     var row = queueItem.values;
     var position = Number(row[queue.headers.Position]);
     var grade = gradeByPosition[position];
-    if (!grade) throw new Error('Verified grade is missing at position ' + position + '.');
+    if (!grade) return;
     var phraseId = stringValue_(row[queue.headers['Phrase ID']]);
     var candidateId = stringValue_(row[queue.headers['Candidate ID']]);
     var candidate = candidateId ? candidateById[candidateId] : null;
@@ -2611,6 +3781,11 @@ function createCommitPlanV4_(ss, journal, snapshot) {
     queueId: journal.queueId,
     answerHash: journal.answerHash,
     queueDate: queueDate,
+    plannedCount: queue.plannedCount,
+    adjustedTarget: queue.adjustedTarget,
+    actualCount: items.length,
+    requestedCount: readQuestionCountSettingsV4_(ss, queueDate).targetCount,
+    completedBeforeBatch: completedQuestionsForDateV4_(ss, queueDate, journal.sessionId),
     presentedAt: queue.rows[0].values[queue.headers['Presented At']].toISOString(),
     committedAt: new Date().toISOString(),
     items: items,
@@ -2634,7 +3809,10 @@ function validateFrozenCommitPlanV4_(journal, snapshot, plan) {
     plan.answerHash !== journal.answerHash ||
     plan.contractVersion !== ER4.contractVersion ||
     !Array.isArray(plan.items) ||
-    plan.items.length !== 20
+    !Array.isArray(snapshot.grades) ||
+    plan.items.length !== snapshot.grades.length ||
+    plan.items.length < 1 ||
+    plan.items.length > Number(plan.plannedCount || ER4.maxBatchQuestionCount)
   ) {
     throw new Error('Frozen commit plan identity or cardinality mismatch.');
   }
@@ -2642,7 +3820,7 @@ function validateFrozenCommitPlanV4_(journal, snapshot, plan) {
   plan.items.forEach(function(item) {
     if (
       item.position < 1 ||
-      item.position > 20 ||
+      item.position > Number(plan.plannedCount || ER4.maxBatchQuestionCount) ||
       positions[item.position] ||
       ER4_RESULTS.indexOf(item.result) === -1 ||
       !item.phraseId ||
@@ -3020,17 +4198,31 @@ function appendNoteV4_(existing, addition) {
 
 function writeDailyQueueCommitV4_(ss, plan) {
   var queue = findQueueBySessionV4_(ss, plan.sessionId);
-  if (!queue || queue.rows.length !== 20) throw new Error('Daily Queue disappeared before commit.');
+  if (!queue || queue.rows.length !== queue.plannedCount) {
+    throw new Error('Daily Queue disappeared before commit.');
+  }
   if (queue.queueId !== plan.queueId) throw new Error('Daily Queue ID changed before commit.');
   var itemByPosition = {};
   plan.items.forEach(function(item) { itemByPosition[item.position] = item; });
   queue.rows.forEach(function(rowItem) {
     var position = Number(rowItem.values[queue.headers.Position]);
     var item = itemByPosition[position];
-    if (!item) throw new Error('Commit plan is missing Queue position ' + position + '.');
     var currentStatus = stringValue_(
       queue.sheet.getRange(rowItem.rowNumber, queue.headers['Queue Status'] + 1).getValue()
     ).toLowerCase();
+    if (!item) {
+      if (currentStatus !== 'presented' && currentStatus !== 'deferred') {
+        throw new Error('Unused Daily Queue row cannot be deferred from ' + currentStatus + '.');
+      }
+      queue.sheet.getRange(rowItem.rowNumber, queue.headers['Queue Status'] + 1).setValue('deferred');
+      queue.sheet.getRange(rowItem.rowNumber, queue.headers['Session ID'] + 1).setValue(plan.sessionId);
+      queue.sheet.getRange(rowItem.rowNumber, queue.headers['Committed At'] + 1)
+        .setValue(new Date(plan.committedAt))
+        .setNumberFormat('yyyy-mm-dd hh:mm:ss');
+      queue.sheet.getRange(rowItem.rowNumber, queue.headers['Change Reason'] + 1)
+        .setValue('not attempted when this session was closed');
+      return;
+    }
     if (currentStatus !== 'presented' && currentStatus !== 'committed') {
       throw new Error('Daily Queue status cannot be committed from ' + currentStatus + '.');
     }
@@ -3044,6 +4236,32 @@ function writeDailyQueueCommitV4_(ss, plan) {
       .setNumberFormat('@')
       .setValue(ER4.contractVersion);
   });
+  var questionSheet = requireSheet_(ss, ER4.questionSheet);
+  var questionValues = questionSheet.getDataRange().getValues();
+  var questionHeaders = headerMap_(questionValues[0]);
+  for (var q = 1; q < questionValues.length; q++) {
+    var questionPosition = Number(questionValues[q][questionHeaders.Position]);
+    if (
+      stringValue_(questionValues[q][questionHeaders['Session ID']]) === plan.sessionId &&
+      !itemByPosition[questionPosition] &&
+      stringValue_(questionValues[q][questionHeaders['Question Status']]).toLowerCase() === 'bound'
+    ) {
+      questionSheet.getRange(q + 1, questionHeaders['Question Status'] + 1).setValue('deferred');
+    }
+  }
+  var draftSheet = requireSheet_(ss, ER4.draftSheet);
+  var draftValues = draftSheet.getDataRange().getValues();
+  var draftHeaders = headerMap_(draftValues[0]);
+  for (var d = 1; d < draftValues.length; d++) {
+    var draftPosition = Number(draftValues[d][draftHeaders.Position]);
+    if (
+      stringValue_(draftValues[d][draftHeaders['Session ID']]) === plan.sessionId &&
+      !itemByPosition[draftPosition] &&
+      stringValue_(draftValues[d][draftHeaders['Submit Status']]).toLowerCase() === 'draft'
+    ) {
+      draftSheet.getRange(d + 1, draftHeaders['Submit Status'] + 1).setValue('deferred');
+    }
+  }
   SpreadsheetApp.flush();
 }
 
@@ -3057,6 +4275,9 @@ function writeSessionLogV4_(ss, plan) {
     'Database Write Status', 'Readback Status', 'Contract Version', 'Notes'
   ];
   requireHeaders_(headers, required, 'Session Log');
+  var sessionTarget = plan.adjustedTarget === undefined
+    ? plan.items.length
+    : Number(plan.adjustedTarget);
   var existingRows = [];
   for (var i = 1; i < values.length; i++) {
     if (stringValue_(values[i][headers['Session ID']]) === plan.sessionId) {
@@ -3067,7 +4288,8 @@ function writeSessionLogV4_(ss, plan) {
   if (existingRows.length === 1) {
     var existing = existingRows[0];
     if (
-      Number(existing[headers['Questions Logged']]) !== 20 ||
+      Number(existing[headers['Max Questions']]) !== sessionTarget ||
+      Number(existing[headers['Questions Logged']]) !== plan.items.length ||
       stringValue_(existing[headers['Database Write Status']]) !== 'verified' ||
       stringValue_(existing[headers['Readback Status']]) !== 'verified' ||
       stringValue_(existing[headers['Contract Version']]) !== ER4.contractVersion
@@ -3084,17 +4306,18 @@ function writeSessionLogV4_(ss, plan) {
     parseDateKey_(plan.queueDate),
     9 / 24,
     new Date(plan.presentedAt),
-    20,
-    20,
-    20,
+    sessionTarget,
+    plan.items.length,
+    plan.items.length,
     newCount,
     'verified',
     'verified',
     ER4.contractVersion,
-    'v4 Web App submission; ChatGPT staged grading; deterministic Apps Script commit; ' +
-    plan.suggestionPlans.length + ' personalized AI fallback candidates added; ' +
-    plan.personalReadyBeforeSuggestions + ' personal ready candidates remained before fallback; ' +
-    plan.personalBacklogCount + ' personal intake items were pending.'
+    'v4 Web App submission; requested daily count=' + plan.requestedCount +
+    '; batch planned=' + plan.plannedCount +
+    '; adjusted session target=' + sessionTarget +
+    '; actual completed=' + plan.items.length +
+    '; ChatGPT staged grading; deterministic Apps Script commit; unused Queue rows were deferred without SRS changes.'
   ]);
   var rowNumber = sheet.getLastRow();
   sheet.getRange(rowNumber, headers.Date + 1).setNumberFormat('yyyy-mm-dd');
@@ -3240,7 +4463,12 @@ function verifyPhraseBankV4_(ss, plan) {
 
 function verifyDailyQueueV4_(ss, plan) {
   var queue = findQueueBySessionV4_(ss, plan.sessionId);
-  if (!queue || queue.queueId !== plan.queueId || queue.status !== 'committed' || queue.rows.length !== 20) {
+  if (
+    !queue ||
+    queue.queueId !== plan.queueId ||
+    queue.status !== 'committed' ||
+    queue.rows.length !== queue.plannedCount
+  ) {
     throw new Error('Daily Queue commit readback failed.');
   }
   var byPosition = {};
@@ -3249,13 +4477,22 @@ function verifyDailyQueueV4_(ss, plan) {
   queue.rows.forEach(function(rowItem) {
     var position = Number(rowItem.values[queue.headers.Position]);
     var item = byPosition[position];
-    if (
-      !item ||
-      stringValue_(rowItem.values[queue.headers['Phrase ID']]) !== item.phraseId ||
+    var rowStatus = stringValue_(rowItem.values[queue.headers['Queue Status']]).toLowerCase();
+    if (item) {
+      if (
+        rowStatus !== 'committed' ||
+        stringValue_(rowItem.values[queue.headers['Phrase ID']]) !== item.phraseId ||
+        !isDateValue_(rowItem.values[queue.headers['Committed At']]) ||
+        stringValue_(rowItem.values[queue.headers['Contract Version']]) !== ER4.contractVersion
+      ) {
+        throw new Error('Daily Queue committed-row readback failed at position ' + position + '.');
+      }
+    } else if (
+      rowStatus !== 'deferred' ||
       !isDateValue_(rowItem.values[queue.headers['Committed At']]) ||
       stringValue_(rowItem.values[queue.headers['Contract Version']]) !== ER4.contractVersion
     ) {
-      throw new Error('Daily Queue row readback failed at position ' + position + '.');
+      throw new Error('Daily Queue deferred-row readback failed at position ' + position + '.');
     }
     presented.push(rowItem.values[queue.headers['Presented At']]);
   });
@@ -3279,10 +4516,13 @@ function verifySessionLogV4_(ss, plan) {
   }
   if (matches.length !== 1) throw new Error('Session Log readback requires exactly one row.');
   var row = matches[0];
+  var sessionTarget = plan.adjustedTarget === undefined
+    ? plan.items.length
+    : Number(plan.adjustedTarget);
   if (
-    Number(row[h['Max Questions']]) !== 20 ||
-    Number(row[h['Questions Logged']]) !== 20 ||
-    Number(row[h['Unique Chunks']]) !== 20 ||
+    Number(row[h['Max Questions']]) !== sessionTarget ||
+    Number(row[h['Questions Logged']]) !== plan.items.length ||
+    Number(row[h['Unique Chunks']]) !== plan.items.length ||
     stringValue_(row[h['Database Write Status']]) !== 'verified' ||
     stringValue_(row[h['Readback Status']]) !== 'verified' ||
     stringValue_(row[h['Contract Version']]) !== ER4.contractVersion ||
@@ -3300,6 +4540,14 @@ function buildCommittedResultV4_(plan) {
     sessionId: plan.sessionId,
     queueId: plan.queueId,
     committedAt: formatDateTimeV4_(new Date(plan.committedAt)),
+    requestedCount: Number(plan.requestedCount || plan.items.length),
+    plannedCount: Number(plan.plannedCount || plan.items.length),
+    adjustedTarget: Number(
+      plan.adjustedTarget === undefined ? plan.items.length : plan.adjustedTarget
+    ),
+    actualCount: plan.items.length,
+    completedBeforeBatch: Number(plan.completedBeforeBatch || 0),
+    completedToday: Number(plan.completedBeforeBatch || 0) + plan.items.length,
     counts: counts,
     dueCount: plan.items.filter(function(item) {
       return item.selectionType !== 'new';
@@ -3871,6 +5119,7 @@ function getLearningDashboardV4() {
   assertAuthorizedV4_();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   assertContractV4_(ss);
+  ensureDynamicQuestionCountSchemaV4_(ss);
   var todayKey = formatDateKey_(new Date());
   var cache = CacheService.getUserCache();
   var cacheKey = 'ER4_DASHBOARD_V1_' + todayKey;
@@ -3912,7 +5161,8 @@ function buildLearningDashboardV4_(ss, todayKey) {
     ss,
     DQ3.queueSheet,
     ['Queue Date', 'Queue ID', 'Position', 'Selection Type', 'Queue Status', 'Session ID',
-      'Committed At', 'Presented At', 'Contract Version']
+      'Committed At', 'Presented At', 'Contract Version', 'Planned Count',
+      'Adjusted Target', 'Queue Kind']
   );
   var questionTable = readDashboardTableV4_(
     ss,
@@ -4114,28 +5364,26 @@ function buildLearningDashboardV4_(ss, todayKey) {
   });
   var recentSeven = recentThirty.filter(function(item) { return item.date >= sevenStart; });
   var todayRows = recentThirty.filter(function(item) { return item.date === todayKey; });
+  var questionCountControl = buildQuestionCountControlV4_(ss, todayKey);
+  var currentQueue = findQueueForDateV4_(ss, todayKey);
+  var currentQueueId = currentQueue ? currentQueue.queueId : '';
   var todayQueueRows = queueTable.rows.filter(function(row) {
     return dashboardDateKeyV4_(row[queueTable.headers['Queue Date']]) === todayKey &&
+      dashboardStringV4_(row, queueTable.headers, 'Queue ID') === currentQueueId &&
       dashboardStringV4_(row, queueTable.headers, 'Contract Version') === ER4.contractVersion;
   });
   todayQueueRows.sort(function(a, b) {
     return dashboardNumberV4_(a, queueTable.headers, 'Position') -
       dashboardNumberV4_(b, queueTable.headers, 'Position');
   });
-  var queueIds = dashboardUniqueV4_(todayQueueRows.map(function(row) {
-    return dashboardStringV4_(row, queueTable.headers, 'Queue ID');
-  }).filter(Boolean));
-  var sessionIds = dashboardUniqueV4_(todayQueueRows.map(function(row) {
-    return dashboardStringV4_(row, queueTable.headers, 'Session ID');
-  }).filter(Boolean));
-  var queueStatuses = dashboardUniqueV4_(todayQueueRows.map(function(row) {
-    return dashboardStringV4_(row, queueTable.headers, 'Queue Status').toLowerCase();
-  }).filter(Boolean));
-  var queueId = queueIds.length === 1 ? queueIds[0] : '';
-  var sessionId = sessionIds.length === 1 ? sessionIds[0] : '';
+  var queueId = currentQueueId;
+  var sessionId = currentQueue ? currentQueue.sessionId : '';
+  var queueStatus = currentQueue ? currentQueue.status : 'missing';
+  var expectedQueueCount = currentQueue ? currentQueue.plannedCount : 0;
   var todayQuestions = questionTable.rows.filter(function(row) {
     return queueId && dashboardStringV4_(row, questionTable.headers, 'Queue ID') === queueId &&
-      dashboardStringV4_(row, questionTable.headers, 'Contract Version') === ER4.contractVersion;
+      dashboardStringV4_(row, questionTable.headers, 'Contract Version') === ER4.contractVersion &&
+      dashboardStringV4_(row, questionTable.headers, 'Question Status').toLowerCase() !== 'rejected';
   });
   var todayGrades = gradeTable.rows.filter(function(row) {
     return sessionId && dashboardStringV4_(row, gradeTable.headers, 'Session ID') === sessionId &&
@@ -4224,13 +5472,14 @@ function buildLearningDashboardV4_(ss, todayKey) {
   var sessionReadback = latestSession
     ? dashboardStringV4_(latestSession, sessionTable.headers, 'Readback Status').toLowerCase()
     : '';
-  var queueHealthy = todayQueueRows.length === 20 && queueIds.length === 1 && queueStatuses.length === 1;
-  var questionsHealthy = !todayQueueRows.length || todayQuestions.length === 20;
-  var formalHealthy = queueStatuses[0] !== 'committed' ||
+  var queueHealthy = !currentQueue || todayQueueRows.length === expectedQueueCount;
+  var questionsHealthy = !todayQueueRows.length || todayQuestions.length === expectedQueueCount;
+  var formalHealthy = queueStatus !== 'committed' ||
     (journalStatus === 'committed' && journalReadback === 'verified' &&
       sessionWrite === 'verified' && sessionReadback === 'verified' && pendingGrades === 0);
-  var pipelineTone = queueHealthy && questionsHealthy && formalHealthy ? 'good' :
-    (!todayQueueRows.length ? 'neutral' : 'warn');
+  var pipelineTone = questionCountControl.shortfallCount > 0 ? 'warn' :
+    (queueHealthy && questionsHealthy && formalHealthy ? 'good' :
+      (!todayQueueRows.length ? 'neutral' : 'warn'));
 
   return {
     ok: true,
@@ -4242,7 +5491,7 @@ function buildLearningDashboardV4_(ss, todayKey) {
       overdue: '仍在学习或已经掌握、且下次复习日期早于今天的搭配数量。'
     },
     overview: {
-      todayPlanned: todayQueueRows.length,
+      todayPlanned: questionCountControl.requestedCount,
       todayCompleted: todayRows.length,
       todayAccuracy: dashboardAccuracyV4_(todayRows),
       sevenDayAccuracy: dashboardAccuracyV4_(recentSeven),
@@ -4256,8 +5505,10 @@ function buildLearningDashboardV4_(ss, todayKey) {
     todayPlan: {
       queueId: queueId,
       sessionId: sessionId,
-      status: queueStatuses.length === 1 ? queueStatuses[0] : (queueStatuses.length ? 'ambiguous' : 'missing'),
-      planned: todayQueueRows.length,
+      status: queueStatus,
+      planned: questionCountControl.requestedCount,
+      batchPlanned: expectedQueueCount,
+      adjustedTarget: currentQueue ? currentQueue.adjustedTarget : 0,
       due: todayQueueRows.filter(function(row) {
         return dashboardStringV4_(row, queueTable.headers, 'Selection Type').toLowerCase() !== 'new';
       }).length,
@@ -4266,6 +5517,7 @@ function buildLearningDashboardV4_(ss, todayKey) {
       }).length,
       completed: todayRows.length
     },
+    questionCount: questionCountControl,
     trend: trend,
     futureDue: futureDue,
     mastery: stageOrder.map(function(label) { return { label: label, count: stageCounts[label] }; }),
@@ -4276,11 +5528,14 @@ function buildLearningDashboardV4_(ss, todayKey) {
       tone: pipelineTone,
       contractVersion: ER4.contractVersion,
       queueCount: todayQueueRows.length,
-      queueStatus: queueStatuses.length === 1 ? queueStatuses[0] : (queueStatuses.length ? 'ambiguous' : 'missing'),
+      queueExpectedCount: expectedQueueCount,
+      queueStatus: queueStatus,
       questionCount: todayQuestions.length,
       generationCount: generationIds.length,
       gradeCount: todayGrades.length,
       pendingGradeCount: pendingGrades,
+      materialShortfallCount: questionCountControl.shortfallCount,
+      materialShortfallStatus: questionCountControl.shortfallStatus,
       pendingContextCount: pendingContextCount,
       pendingContextDecisionCount: pendingContextDecisionCount,
       contextErrorCount: contextErrorCount,
@@ -4658,7 +5913,9 @@ function previewReviewWebAppV4Setup() {
 
 function selfTestReviewWebAppV4() {
   var failures = [];
+  var testCount = 0;
   function expect(label, actual, expected) {
+    testCount++;
     if (actual !== expected) {
       failures.push(label + ': expected ' + expected + ', found ' + actual);
     }
@@ -4672,12 +5929,21 @@ function selfTestReviewWebAppV4() {
   expect('id parse', numericSuffixV4_('ENG-0123', 'ENG-'), 123);
   expect('id prefix reject', numericSuffixV4_('CAN-0123', 'ENG-'), 0);
   var normalized = normalizeAnswerBatchV4_(
-    Array.from({ length: 20 }, function(_, index) {
-      return { position: index + 1, answer: 'answer ' + (index + 1) };
-    })
+    [
+      { position: 7, answer: 'answer 7' },
+      { position: 1, answer: 'answer 1' },
+      { position: 3, answer: 'answer 3' }
+    ],
+    20
   );
-  expect('answer cardinality', normalized.length, 20);
+  expect('partial answer cardinality', normalized.length, 3);
+  expect('partial answer positions sort', normalized.map(function(item) {
+    return item.position;
+  }).join(','), '1,3,7');
   expect('hash deterministic', hashV4_(normalized), hashV4_(normalized));
+  expect('daily minimum accepted', normalizeDailyQuestionCountV4_(1, 20), 1);
+  expect('daily maximum accepted', normalizeDailyQuestionCountV4_(150, 20), 150);
+  expect('batch maximum accepted', normalizeQuestionCount_(30, 20), 30);
   var revealDraft = {
     position: 3,
     answer: 'the stored answer',
@@ -4692,8 +5958,8 @@ function selfTestReviewWebAppV4() {
   expect('learning evidence precedes legacy', candidateOriginRank_('learning_evidence') < candidateOriginRank_('legacy'), true);
   expect('fallback blocked by personal inventory', shouldGenerateAiFallbackV4_(1, 1, 0), false);
   expect('fallback blocked by personal backlog', shouldGenerateAiFallbackV4_(0, 0, 1), false);
-  expect('fallback allowed after personal exhaustion', shouldGenerateAiFallbackV4_(0, 0, 0), true);
+  expect('fixed fallback reserve disabled', shouldGenerateAiFallbackV4_(0, 0, 0), false);
   expect('fallback not duplicated above target', shouldGenerateAiFallbackV4_(0, 20, 0), false);
   if (failures.length) throw new Error('v4 self-test failed: ' + failures.join('; '));
-  return { ok: true, tests: 18, contractVersion: ER4.contractVersion };
+  return { ok: true, tests: testCount, contractVersion: ER4.contractVersion };
 }

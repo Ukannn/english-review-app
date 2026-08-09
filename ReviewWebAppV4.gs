@@ -26,7 +26,10 @@ var ER4 = {
   legacyQuestionCount: 20,
   minQuestionCount: 1,
   maxDailyQuestionCount: 150,
-  maxBatchQuestionCount: 30,
+  // One Queue ID is one user-visible daily set. Question/grading rows may be
+  // staged under several internal IDs, without resetting the visible total.
+  maxBatchQuestionCount: 150,
+  maxAiStagingSegmentCount: 30,
   aiFallbackPoolTarget: 0,
   maxCandidateGenerationCount: 150,
   maxContextLength: 12000,
@@ -588,17 +591,27 @@ function ensureDynamicQuestionCountSchemaV4_(ss) {
   ]);
   ensureConfigDefaultsV4_(ss, [
     ['default_question_count', ER4.legacyQuestionCount,
-      'Mutable default for future days; integer 1–150. Each Queue batch is capped at 30.'],
+      'Mutable default for future days; integer 1–150. One Queue is one user-visible daily set.'],
     ['question_count_override_date', '',
       'Optional Asia/Shanghai date whose daily target differs from the future default.'],
     ['question_count_override_value', '',
       'Optional 1–150 target used only when question_count_override_date matches the Queue date.']
   ]);
   ensureConfigContractRowsV4_(ss, [
+    ['max_questions_per_session', ER4.legacyQuestionCount,
+      'Legacy fallback only. The active daily target comes from default_question_count or the dated override.'],
+    ['max_new_chunks_per_session', ER4.maxDailyQuestionCount,
+      'New content may fill every slot left in the full 1–150 daily set after due reviews.'],
+    ['max_active_intake_per_session', ER4.maxDailyQuestionCount,
+      'One user-visible Daily Queue supports the full requested 1–150 range.'],
+    ['question_style', 'one visible daily set of 1–150; internal AI staging segments up to 30; one answer submission',
+      'The Web App never resets the visible count between internal staging segments.'],
     ['daily_question_count_range', '1–150',
-      'The current day and future default can be adjusted independently. Targets above 30 continue in sequential Queue batches.'],
+      'The current day and future default can be adjusted independently. One active Queue shows the full daily total.'],
     ['max_questions_per_queue_batch', ER4.maxBatchQuestionCount,
-      'Protects question generation, grading, staging writes, and exact verification from oversized one-shot batches.'],
+      'Legacy key retained for compatibility; one user-visible Queue supports the full 1–150 range.'],
+    ['max_ai_staging_segment', ER4.maxAiStagingSegmentCount,
+      'Question and grading staging may use several internal segments without resetting the visible daily total.'],
     ['candidate_ready_pool_target', 'retired',
       'Candidate Bank is a persistent inventory, not a daily reserve that must be refilled to a target.'],
     ['candidate_ai_fallback_target', 'on_demand_shortfall',
@@ -613,12 +626,16 @@ function ensureConfigDefaultsV4_(ss, defaults) {
   var existing = {};
   for (var i = 1; i < values.length; i++) {
     var key = stringValue_(values[i][0]);
-    if (key) existing[key] = true;
+    if (key) existing[key] = i + 1;
   }
   defaults.forEach(function(row) {
     if (!existing[row[0]]) {
       sheet.appendRow(row);
-      existing[row[0]] = true;
+      existing[row[0]] = sheet.getLastRow();
+    } else if (stringValue_(values[existing[row[0]] - 1][2]) !== stringValue_(row[2])) {
+      // Preserve the user's configured value while keeping the explanatory
+      // contract aligned with the current implementation.
+      sheet.getRange(existing[row[0]], 3).setValue(row[2]);
     }
   });
 }
@@ -651,7 +668,7 @@ function updateConfigV4_(ss) {
     ['contract_version', ER4.contractVersion, 'Required by the Web App, ChatGPT staging prompts, queue builder, and commit worker.'],
     ['review_entrypoint', 'Apps Script Web App', 'One responsive URL serves phone and Mac.'],
     ['ai_transport', 'Optional scheduled task or full copied prompt in any capable ChatGPT conversation; Google Sheet staging; no OpenAI API', 'The Web App supplies standalone question/grading prompts, so the workflow is not tied to one Work conversation or model.'],
-    ['question_prepare_phase', 'scheduled task or Web App manual handoff', 'Reads the one active frozen Daily Queue and stages exactly its Planned Count (at most 30 per batch).'],
+    ['question_prepare_phase', 'scheduled task or Web App manual handoff', 'Reads one active daily set and stages any missing positions; internal segments do not create a new user-visible set.'],
     ['grading_trigger_command', 'full standalone grading prompt; legacy task conversation may still use 批改', 'ChatGPT resolves exactly one awaiting_chatgpt submission; the user never types a Session ID.'],
     ['question_staging_sheet', ER4.questionSheet, 'AI-authored question batch; this single-user app preloads answers into browser memory but does not render them before reveal.'],
     ['answer_draft_sheet', ER4.draftSheet, 'Versioned server drafts, per-question reveal locks, and frozen batch snapshots.'],
@@ -670,8 +687,9 @@ function updateConfigV4_(ss) {
     ['web_app_url', 'YOUR_WEB_APP_URL', 'Updated after Web App deployment.'],
     ['chatgpt_task_url', ER4.chatGptTaskUrl, 'Optional legacy Scheduled Task entry point.'],
     ['chatgpt_manual_url', ER4.chatGptManualUrl, 'The Web App copies a complete standalone prompt before opening ChatGPT.'],
-    ['daily_question_count_range', '1–150', 'Daily targets above 30 are split into sequential primary/supplemental Queue batches.'],
-    ['max_questions_per_queue_batch', ER4.maxBatchQuestionCount, 'Protects ChatGPT generation, grading, connector writes, and verification from oversized one-shot batches.'],
+    ['daily_question_count_range', '1–150', 'One active Queue represents the full user-visible daily set; a safe continuation is used only after an earlier session was already formally committed.'],
+    ['max_questions_per_queue_batch', ER4.maxBatchQuestionCount, 'Legacy key retained for compatibility; the Queue can represent the full 1–150 daily set.'],
+    ['max_ai_staging_segment', ER4.maxAiStagingSegmentCount, 'AI writes may be segmented internally while the Web App keeps one total and one submission.'],
     ['candidate_ready_pool_target', 'retired', 'Verified grading no longer creates candidates merely to maintain forty ready rows.'],
     ['candidate_ai_fallback_target', 'on_demand_shortfall', 'No fixed AI reserve. When an active Queue cannot be filled, the Web App creates one exact shortfall request and supplies a standalone ChatGPT prompt.'],
     ['candidate_generation_sheet', ER4.candidateGenerationSheet, 'AI-authored material is staged here; Apps Script validates, deduplicates, assigns Candidate IDs, and only then writes Candidate Bank.'],
@@ -869,12 +887,14 @@ function ensureQueueForDateV4Unlocked_(ss, targetDate, reason) {
   processCandidateGenerationInboxV4_(ss, dateKey);
   var existing = findQueueForDateV4_(ss, dateKey);
   if (existing && existing.status === 'presented') {
-    validateMaterializedQueueV4_(existing.rows.map(function(item) { return item.values; }), existing.queueId);
-    return summarizeQueueRowsV4_(
-      existing.rows.map(function(item) { return item.values; }),
-      existing.queueId,
-      true
+    var presentedResult = reconcilePresentedQueueTargetV4_(
+      ss,
+      existing,
+      initialSettings.targetCount,
+      reason || 'daily target reconciliation'
     );
+    if (presentedResult) return presentedResult;
+    existing = findQueueForDateV4_(ss, dateKey);
   }
 
   var settings = readQuestionCountSettingsV4_(ss, dateKey);
@@ -955,6 +975,183 @@ function ensureQueueForDateV4Unlocked_(ss, targetDate, reason) {
   summary.completedBeforeBatch = completed;
   summary.remainingAfterBatch = Math.max(0, remaining - batchCount);
   return summary;
+}
+
+function queueIdentityKeyV4_(phraseId, candidateId) {
+  phraseId = stringValue_(phraseId);
+  candidateId = stringValue_(candidateId);
+  return phraseId ? 'P:' + phraseId : 'C:' + candidateId;
+}
+
+function reconcilePresentedQueueTargetV4_(ss, queue, dailyTarget, reason) {
+  validateMaterializedQueueV4_(
+    queue.rows.map(function(item) { return item.values; }),
+    queue.queueId
+  );
+  var completedBeforeSession = completedQuestionsForDateV4_(ss, queue.dateKey, queue.sessionId);
+  var lockedCount = countLockedDraftsV4_(ss, queue.sessionId);
+  var desiredForSession = Math.max(
+    lockedCount,
+    Math.max(0, Number(dailyTarget) - completedBeforeSession)
+  );
+
+  if (desiredForSession === 0 && lockedCount === 0) {
+    supersedeCandidateGenerationRequestsV4_(ss, queue.dateKey);
+    supersedeQueueV4_(ss, queue, '', reason || 'daily target already met');
+    return {
+      ok: true,
+      state: 'daily_target_met',
+      date: queue.dateKey,
+      dailyTarget: Number(dailyTarget),
+      completed: completedBeforeSession,
+      reused: true
+    };
+  }
+
+  if (desiredForSession <= queue.plannedCount) {
+    supersedeCandidateGenerationRequestsV4_(ss, queue.dateKey);
+    if (queue.adjustedTarget !== desiredForSession) {
+      setQueueAdjustedTargetV4_(
+        queue,
+        desiredForSession,
+        reason || 'question count changed during session'
+      );
+    }
+    var current = findQueueBySessionV4_(ss, queue.sessionId);
+    var currentSummary = summarizeQueueRowsV4_(
+      current.rows.map(function(item) { return item.values; }),
+      current.queueId,
+      true
+    );
+    currentSummary.dailyTarget = Number(dailyTarget);
+    currentSummary.completedBeforeBatch = completedBeforeSession;
+    currentSummary.remainingAfterBatch = 0;
+    return currentSummary;
+  }
+
+  var plan = calculateDailyQueuePlan_(ss, parseDateKey_(queue.dateKey), desiredForSession);
+  var occupied = {};
+  queue.rows.forEach(function(item) {
+    occupied[queueIdentityKeyV4_(
+      item.values[queue.headers['Phrase ID']],
+      item.values[queue.headers['Candidate ID']]
+    )] = true;
+  });
+  var additions = plan.items.filter(function(item) {
+    return !occupied[queueIdentityKeyV4_(item.phraseId, item.candidateId)];
+  });
+  var needed = desiredForSession - queue.plannedCount;
+  if (additions.length < needed) {
+    var shortfall = needed - additions.length;
+    var requestPlan = {
+      items: queue.rows.map(function() { return {}; }).concat(additions),
+      candidateShortfall: shortfall
+    };
+    var request = ensureCandidateGenerationRequestV4_(
+      ss,
+      queue.dateKey,
+      requestPlan,
+      Number(dailyTarget)
+    );
+    return {
+      ok: true,
+      state: 'candidate_shortfall',
+      date: queue.dateKey,
+      dailyTarget: Number(dailyTarget),
+      completed: completedBeforeSession,
+      batchCount: desiredForSession,
+      dueCount: plan.selectedDueCount,
+      readyCandidateCount: plan.readyCandidateCount,
+      shortfallCount: shortfall,
+      requestId: request.requestId,
+      requestStatus: request.status,
+      reusedRequest: request.reused
+    };
+  }
+
+  supersedeCandidateGenerationRequestsV4_(ss, queue.dateKey);
+  extendPresentedQueueV4_(
+    queue,
+    additions.slice(0, needed),
+    desiredForSession,
+    reason || 'question count increased during session'
+  );
+  var extended = findQueueBySessionV4_(ss, queue.sessionId);
+  var summary = summarizeQueueRowsV4_(
+    extended.rows.map(function(item) { return item.values; }),
+    extended.queueId,
+    false
+  );
+  summary.dailyTarget = Number(dailyTarget);
+  summary.completedBeforeBatch = completedBeforeSession;
+  summary.remainingAfterBatch = 0;
+  summary.extendedBy = needed;
+  return summary;
+}
+
+function extendPresentedQueueV4_(queue, additions, targetCount, reason) {
+  if (!queue.sessionId || queue.status !== 'presented') {
+    throw new Error('Only one presented Session Queue can be extended in place.');
+  }
+  targetCount = normalizeQuestionCount_(targetCount, queue.plannedCount);
+  var expectedAdditions = targetCount - queue.plannedCount;
+  if (expectedAdditions < 1 || additions.length !== expectedAdditions) {
+    throw new Error('Presented Queue extension cardinality mismatch.');
+  }
+  var presentedAt = queue.rows[0].values[queue.headers['Presented At']];
+  if (!isDateValue_(presentedAt)) throw new Error('Presented Queue is missing Presented At.');
+  var revision = Math.max.apply(null, queue.rows.map(function(item) {
+    return Number(item.values[queue.headers['Plan Revision']]) || 1;
+  })) + 1;
+  var createdAt = new Date();
+  var startPosition = queue.plannedCount;
+  var rows = additions.map(function(item, index) {
+    return [
+      parseDateKey_(queue.dateKey),
+      queue.queueId,
+      startPosition + index + 1,
+      item.selectionType,
+      item.phraseId || '',
+      item.candidateId || '',
+      item.chunk,
+      item.chineseCue || '',
+      item.topic || '',
+      item.difficulty || '',
+      item.naturalExample || '',
+      item.originalNextReview || '',
+      item.priorityReason,
+      'presented',
+      queue.sessionId,
+      createdAt,
+      '',
+      ER4.contractVersion,
+      presentedAt,
+      targetCount,
+      targetCount,
+      queue.queueKind || 'primary',
+      revision,
+      '',
+      '',
+      reason || 'question count increased during session'
+    ];
+  });
+  var startRow = Math.max(queue.sheet.getLastRow() + 1, 2);
+  queue.sheet.getRange(startRow, 1, rows.length, DQ3_QUEUE_HEADERS.length).setValues(rows);
+  queue.sheet.getRange(startRow, 1, rows.length, 1).setNumberFormat('yyyy-mm-dd');
+  queue.sheet.getRange(startRow, 12, rows.length, 1).setNumberFormat('yyyy-mm-dd');
+  queue.sheet.getRange(startRow, 16, rows.length, 2).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  queue.sheet.getRange(startRow, 18, rows.length, 1).setNumberFormat('@');
+  queue.sheet.getRange(startRow, 19, rows.length, 1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  queue.sheet.getRange(startRow, 20, rows.length, 2).setNumberFormat('0');
+  queue.sheet.getRange(startRow, 23, rows.length, 1).setNumberFormat('0');
+  queue.sheet.getRange(startRow, 25, rows.length, 1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  queue.rows.forEach(function(item) {
+    queue.sheet.getRange(item.rowNumber, queue.headers['Planned Count'] + 1).setValue(targetCount);
+    queue.sheet.getRange(item.rowNumber, queue.headers['Adjusted Target'] + 1).setValue(targetCount);
+    queue.sheet.getRange(item.rowNumber, queue.headers['Plan Revision'] + 1).setValue(revision);
+    queue.sheet.getRange(item.rowNumber, queue.headers['Change Reason'] + 1).setValue(reason || '');
+  });
+  SpreadsheetApp.flush();
 }
 
 function appendQueuePlanV4_(queueSheet, dateKey, queueId, plan, queueKind, revision, reason) {
@@ -1457,6 +1654,7 @@ function setQuestionCountV4(count, mode) {
     ensureCandidateMetadataColumns_(ss);
     ensureDynamicQuestionCountSchemaV4_(ss);
     count = normalizeDailyQuestionCountV4_(count, ER4.legacyQuestionCount);
+    var requestedInputCount = count;
     mode = stringValue_(mode).toLowerCase();
     if (['today', 'future', 'both'].indexOf(mode) === -1) {
       throw new Error('Question-count update mode must be today, future, or both.');
@@ -1464,18 +1662,43 @@ function setQuestionCountV4(count, mode) {
     var dateKey = formatDateKey_(new Date());
     var queue = findQueueForDateV4_(ss, dateKey);
     var completed = completedQuestionsForDateV4_(ss, dateKey, '');
+    var locked = queue && queue.status === 'presented'
+      ? countLockedDraftsV4_(ss, queue.sessionId)
+      : 0;
+    var effectiveTodayCount = Math.max(count, completed + locked);
     var adjustmentResult = null;
 
+    if (mode === 'future' || mode === 'both') {
+      writeConfigValueV4_(
+        ss,
+        'default_question_count',
+        count,
+        'Mutable default for future sessions; one Daily Queue supports the full 1–150 range.'
+      );
+    }
     if (mode === 'today' || mode === 'both') {
-      if (completed >= count) supersedeCandidateGenerationRequestsV4_(ss, dateKey);
+      writeConfigValueV4_(
+        ss,
+        'question_count_override_date',
+        dateKey,
+        'Asia/Shanghai date for the current one-day requested-count override.'
+      );
+      writeConfigValueV4_(
+        ss,
+        'question_count_override_value',
+        effectiveTodayCount,
+        'Effective requested count; never lower than work already locked or formally completed today.'
+      );
+
+      if (completed >= effectiveTodayCount) supersedeCandidateGenerationRequestsV4_(ss, dateKey);
       if (queue && queue.status === 'planned') {
-        var remaining = Math.max(0, count - completed);
+        var remaining = Math.max(0, effectiveTodayCount - completed);
         if (remaining === 0) {
           supersedeCandidateGenerationRequestsV4_(ss, dateKey);
           supersedeQueueV4_(ss, queue, '', 'requested count already met');
           queue = null;
         } else {
-          var replacementCount = Math.min(remaining, ER4.maxBatchQuestionCount);
+          var replacementCount = remaining;
           if (replacementCount !== queue.plannedCount) {
             var replacementPlan = calculateDailyQueuePlan_(ss, parseDateKey_(dateKey), replacementCount);
             if (Number(replacementPlan.candidateShortfall) > 0) {
@@ -1483,7 +1706,7 @@ function setQuestionCountV4(count, mode) {
                 ss,
                 dateKey,
                 replacementPlan,
-                count
+                effectiveTodayCount
               );
             } else {
               validatePlan_(replacementPlan);
@@ -1511,43 +1734,14 @@ function setQuestionCountV4(count, mode) {
           }
         }
       } else if (queue && queue.status === 'presented') {
-        var completedBeforeSession = completedQuestionsForDateV4_(ss, dateKey, queue.sessionId);
-        var desiredForSession = Math.min(
-          queue.plannedCount,
-          Math.max(0, count - completedBeforeSession)
+        adjustmentResult = reconcilePresentedQueueTargetV4_(
+          ss,
+          queue,
+          effectiveTodayCount,
+          'question count changed during session'
         );
-        var lockedCount = countLockedDraftsV4_(ss, queue.sessionId);
-        if (desiredForSession === 0 && lockedCount === 0) {
-          supersedeQueueV4_(ss, queue, '', 'requested count already met before first locked answer');
-          queue = null;
-        } else {
-          setQueueAdjustedTargetV4_(queue, desiredForSession, 'question count changed during session');
-        }
       }
-    }
-
-    if (mode === 'future' || mode === 'both') {
-      writeConfigValueV4_(
-        ss,
-        'default_question_count',
-        count,
-        'Mutable default for future sessions; daily work may be split into 30-question batches.'
-      );
-    }
-    if (mode === 'today' || mode === 'both') {
-      writeConfigValueV4_(
-        ss,
-        'question_count_override_date',
-        dateKey,
-        'Asia/Shanghai date for the current one-day requested-count override.'
-      );
-      writeConfigValueV4_(
-        ss,
-        'question_count_override_value',
-        count,
-        'Requested count for question_count_override_date.'
-      );
-      if ((!queue || queue.status === 'committed') && completed < count && !adjustmentResult) {
+      if ((!queue || queue.status === 'committed') && !adjustmentResult) {
         adjustmentResult = ensureQueueForDateV4Unlocked_(
           ss,
           parseDateKey_(dateKey),
@@ -1558,6 +1752,9 @@ function setQuestionCountV4(count, mode) {
     invalidateLearningDashboardCacheV4_();
     var control = buildQuestionCountControlV4_(ss, dateKey);
     control.ok = true;
+    control.requestedInputCount = requestedInputCount;
+    control.effectiveTodayCount = control.requestedCount;
+    control.raisedToCompletedCount = control.requestedCount > requestedInputCount;
     if (adjustmentResult && adjustmentResult.requestId) {
       control.shortfallRequestId = adjustmentResult.requestId;
     }
@@ -1602,17 +1799,24 @@ function writeConfigValueV4_(ss, key, value, note) {
   var values = sheet.getDataRange().getValues();
   for (var i = 1; i < values.length; i++) {
     if (stringValue_(values[i][0]) === key) {
-      sheet.getRange(i + 1, 1, 1, 3).setValues([[key, value, note || stringValue_(values[i][2])]]);
+      var range = sheet.getRange(i + 1, 1, 1, 3);
+      range.setValues([[key, value, note || stringValue_(values[i][2])]]);
+      if (key === 'question_count_override_date') {
+        sheet.getRange(i + 1, 2).setNumberFormat('@').setValue(stringValue_(value));
+      }
       return;
     }
   }
   sheet.appendRow([key, value, note || '']);
+  if (key === 'question_count_override_date') {
+    sheet.getRange(sheet.getLastRow(), 2).setNumberFormat('@').setValue(stringValue_(value));
+  }
 }
 
 function setQueueAdjustedTargetV4_(queue, target, reason) {
   target = Number(target);
   if (!isFinite(target) || Math.floor(target) !== target || target < 0 || target > queue.plannedCount) {
-    throw new Error('Adjusted session target is outside the current Queue batch.');
+    throw new Error('Adjusted session target is outside the current daily set.');
   }
   queue.rows.forEach(function(item) {
     queue.sheet.getRange(item.rowNumber, queue.headers['Adjusted Target'] + 1).setValue(target);
@@ -1735,11 +1939,11 @@ function getReviewBootstrapV4() {
   var today = new Date();
   var ensured = buildDailyQueueV4ForDate_(today);
   if (ensured && ensured.state === 'candidate_shortfall') {
-    return {
+    var shortfallResponse = {
       ok: true,
       state: 'candidate_shortfall',
       message:
-        '这次题组还缺 ' + ensured.shortfallCount +
+        '今天的完整题组还缺 ' + ensured.shortfallCount +
         ' 条合适素材。你的个人语料仍会优先；请让 ChatGPT 按当前缺口生成个性化补充素材。',
       requestId: ensured.requestId,
       shortfallCount: ensured.shortfallCount,
@@ -1748,6 +1952,32 @@ function getReviewBootstrapV4() {
       readyCandidateCount: ensured.readyCandidateCount,
       chatGptManualUrl: ER4.chatGptManualUrl
     };
+    var shortfallQueue = findQueueForDateV4_(ss, formatDateKey_(today));
+    if (shortfallQueue && shortfallQueue.status === 'presented') {
+      shortfallResponse.queueMeta = {
+        planned: shortfallQueue.plannedCount,
+        adjustedTarget: shortfallQueue.adjustedTarget,
+        requested: ensured.dailyTarget,
+        completedBeforeBatch: completedQuestionsForDateV4_(
+          ss,
+          shortfallQueue.dateKey,
+          shortfallQueue.sessionId
+        ),
+        completedInBatch: countLockedDraftsV4_(ss, shortfallQueue.sessionId),
+        queueKind: shortfallQueue.queueKind,
+        due: shortfallQueue.rows.filter(function(item) {
+          return stringValue_(
+            item.values[shortfallQueue.headers['Selection Type']]
+          ).toLowerCase() !== 'new';
+        }).length,
+        fresh: shortfallQueue.rows.filter(function(item) {
+          return stringValue_(
+            item.values[shortfallQueue.headers['Selection Type']]
+          ).toLowerCase() === 'new';
+        }).length
+      };
+    }
+    return shortfallResponse;
   }
   var queue = findQueueForDateV4_(ss, formatDateKey_(today));
   if (!queue) {
@@ -1788,6 +2018,20 @@ function getReviewBootstrapV4() {
       state: 'question_invalid',
       message: error.message,
       queueId: queue.queueId,
+      queueMeta: {
+        planned: queue.plannedCount,
+        adjustedTarget: queue.adjustedTarget,
+        requested: readQuestionCountSettingsV4_(ss, queue.dateKey).targetCount,
+        completedBeforeBatch: completedQuestionsForDateV4_(ss, queue.dateKey, queue.sessionId),
+        completedInBatch: countLockedDraftsV4_(ss, queue.sessionId),
+        queueKind: queue.queueKind,
+        due: queue.rows.filter(function(item) {
+          return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() !== 'new';
+        }).length,
+        fresh: queue.rows.filter(function(item) {
+          return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() === 'new';
+        }).length
+      },
       chatGptTaskUrl: ER4.chatGptTaskUrl
     };
   }
@@ -1796,10 +2040,24 @@ function getReviewBootstrapV4() {
       ok: true,
       state: 'preparing',
       message:
-        '当前批次需要准备 ' + queue.plannedCount +
-        ' 道题。自动化可以完成；你也可以复制完整出题提示词，交给任意可使用 Google Drive 的高模型。',
+        '今天完整题组共 ' + queue.plannedCount +
+        ' 道题，仍有题目正在内部暂存。自动化可以完成；你也可以复制完整出题提示词，交给任意可使用 Google Drive 的高模型。',
       queueId: queue.queueId,
       plannedCount: queue.plannedCount,
+      queueMeta: {
+        planned: queue.plannedCount,
+        adjustedTarget: queue.adjustedTarget,
+        requested: readQuestionCountSettingsV4_(ss, queue.dateKey).targetCount,
+        completedBeforeBatch: completedQuestionsForDateV4_(ss, queue.dateKey, queue.sessionId),
+        completedInBatch: countLockedDraftsV4_(ss, queue.sessionId),
+        queueKind: queue.queueKind,
+        due: queue.rows.filter(function(item) {
+          return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() !== 'new';
+        }).length,
+        fresh: queue.rows.filter(function(item) {
+          return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() === 'new';
+        }).length
+      },
       chatGptTaskUrl: ER4.chatGptTaskUrl,
       chatGptManualUrl: ER4.chatGptManualUrl
     };
@@ -1902,29 +2160,93 @@ function validatePreparedQuestionBatchV4_(ss, queue) {
   }
   var generationIds = Object.keys(groups);
   if (!generationIds.length) return null;
-
-  var boundIds = generationIds.filter(function(id) {
-    return groups[id].some(function(item) {
+  // Existing bound rows win over later staging segments. This lets an active
+  // daily set grow from 20 to 40 without replacing questions whose answers the
+  // user has already revealed and locked.
+  generationIds.sort(function(a, b) {
+    var aBound = groups[a].some(function(item) {
       return stringValue_(item.values[headers['Question Status']]).toLowerCase() === 'bound';
     });
-  });
-  var candidateIds = boundIds.length ? boundIds : generationIds;
-  if (candidateIds.length !== 1) {
-    throw new Error('Question preparation is ambiguous: more than one active Generation ID exists.');
-  }
-
-  var items = groups[candidateIds[0]];
-  try {
-    validateQuestionItemsV4_(items, headers, queue);
-  } catch (error) {
-    items.forEach(function(item) {
-      sheet.getRange(item.rowNumber, headers['Question Status'] + 1).setValue('rejected');
+    var bBound = groups[b].some(function(item) {
+      return stringValue_(item.values[headers['Question Status']]).toLowerCase() === 'bound';
     });
-    SpreadsheetApp.flush();
-    throw error;
-  }
+    if (aBound !== bBound) return aBound ? -1 : 1;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
 
-  var contentHash = hashV4_(items.map(function(item) {
+  var positionOwner = {};
+  var allItems = [];
+  var groupHashes = [];
+  generationIds.forEach(function(generationId) {
+    var items = groups[generationId];
+    items.sort(function(a, b) {
+      return Number(a.values[headers.Position]) - Number(b.values[headers.Position]);
+    });
+    var hasBound = items.some(function(item) {
+      return stringValue_(item.values[headers['Question Status']]).toLowerCase() === 'bound';
+    });
+    try {
+      validateQuestionItemsV4_(items, headers, queue);
+      items.forEach(function(item) {
+        var position = Number(item.values[headers.Position]);
+        if (positionOwner[position]) {
+          throw new Error(
+            'Question position ' + position + ' is active in more than one Generation ID.'
+          );
+        }
+      });
+    } catch (error) {
+      if (!hasBound) {
+        items.forEach(function(item) {
+          sheet.getRange(item.rowNumber, headers['Question Status'] + 1).setValue('rejected');
+        });
+        SpreadsheetApp.flush();
+      }
+      throw error;
+    }
+    var groupHash = questionContentHashV4_(items, headers);
+    items.forEach(function(item) {
+      var position = Number(item.values[headers.Position]);
+      var rowStatus = stringValue_(item.values[headers['Question Status']]).toLowerCase();
+      if (rowStatus === 'staged') {
+        sheet.getRange(item.rowNumber, headers['Content Hash'] + 1).setValue(groupHash);
+        sheet.getRange(item.rowNumber, headers['Question Status'] + 1).setValue('ready');
+        item.values[headers['Content Hash']] = groupHash;
+        item.values[headers['Question Status']] = 'ready';
+      } else if (stringValue_(item.values[headers['Content Hash']]) !== groupHash) {
+        throw new Error('Published question content hash mismatch in ' + generationId + '.');
+      }
+      positionOwner[position] = generationId;
+      allItems.push(item);
+    });
+    groupHashes.push([generationId, groupHash]);
+  });
+  SpreadsheetApp.flush();
+
+  if (allItems.length < queue.plannedCount) return null;
+  if (allItems.length !== queue.plannedCount) {
+    throw new Error('Active question rows exceed the Daily Queue Planned Count.');
+  }
+  for (var position = 1; position <= queue.plannedCount; position++) {
+    if (!positionOwner[position]) {
+      throw new Error('Question preparation is missing position ' + position + '.');
+    }
+  }
+  allItems.sort(function(a, b) {
+    return Number(a.values[headers.Position]) - Number(b.values[headers.Position]);
+  });
+  return {
+    sheet: sheet,
+    headers: headers,
+    rows: allItems,
+    generationIds: generationIds,
+    generationId: generationIds.join(','),
+    contentHash: hashV4_(groupHashes)
+  };
+}
+
+function questionContentHashV4_(items, headers) {
+  return hashV4_(items.map(function(item) {
     var row = item.values;
     return [
       Number(row[headers.Position]),
@@ -1939,37 +2261,12 @@ function validatePreparedQuestionBatchV4_(ss, queue) {
       stringValue_(row[headers['Grading Rubric']])
     ];
   }));
-  items.forEach(function(item) {
-    var rowStatus = stringValue_(item.values[headers['Question Status']]).toLowerCase();
-    if (rowStatus === 'staged') {
-      sheet.getRange(item.rowNumber, headers['Content Hash'] + 1).setValue(contentHash);
-      sheet.getRange(item.rowNumber, headers['Question Status'] + 1).setValue('ready');
-      item.values[headers['Content Hash']] = contentHash;
-      item.values[headers['Question Status']] = 'ready';
-    } else if (stringValue_(item.values[headers['Content Hash']]) !== contentHash) {
-      throw new Error('Published question content hash mismatch.');
-    }
-  });
-  SpreadsheetApp.flush();
-  items.sort(function(a, b) {
-    return Number(a.values[headers.Position]) - Number(b.values[headers.Position]);
-  });
-  return {
-    sheet: sheet,
-    headers: headers,
-    rows: items,
-    generationId: candidateIds[0],
-    contentHash: contentHash
-  };
 }
 
 function validateQuestionItemsV4_(items, headers, queue) {
   var plannedCount = queue.plannedCount || queue.rows.length;
-  if (items.length !== plannedCount) {
-    throw new Error(
-      'ChatGPT must stage exactly ' + plannedCount +
-      ' questions; found ' + items.length + '.'
-    );
+  if (!items.length || items.length > plannedCount) {
+    throw new Error('Question staging segment has an invalid cardinality.');
   }
   var queueByPosition = {};
   queue.rows.forEach(function(item) {
@@ -2055,6 +2352,29 @@ function startOrResumeReviewSessionV4_(ss, queue, batch) {
         throw new Error('Presented Queue does not have one shared Presented At timestamp.');
       }
       presentedAt = queue.rows[0].values[queue.headers['Presented At']];
+      batch.rows.forEach(function(item) {
+        var status = stringValue_(
+          item.values[batch.headers['Question Status']]
+        ).toLowerCase();
+        var boundSession = stringValue_(item.values[batch.headers['Session ID']]);
+        if (status === 'bound') {
+          if (boundSession !== sessionId) {
+            throw new Error('A bound question belongs to a different Session.');
+          }
+          return;
+        }
+        if (status !== 'ready' || boundSession) {
+          throw new Error('A newly prepared question is not ready for Session binding.');
+        }
+        batch.sheet.getRange(item.rowNumber, batch.headers['Question Status'] + 1)
+          .setValue('bound');
+        batch.sheet.getRange(item.rowNumber, batch.headers['Session ID'] + 1)
+          .setValue(sessionId);
+        batch.sheet.getRange(item.rowNumber, batch.headers['Bound At'] + 1)
+          .setValue(presentedAt)
+          .setNumberFormat('yyyy-mm-dd hh:mm:ss');
+      });
+      SpreadsheetApp.flush();
     } else {
       throw new Error('Queue cannot start from status ' + queue.status + '.');
     }
@@ -2098,7 +2418,27 @@ function buildQuizResponseV4_(ss, queue, batch, presentedAt) {
   var drafts = readDraftsForSessionV4_(ss, queue.sessionId);
   var draftByPosition = {};
   drafts.forEach(function(item) { draftByPosition[item.position] = item; });
-  var questions = batch.rows.map(function(item) {
+  var visiblePositions = {};
+  var visibleCount = 0;
+  drafts.forEach(function(draft) {
+    if (isDraftRevealedV4_(draft, queue.sessionId)) {
+      visiblePositions[draft.position] = true;
+      visibleCount++;
+    }
+  });
+  var desiredVisibleCount = Math.max(Number(queue.adjustedTarget) || 0, visibleCount);
+  batch.rows.slice().sort(function(a, b) {
+    return Number(a.values[batch.headers.Position]) - Number(b.values[batch.headers.Position]);
+  }).forEach(function(item) {
+    var position = Number(item.values[batch.headers.Position]);
+    if (!visiblePositions[position] && visibleCount < desiredVisibleCount) {
+      visiblePositions[position] = true;
+      visibleCount++;
+    }
+  });
+  var questions = batch.rows.filter(function(item) {
+    return visiblePositions[Number(item.values[batch.headers.Position])];
+  }).map(function(item) {
     var row = item.values;
     var position = Number(row[batch.headers.Position]);
     var draft = draftByPosition[position] || {
@@ -2123,10 +2463,14 @@ function buildQuizResponseV4_(ss, queue, batch, presentedAt) {
       expectedAnswer: expectedAnswerForQuestionRowV4_(row, batch.headers, position)
     };
   });
+  questions.sort(function(a, b) { return a.position - b.position; });
   var journal = findJournalBySessionV4_(ss, queue.sessionId);
   if (journal) return responseForJournalV4_(journal);
   var countSettings = readQuestionCountSettingsV4_(ss, queue.dateKey);
   var completedBeforeBatch = completedQuestionsForDateV4_(ss, queue.dateKey, queue.sessionId);
+  questions.forEach(function(question, index) {
+    question.displayPosition = completedBeforeBatch + index + 1;
+  });
   return {
     ok: true,
     state: 'answering',
@@ -2810,14 +3154,15 @@ function getManualOperationPromptV4(mode, expectedIdentity) {
   var details = {};
   if (mode === 'question_prepare') {
     var queue = findQueueForDateV4_(ss, todayKey);
-    if (!queue || queue.status !== 'planned') {
-      throw new Error('There is no planned Queue batch waiting for question preparation.');
+    if (!queue || ['planned', 'presented'].indexOf(queue.status) === -1) {
+      throw new Error('There is no active daily set waiting for question preparation.');
     }
     if (expectedIdentity && queue.queueId !== expectedIdentity) {
       throw new Error('The planned Queue changed before the manual prompt was prepared. Reload the page.');
     }
     details.queueId = queue.queueId;
     details.count = queue.plannedCount;
+    details.queueStatus = queue.status;
   } else if (mode === 'grading') {
     var journalSheet = requireSheet_(ss, ER4.journalSheet);
     var journalValues = journalSheet.getDataRange().getValues();
@@ -3018,11 +3363,13 @@ function processSubmissionForSessionV4_(sessionId) {
         });
         return responseForJournalV4_(findJournalBySessionV4_(ss, sessionId));
       }
+      if (!payload.complete) return responseForJournalV4_(journal);
 
       var snapshot = {
         grades: payload.grades,
         candidateSuggestions: payload.candidateSuggestions,
         gradingBatchId: payload.gradingBatchId,
+        gradingBatchIds: payload.gradingBatchIds,
         commitPlan: null
       };
       var needsConfirmation = payload.grades.some(function(grade) {
@@ -3096,10 +3443,10 @@ function validateStagedGradesV4_(ss, journal, staged) {
     throw new Error('Commit Journal and Daily Queue identity mismatch.');
   }
   var drafts = readSubmittedDraftsV4_(ss, journal);
-  if (staged.rows.length !== drafts.length) {
+  if (staged.rows.length > drafts.length) {
     throw new Error(
-      'ChatGPT must stage exactly ' + drafts.length +
-      ' grade rows for the submitted answers; found ' + staged.rows.length + '.'
+      'ChatGPT staged more grade rows than submitted answers; expected at most ' +
+      drafts.length + ', found ' + staged.rows.length + '.'
     );
   }
   var draftByPosition = {};
@@ -3162,11 +3509,21 @@ function validateStagedGradesV4_(ss, journal, staged) {
       throw new Error('Expected Answer is blank at position ' + position + '.');
     }
   });
-  if (Object.keys(batchIds).length !== 1) {
-    throw new Error('Exactly one Grading Batch ID is required.');
+  var gradingBatchIds = Object.keys(batchIds).sort();
+  if (!gradingBatchIds.length) {
+    throw new Error('At least one Grading Batch ID is required.');
   }
   if (suggestionJsons.length > 1) {
     throw new Error('Candidate Suggestions JSON must appear in at most one grade row.');
+  }
+  if (staged.rows.length < drafts.length) {
+    return {
+      complete: false,
+      rows: staged.rows,
+      gradingBatchIds: gradingBatchIds,
+      stagedCount: staged.rows.length,
+      expectedCount: drafts.length
+    };
   }
   var grades = drafts.map(function(draft) {
     if (!gradeByPosition[draft.position]) {
@@ -3178,8 +3535,10 @@ function validateStagedGradesV4_(ss, journal, staged) {
     ? parseCandidateSuggestionsV4_(suggestionJsons[0])
     : [];
   return {
+    complete: true,
     rows: staged.rows,
-    gradingBatchId: Object.keys(batchIds)[0],
+    gradingBatchId: gradingBatchIds.join(','),
+    gradingBatchIds: gradingBatchIds,
     grades: grades,
     candidateSuggestions: suggestions
   };
@@ -5890,7 +6249,12 @@ function readConfigValueV4_(ss, key) {
   var sheet = requireSheet_(ss, DQ3.configSheet);
   var values = sheet.getDataRange().getValues();
   for (var i = 1; i < values.length; i++) {
-    if (stringValue_(values[i][0]) === key) return stringValue_(values[i][1]);
+    if (stringValue_(values[i][0]) === key) {
+      var value = values[i][1];
+      // Google Sheets returns a date-formatted cell as a Date object even when
+      // the user sees yyyy-mm-dd. Normalize it before comparing with dateKey.
+      return isDateValue_(value) ? formatDateKey_(value) : stringValue_(value);
+    }
   }
   return '';
 }
@@ -5943,7 +6307,7 @@ function selfTestReviewWebAppV4() {
   expect('hash deterministic', hashV4_(normalized), hashV4_(normalized));
   expect('daily minimum accepted', normalizeDailyQuestionCountV4_(1, 20), 1);
   expect('daily maximum accepted', normalizeDailyQuestionCountV4_(150, 20), 150);
-  expect('batch maximum accepted', normalizeQuestionCount_(30, 20), 30);
+  expect('daily-set maximum accepted', normalizeQuestionCount_(150, 20), 150);
   var revealDraft = {
     position: 3,
     answer: 'the stored answer',

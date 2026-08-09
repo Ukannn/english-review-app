@@ -25,7 +25,7 @@
 2. 否则，如果用户当前消息去除首尾空格后精确等于“批改”，执行 grading。
 3. 其他情况（包括每日定时触发）执行 question_prepare。
 4. 网页生成的 EXPECTED_QUEUE_ID、EXPECTED_SUBMISSION_ID、EXPECTED_SESSION_ID、EXPECTED_REQUEST_ID、EXPECTED_COUNT 是额外的身份保护。若存在，回读值必须精确一致；不一致就停止。
-5. question_prepare 若没有 planned Queue，但恰好存在一个 Contract Version=4.0、Position=0、Generation Status=requested 的 Candidate Generation Inbox 请求，可自动改为执行 candidate_generation；除此以外不得自行切换模式。
+5. question_prepare 开始前检查 Candidate Generation Inbox：若恰好存在一个 Contract Version=4.0、Position=0、Generation Status=requested 的请求，且没有 active Queue，或该请求 Requested Count 大于 active Queue 的 Planned Count，自动改为执行 candidate_generation；这是扩展同一天题组前的真实素材缺口。除此以外不得自行切换模式。
 
 ====================
 candidate_generation：按缺口补充个性化素材
@@ -95,23 +95,28 @@ question_prepare：按冻结 Queue 出题
 
 1. 读取 Config 并确认 contract_version=4.0；读取 Daily Queue 的真实表头及所有 Contract Version=4.0 的有界数据。不要自行推算“今天”选择题组。
 
-2. 只按 Queue Status=planned 分组。若存在 EXPECTED_QUEUE_ID，只筛选该 Queue ID；否则全表必须恰好存在一个满足全部条件的 active planned Queue：
+2. 只按 active Queue 分组：Queue Status 全部为 planned，或全部为 presented。若存在 EXPECTED_QUEUE_ID，只筛选该 Queue ID；否则全表必须恰好存在一个满足全部条件的 active Queue：
 - 同一个且唯一 Queue ID / Queue Date；
-- Planned Count=N，N 为 1–30 的整数，所有行一致；旧行 Planned Count 为空时按 20；
+- Planned Count=N，N 为 1–150 的整数，所有行一致；旧行 Planned Count 为空时按 20；
 - 恰好 N 行；
 - Position 恰好为 1–N 且无重复；
 - N 个身份唯一：旧词块用 Phrase ID，新词块用 Candidate ID；
-- Queue Status 全部 planned；
+- Queue Status 必须整组一致，只能 planned 或 presented；presented 时 Session ID 和 Presented At 必须分别全组一致且非空；
 - Created At 均为真实时间戳，Asia/Shanghai 日期部分等于 Queue Date；
 - Contract Version 全部为文本 4.0；
 - 如果存在 EXPECTED_QUEUE_ID / EXPECTED_COUNT，必须分别等于 Queue ID / N。
-不得读取 superseded、deferred、committed 或 presented Queue 作为本次题组，不重新计算、不换题、不用非到期旧词补位。
+不得读取 superseded、deferred 或 committed Queue 作为本次题组，不重新计算、不换题、不用非到期旧词补位。presented 只用于给同一个未提交场次补充新增 Position，绝不能重写已经存在的题。
 
-若没有 planned Queue，检查是否存在唯一 requested 素材缺口并按模式选择规则处理；否则明确报告“当前没有可开始的 v4 planned 题组”。若多于一个 planned Queue，报告全部 Queue ID/Queue Date 并停止。
+若没有 active Queue，检查是否存在唯一 requested 素材缺口并按模式选择规则处理；否则明确报告“当前没有需要准备题目的 v4 当日题组”。若多于一个 active Queue，报告全部 Queue ID/Queue Date 并停止。
 
-3. 读取 Session Questions。若该 Queue ID 已有一个完整唯一 active Generation ID（恰好 N 行、状态 staged/ready/bound），回读确认后直接给出 Web App 链接，不重复生成。若多个 active Generation ID，停止并报告歧义；若没有则继续生成，不能把“尚未生成”当成停止条件。
+3. 读取 Session Questions。active 指 Question Status 为 staged、ready 或 bound，且 Queue ID / Contract Version 匹配。允许多个 Generation ID 作为内部暂存段，但必须满足：
+- 每个 Generation ID 内 Position 无重复；所有 active Generation ID 合并后 Position 也无重复；
+- 每行身份与 Daily Queue 同 Position 精确一致；
+- bound 行必须保留原题、原答案和原 Session ID，绝不重写；
+- active Position 只能是 1–N。
+若 active Position 已完整覆盖 1–N，固定范围回读后直接给出 Web App 链接，不重复生成。否则计算缺失 Position 集合 MISSING；若存在重复或身份冲突，停止并报告歧义。staged/ready 的不完整合法段不是错误，不得覆盖或删除。
 
-4. 为 Queue 的 N 个冻结身份各生成一道题：
+4. 本次只为 MISSING 中最靠前的 S 个 Position 生成题目，S=min(30, MISSING 数量)。这是 AI 内部稳定暂存段，不是新的用户题组；网页仍显示完整 N 题，并最终只提交一次。每个选中身份各生成一道题：
 - Position、Phrase ID、Candidate ID 与 Daily Queue 原样一一对应；
 - Question Type 只能 recall、cloze、contrast、scenario、oral；
 - 混合回忆、情境表达、辨析和口语，不连续堆叠同一题型；
@@ -122,15 +127,15 @@ question_prepare：按冻结 Queue 出题
 - Candidate ID 非空且 Origin Type=user_context 时，读取其 Origin Context ID、Selected Text 和对应 Context Inbox Raw Text；首次学习优先利用真实语境，但不能泄露答案；
 - 不在聊天中发送参考答案。
 
-5. 使用唯一 Generation ID，例如 GEN-<Queue ID>-<yyyyMMddHHmmss>。向 Session Questions 一次性追加 N 行，每行严格 21 个 CellData，顺序为：
+5. 使用新的唯一 Generation ID，例如 GEN-<Queue ID>-<yyyyMMddHHmmss>。向 Session Questions 一次性追加 S 行，每行严格 21 个 CellData，顺序为：
 Queue Date | Queue ID | Position | Phrase ID | Candidate ID | Question Type | Prompt ZH | Prompt EN | Expected Answers JSON | Accepted Variants JSON | Semantic Boundary | Grading Rubric | Generation ID | Model ID | Prompt Version | Content Hash | Question Status | Session ID | Created At | Bound At | Contract Version
 
-写入规则：Model ID 写当前实际模型；Prompt Version=english-review-v4-question-2；Content Hash 留空；Question Status=staged；Session ID/Bound At 留空；Created At 写真实 Asia/Shanghai 时间；Contract Version 写文本 4.0。
+写入规则：Position 使用本段实际缺失 Position；Model ID 写当前实际模型；Prompt Version=english-review-v4-question-3；Content Hash 留空；Question Status=staged；Session ID/Bound At 留空（即使 Queue 已 presented，也由 Apps Script 绑定）；Created At 写真实 Asia/Shanghai 时间；Contract Version 写文本 4.0。
 
-6. 固定范围回读确认：恰好 N 行、同一个 Generation ID、Position 1–N、身份与 Queue 逐行一致、JSON 可解析且非空、状态全为 staged、Contract Version 全为文本 4.0。
+6. 固定范围回读确认：本次恰好 S 行、同一个新 Generation ID、Position 精确等于本段选中的缺失集合、身份与 Queue 逐行一致、JSON 可解析且非空、状态全为 staged、Contract Version 全为文本 4.0；再回读该 Queue 的全部 active 行，确认无重复且覆盖数增加 S。
 
 7. 成功后回复：
-“题组已准备好：YOUR_WEB_APP_URL”
+“题目暂存段已准备好。请返回答题网页检查完整题组；若仍有缺失，网页会继续提供下一段完整提示词：YOUR_WEB_APP_URL”
 不要在聊天中直接展示题目，不要把 Queue 改为 presented。
 
 ====================
@@ -144,7 +149,7 @@ grading：按实际提交的答案集合批改
 - Session Questions：该 Session ID 中与上述 Position 对应、Question Status=bound 的 A 行；
 - Daily Queue：该 Session ID + Queue ID 中与上述 Position 对应、Queue Status=presented、Contract Version=4.0 的 A 行。
 
-A 必须是 1–30。实际 Position 可以是不连续集合；三处的 Position 集合必须精确相同且无重复，Phrase ID/Candidate ID 逐题一致，Answer 非空，Answer Hash 一致。Daily Queue 中其余未提交 Position 不参与批改，不判错、不改 SRS。
+A 必须是 1–150。实际 Position 可以是不连续集合；三处的 Position 集合必须精确相同且无重复，Phrase ID/Candidate ID 逐题一致，Answer 非空，Answer Hash 一致。Daily Queue 中其余未提交 Position 不参与批改，不判错、不改 SRS。
 
 3. 逐题批改，Result 只能：
 - forgotten：没有回忆出目标表达或实质错误；
@@ -154,18 +159,18 @@ A 必须是 1–30。实际 Position 可以是不连续集合；三处的 Positi
 
 每题还要提供 Feedback ZH、Error Category（无错可空）、0–1 Confidence、Evidence、Expected Answer。Confidence<0.75 仍给最可能结果，Apps Script 只让用户确认这些低信心题。
 
-4. 本模式不生成候选素材。Candidate Suggestions JSON 在本批第一行必须精确写文本 []，其余行留空。素材不足由 Candidate Generation Inbox 的独立按缺口流程处理。
+4. 读取 Grade Inbox 中该 Submission ID / Session ID / Answer Hash 的 active staged 行。允许多个 Grading Batch ID 作为内部暂存段，但所有 active Position 合并后必须无重复、身份与冻结答案一致且只能属于实际提交集合。若已完整覆盖全部 A 个 Position，固定范围回读后复用；否则计算 MISSING。重复或冲突时停止。本模式不生成候选素材：如果现有 active staged 行中尚未出现 Candidate Suggestions JSON，本次新段第一行必须精确写文本 []、其余行留空；如果已经出现一次，本次所有行都留空。
 
-5. 使用唯一 Grading Batch ID，例如 GRD-<Submission ID>-<yyyyMMddHHmmss>。向 Grade Inbox 一次性追加 A 行，每行严格 18 个 CellData，顺序为：
+5. 本次只批改 MISSING 中最靠前的 G 个 Position，G=min(30, MISSING 数量)。使用新的唯一 Grading Batch ID，例如 GRD-<Submission ID>-<yyyyMMddHHmmss>。向 Grade Inbox 一次性追加 G 行，每行严格 18 个 CellData，顺序为：
 Submission ID | Session ID | Answer Hash | Position | Phrase ID | Candidate ID | Result | Feedback ZH | Error Category | Confidence | Evidence | Expected Answer | Grading Batch ID | Prompt Version | Grade Status | Created At | Candidate Suggestions JSON | Contract Version
 
-写入规则：沿用同一 Submission ID、Session ID、Answer Hash、Grading Batch ID；Position 使用实际提交集合；Prompt Version=english-review-v4-grade-3；Grade Status=staged；Created At 写真实 Asia/Shanghai 时间；Contract Version 写文本 4.0。
+写入规则：沿用同一 Submission ID、Session ID、Answer Hash；本段共享新的 Grading Batch ID；Position 使用本段实际缺失集合；Prompt Version=english-review-v4-grade-4；Grade Status=staged；Created At 写真实 Asia/Shanghai 时间；Contract Version 写文本 4.0。
 
-若该 Submission ID 已有一个完整的 A 行 active staged 批次，回读复用，禁止重复写。rejected 旧批次不算 active，可修正后使用新 Grading Batch ID。
+rejected 旧行不算 active，可修正后使用新 Grading Batch ID。不得覆盖先前合法 staged 段。
 
-6. 固定范围回读确认：恰好 A 行、Position 集合与 Answer Drafts 精确相同、一个 Grading Batch ID、身份/hash 一致、Result/Confidence 合法、状态全为 staged、Candidate Suggestions JSON 只出现一次且精确 []、Contract Version 全为文本 4.0。
+6. 固定范围回读确认：本次恰好 G 行、Position 精确等于本段缺失集合、一个新的 Grading Batch ID、身份/hash 一致、Result/Confidence 合法、状态全为 staged、Contract Version 全为文本 4.0；再回读该提交的全部 active staged 行，确认无重复、覆盖数增加 G，且 Candidate Suggestions JSON 在全部 active 行中只出现一次并精确为 []。
 
 7. 成功后回复：
-“批改暂存已完成。请返回答题页面，系统会自动核验、写入并显示结果：YOUR_WEB_APP_URL”
+“批改暂存段已完成。请返回答题页面；全部已提交题目覆盖后，系统才会统一核验、写入并显示结果。若仍有缺失，网页会继续提供下一段完整提示词：YOUR_WEB_APP_URL”
 
 不得在这里宣称数据库已写入或复习已完成；只有 Apps Script 精确回读后才能显示 committed。

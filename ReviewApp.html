@@ -1537,7 +1537,7 @@
       };
       var demoCloudDrafts = {};
       var demoContextItems = [];
-      var demoQuestionCount = 20;
+      var demoQuestionCount = 40;
       var demoDefaultQuestionCount = 20;
 
       var el = {
@@ -1730,12 +1730,18 @@
               resolve(demoDashboardData());
               return;
             }
-            if (name === "getQuestionCountControlV4" || name === "setQuestionCountV4") {
-              if (name === "setQuestionCountV4") {
-                var demoModeName = String(args[1] || "today");
-                if (demoModeName === "today" || demoModeName === "both") {
-                  demoQuestionCount = Number(args[0]);
-                }
+              if (name === "getQuestionCountControlV4" || name === "setQuestionCountV4") {
+                var demoRequestedInput = Number(args[0] || demoQuestionCount);
+                var demoRaisedToCompleted = false;
+                if (name === "setQuestionCountV4") {
+                  var demoModeName = String(args[1] || "today");
+                  if (demoModeName === "today" || demoModeName === "both") {
+                    var demoLockedCount = app.questions.filter(function (question) {
+                      return question.locked;
+                    }).length;
+                    demoQuestionCount = Math.max(demoRequestedInput, demoLockedCount);
+                    demoRaisedToCompleted = demoQuestionCount > demoRequestedInput;
+                  }
                 if (demoModeName === "future" || demoModeName === "both") {
                   demoDefaultQuestionCount = Number(args[0]);
                 }
@@ -1746,13 +1752,15 @@
                 date: "2026-08-09",
                 defaultCount: demoDefaultQuestionCount,
                 requestedCount: demoCount,
+                effectiveTodayCount: demoCount,
+                raisedToCompletedCount: demoRaisedToCompleted,
                 minCount: 1,
                 maxCount: 150,
-                maxBatchCount: 30,
+                maxBatchCount: 150,
                 completed: 0,
                 queueStatus: "presented",
-                plannedCount: Math.min(demoCount, 30),
-                adjustedTarget: Math.min(demoCount, 30),
+                plannedCount: demoCount,
+                adjustedTarget: demoCount,
                 lockedCount: app.questions.filter(function (question) { return question.locked; }).length,
                 shortfallCount: 0
               });
@@ -1848,9 +1856,9 @@
           return {
             ok: true,
             state: "preparing",
-            message: "当前批次需要准备 20 道题。",
+            message: "今天完整题组共 40 道题，仍有题目正在内部暂存。",
             queueId: "DEMO-QUEUE",
-            plannedCount: 20,
+            plannedCount: 40,
             chatGptManualUrl: "https://chatgpt.com/"
           };
         }
@@ -1908,15 +1916,16 @@
           queueId: "DEMO-QUEUE",
           presentedAt: "2026-07-29 09:02:18",
           queueMeta: {
-            planned: 20,
-            adjustedTarget: Math.min(demoQuestionCount, 20),
+            planned: demoQuestionCount,
+            adjustedTarget: demoQuestionCount,
             requested: demoQuestionCount,
             completedBeforeBatch: 0,
             queueKind: "primary",
             due: 12,
             fresh: 8
           },
-          questions: prompts.map(function (prompt, index) {
+          questions: Array.from({ length: demoQuestionCount }, function (_, index) {
+            var prompt = prompts[index % prompts.length];
             var allRevealed = demoState === "all_revealed";
             var partialRevealed = demoState === "partial15" && index < 15;
             var isLocked = allRevealed || partialRevealed;
@@ -1954,11 +1963,11 @@
             newCount: 8,
             aiFallbackCandidateCount: 0,
             requestedCount: demoQuestionCount,
-            plannedCount: 20,
-            adjustedTarget: 20,
-            actualCount: 20,
+            plannedCount: demoQuestionCount,
+            adjustedTarget: demoQuestionCount,
+            actualCount: demoQuestionCount,
             completedBeforeBatch: 0,
-            completedToday: 20,
+            completedToday: demoQuestionCount,
             personalReadyCandidateCount: 32,
             personalIntakeBacklogCount: 3,
             counts: { forgotten: 2, difficult: 4, normal: 8, mastered: 6 },
@@ -1988,7 +1997,7 @@
           "你答应稍后调查这个问题。怎么说？ / Respond in one sentence.",
           "表达“请及时告诉我任何变化”。 / Use the target communication chunk."
         ];
-        return Array.from({ length: 20 }, function (_, index) {
+        return Array.from({ length: demoQuestionCount }, function (_, index) {
           var chunks = ["as planned", "on track", "run late", "look into", "keep me posted"];
           var chunk = chunks[index % chunks.length];
           return {
@@ -2044,7 +2053,7 @@
           },
           overview: {
             todayPlanned: demoQuestionCount,
-            todayCompleted: 20,
+            todayCompleted: 0,
             todayAccuracy: { correct: 13, total: 20, percent: 65 },
             sevenDayAccuracy: { correct: 88, total: 140, percent: 62.9 },
             thirtyDayAccuracy: { correct: 330, total: 520, percent: 63.5 },
@@ -2054,18 +2063,18 @@
             overdue: 3,
             streak: 18
           },
-          todayPlan: { status: "committed", planned: demoQuestionCount, due: 20, fresh: 0, completed: 20 },
+          todayPlan: { status: "presented", planned: demoQuestionCount, due: 20, fresh: 20, completed: 0 },
           questionCount: {
             defaultCount: demoDefaultQuestionCount,
             requestedCount: demoQuestionCount,
             hasTodayOverride: false,
             minCount: 1,
             maxCount: 150,
-            maxBatchCount: 30,
-            completed: 20,
-            queueStatus: "committed",
-            plannedCount: 20,
-            adjustedTarget: Math.min(demoQuestionCount, 20),
+            maxBatchCount: 150,
+            completed: 0,
+            queueStatus: "presented",
+            plannedCount: demoQuestionCount,
+            adjustedTarget: demoQuestionCount,
             lockedCount: 0,
             shortfallCount: 0
           },
@@ -2102,18 +2111,18 @@
           system: {
             tone: "good",
             contractVersion: "4.0",
-            queueCount: 20,
-            queueExpectedCount: 20,
-            queueStatus: "committed",
-            questionCount: 20,
-            generationCount: 1,
-            gradeCount: 20,
+            queueCount: demoQuestionCount,
+            queueExpectedCount: demoQuestionCount,
+            queueStatus: "presented",
+            questionCount: demoQuestionCount,
+            generationCount: 2,
+            gradeCount: 0,
             pendingGradeCount: 0,
-            journalStatus: "committed",
-            journalStep: "verified_complete",
-            journalReadback: "verified",
-            sessionWrite: "verified",
-            sessionReadback: "verified",
+            journalStatus: "",
+            journalStep: "",
+            journalReadback: "",
+            sessionWrite: "",
+            sessionReadback: "",
             latestActivity: dateKey + " 09:47:24"
           }
         };
@@ -2716,7 +2725,7 @@
           meta.requested || result.requestedCount || app.payload && app.payload.requestedCount ||
           meta.adjustedTarget || app.questions.length || 20
         );
-        var input = window.prompt("这次想做几题？请输入 1–150 的整数。超过 30 题会自动分批。", String(current));
+        var input = window.prompt("今天一共想做几题？请输入 1–150 的整数。已完成的题不会丢失。", String(current));
         if (input === null) return;
         var count = Number(String(input).trim());
         if (!Number.isInteger(count) || count < 1 || count > 150) {
@@ -2729,37 +2738,19 @@
         }).then(function (control) {
           if (control && control.shortfallCount) {
             showToast("已保存题数；当前还缺 " + control.shortfallCount + " 条素材。", 5200);
+          } else if (control && control.raisedToCompletedCount) {
+            showToast(
+              "你今天已经完成 " + Number(control.effectiveTodayCount || count) +
+              " 题，因此今天按这个实际题数记录。",
+              5200
+            );
           } else {
-            showToast("这次题数已调整为 " + count + "。", 4200);
+            showToast("今天的完整题组已调整为 " + count + " 题。", 4200);
           }
           return callServer("getReviewBootstrapV4");
         }).then(handlePayload).catch(function (error) {
           setSaveState("题数调整失败", "bad");
           showToast(error && error.message ? error.message : "题数没有调整", 5200);
-        });
-      }
-
-      function saveQuestionCountFromSettings(mode) {
-        var input = document.getElementById("questionCountInput");
-        if (!input) return;
-        var count = Number(input.value);
-        if (!Number.isInteger(count) || count < 1 || count > 150) {
-          showToast("请输入 1–150 的整数。");
-          input.focus();
-          return;
-        }
-        setSaveState("正在保存题数…", "warn");
-        callServer("setQuestionCountV4", [count, mode]).then(function (control) {
-          showToast(mode === "future" ? "以后默认题数已保存。" : "题数设置已保存。", 4200);
-          app.dashboard = null;
-          app.dashboardPromise = null;
-          app.todayLoaded = false;
-          app.payload = null;
-          app.questions = [];
-          return loadDashboard();
-        }).then(renderSettings).catch(function (error) {
-          setSaveState("题数保存失败", "bad");
-          showToast(error && error.message ? error.message : "题数没有保存", 5200);
         });
       }
 
@@ -3195,7 +3186,7 @@
       function renderSettings(payload) {
         var system = payload.system || {};
         var countControl = payload.questionCount || {};
-        var currentBatchTarget = countControl.adjustedTarget === undefined || countControl.adjustedTarget === null
+        var currentSetTarget = countControl.adjustedTarget === undefined || countControl.adjustedTarget === null
           ? Number(countControl.plannedCount || 0)
           : Number(countControl.adjustedTarget);
         el.settingsFreshness.textContent = "数据更新于 " + (payload.generatedAt || "");
@@ -3204,10 +3195,10 @@
         var rows = [
           ["整体状态", toneLabel, tone],
           ["数据规则版本", system.contractVersion || "—", system.contractVersion === "4.0" ? "good" : "bad"],
-          ["当前题组", Number(system.queueCount || 0) + " / " + Number(system.queueExpectedCount || 0) + " · " + displayStatus(system.queueStatus),
+          ["今日题组", Number(system.queueCount || 0) + " / " + Number(system.queueExpectedCount || 0) + " · " + displayStatus(system.queueStatus),
             Number(system.queueCount || 0) === Number(system.queueExpectedCount || 0) ? "good" : "warn"],
-          ["当前题目", Number(system.questionCount || 0) + " / " + Number(system.queueExpectedCount || 0) + " · " + Number(system.generationCount || 0) + " 个生成批次",
-            Number(system.questionCount || 0) === Number(system.queueExpectedCount || 0) && Number(system.generationCount || 0) <= 1 ? "good" : "warn"],
+          ["当前题目", Number(system.questionCount || 0) + " / " + Number(system.queueExpectedCount || 0) + " · AI 内部暂存 " + Number(system.generationCount || 0) + " 段",
+            Number(system.questionCount || 0) === Number(system.queueExpectedCount || 0) ? "good" : "warn"],
           ["素材缺口", Number(system.materialShortfallCount || 0) + " 条" +
             (system.materialShortfallStatus ? " · " + displayStatus(system.materialShortfallStatus) : ""),
             Number(system.materialShortfallCount || 0) === 0 ? "good" : "warn"],
@@ -3226,23 +3217,15 @@
         el.settingsMount.innerHTML =
           '<div class="dashboard-grid">' +
             '<section class="panel wide">' +
-              '<div class="panel-head"><div><h3>题数设置</h3>' +
-              '<p>填写这次想做的题数，范围 1–150；每 30 题自动拆成一个稳定批次。已经完成的题不会被撤销。</p></div></div>' +
-              '<label class="intake-field"><span>题数</span>' +
-                '<input id="questionCountInput" type="number" min="1" max="150" step="1" value="' +
-                  Number(countControl.requestedCount || countControl.defaultCount || 20) + '"></label>' +
+              '<div class="panel-head"><div><h3>题数状态</h3>' +
+              '<p>这里仅显示状态。调整入口统一放在“今日学习”顶部，范围 1–150；修改后网页始终按完整的当天题数显示。</p></div>' +
+              '<span class="status-chip neutral">只读</span></div>' +
               '<div class="diagnostic-list" style="margin-bottom:14px">' +
                 '<div class="diagnostic-row"><span>以后默认</span><strong>' + Number(countControl.defaultCount || 20) + ' 题</strong></div>' +
-                '<div class="diagnostic-row"><span>这次想做</span><strong>' + Number(countControl.requestedCount || 20) + ' 题</strong></div>' +
+                '<div class="diagnostic-row"><span>今天完整题组</span><strong>' + Number(countControl.requestedCount || 20) + ' 题</strong></div>' +
                 '<div class="diagnostic-row"><span>今天实际完成</span><strong>' + Number(countControl.completed || 0) + ' 题</strong></div>' +
-                '<div class="diagnostic-row"><span>当前批次</span><strong>' + Number(countControl.lockedCount || 0) + ' / ' +
-                  currentBatchTarget + '（最多 ' + Number(countControl.plannedCount || 0) + '）</strong></div>' +
-              '</div>' +
-              '<div class="state-actions">' +
-                '<button id="saveTodayCount" class="btn primary" type="button">只改这次</button>' +
-                '<button id="saveFutureCount" class="btn secondary" type="button">只改以后默认</button>' +
-                '<button id="saveBothCount" class="btn secondary" type="button">这次和以后都改</button>' +
-                '<button id="restoreFixed20" class="btn secondary" type="button">恢复固定 20 题</button>' +
+                '<div class="diagnostic-row"><span>当前场次已锁定</span><strong>' + Number(countControl.lockedCount || 0) + ' / ' +
+                  currentSetTarget + '</strong></div>' +
               '</div>' +
               (Number(countControl.shortfallCount || 0) > 0
                 ? '<p class="fine-print">当前还缺 ' + Number(countControl.shortfallCount) +
@@ -3272,19 +3255,6 @@
               '</div>' +
             '</section>' +
           '</div>';
-        document.getElementById("saveTodayCount").addEventListener("click", function () {
-          saveQuestionCountFromSettings("today");
-        });
-        document.getElementById("saveFutureCount").addEventListener("click", function () {
-          saveQuestionCountFromSettings("future");
-        });
-        document.getElementById("saveBothCount").addEventListener("click", function () {
-          saveQuestionCountFromSettings("both");
-        });
-        document.getElementById("restoreFixed20").addEventListener("click", function () {
-          document.getElementById("questionCountInput").value = "20";
-          saveQuestionCountFromSettings("both");
-        });
       }
 
       function handlePayload(payload) {
@@ -3378,14 +3348,15 @@
           status === "awaiting_chatgpt" ? "等待批改" :
           status === "candidate_shortfall" ? "等待补充素材" :
           "处理中";
-        var batchNote = planned
-          ? '<span>本批 ' + planned + ' 题' + (target !== planned ? ' · 提交线 ' + target + ' 题' : '') + '</span>'
+        var visibleDailyTotal = Math.max(requested, completed);
+        var setNote = planned
+          ? '<span>当前场次 ' + target + ' 题' + (target !== planned ? ' · 原题均保留' : '') + '</span>'
           : '';
         el.todayStrip.innerHTML =
-          '<div class="today-strip-parts"><span><strong>今天想做 ' + requested + " 题</strong></span>" +
-          batchNote + '<span>到期复习 ' + due + '</span>' +
-          (planned ? '<span>本批新搭配 ' + fresh + '</span>' : '') +
-          '<span>今天已完成 ' + completed + " / " + requested + '</span></div>' +
+          '<div class="today-strip-parts"><span><strong>今天共 ' + visibleDailyTotal + " 题</strong></span>" +
+          setNote + '<span>到期复习 ' + due + '</span>' +
+          (planned ? '<span>今日新搭配 ' + fresh + '</span>' : '') +
+          '<span>今天已完成 ' + completed + " / " + visibleDailyTotal + '</span></div>' +
           '<div class="today-strip-parts"><button id="adjustTodayCount" class="nav-link" type="button">调整题数</button>' +
           '<span class="status-chip">' + escapeHtml(statusLabel) + '</span></div>';
         el.todayStrip.classList.remove("hidden");
@@ -3403,7 +3374,9 @@
         app.savedAnswers = {};
         app.savePromises = {};
         app.conflicts = {};
-        app.questions.forEach(function (question) {
+        var completedBefore = Number(payload.queueMeta && payload.queueMeta.completedBeforeBatch || 0);
+        app.questions.forEach(function (question, index) {
+          question.displayPosition = Number(question.displayPosition || completedBefore + index + 1);
           question.revealed = Boolean(question.revealed);
           question.locked = question.locked == null ? question.revealed : Boolean(question.locked);
           question.syncing = false;
@@ -3439,8 +3412,8 @@
             var button = document.createElement("button");
             button.type = "button";
             button.className = "q-number";
-            button.textContent = question.position;
-            button.setAttribute("aria-label", "第 " + question.position + " 题");
+            button.textContent = question.displayPosition || question.position;
+            button.setAttribute("aria-label", "第 " + (question.displayPosition || question.position) + " 题");
             button.addEventListener("click", function () { navigateTo(index); });
             container.appendChild(button);
           });
@@ -3450,7 +3423,8 @@
       function renderQuestion() {
         var question = app.questions[app.current];
         if (!question) return;
-        el.questionEyebrow.textContent = "第 " + question.position + " 题，共 " + app.questions.length + " 题";
+        el.questionEyebrow.textContent = "第 " + (question.displayPosition || question.position) +
+          " 题，共 " + dailyVisibleQuestionTotal() + " 题";
         el.questionType.textContent = TYPE_LABELS[question.questionType] || question.questionType || "题目";
         el.promptZh.textContent = question.promptZh || "";
         el.promptEn.textContent = question.promptEn || "";
@@ -3490,14 +3464,24 @@
       }
 
       function updateProgress() {
-        var completed = app.questions.filter(function (question) {
+        var completedBefore = Number(
+          app.payload && app.payload.queueMeta && app.payload.queueMeta.completedBeforeBatch || 0
+        );
+        var completed = completedBefore + app.questions.filter(function (question) {
           return question.locked;
         }).length;
-        var total = app.questions.length || 1;
+        var total = dailyVisibleQuestionTotal();
         el.progressBar.style.width = (completed / total * 100) + "%";
         el.progressLabel.textContent = completed + " / " + total;
         el.answeredCount.textContent = completed + " / " + total;
         if (app.payload && app.payload.state === "answering") renderTodayStrip(app.payload);
+      }
+
+      function dailyVisibleQuestionTotal() {
+        var meta = app.payload && app.payload.queueMeta ? app.payload.queueMeta : {};
+        var completedBefore = Number(meta.completedBeforeBatch || 0);
+        var requested = Number(meta.requested || 0);
+        return Math.max(1, requested, completedBefore + app.questions.length);
       }
 
       function currentBatchSubmissionTarget() {
@@ -3781,7 +3765,7 @@
         var rows = locked.map(function (question) {
           return (
             '<div class="review-row">' +
-              '<div class="row-index">' + question.position + '</div>' +
+              '<div class="row-index">' + (question.displayPosition || question.position) + '</div>' +
               '<div><strong>' + escapeHtml(question.promptZh || question.promptEn) + '</strong>' +
               '<p><span class="muted">你的答案：</span>' + escapeHtml(app.answers[question.position]) + '</p>' +
               '<p><span class="muted">标准答案：</span>' + escapeHtml(question.expectedAnswer || "") + '</p></div>' +
@@ -3957,7 +3941,7 @@
         var overage = Math.max(0, completedToday - requested);
         var finishedToday = completedToday >= requested;
         var nextShortfall = Number(result.nextMaterialShortfall || 0);
-        var hasNextBatch = Boolean(
+        var hasContinuation = Boolean(
           result.nextBatch && result.nextBatch.state !== "daily_target_met" && !nextShortfall
         );
         var fallbackCount = Number(
@@ -3966,28 +3950,28 @@
             : (result.replenishedCandidateCount || 0)
         );
         var inventoryNote = fallbackCount > 0
-          ? '本批新增个性化 AI 补充素材 ' + fallbackCount + ' 条。'
+          ? '本次新增个性化 AI 补充素材 ' + fallbackCount + ' 条。'
           : '选材始终优先使用你自己收集的内容；只有实际缺少时才请求 AI 按缺口补充。';
-        var completionNote = '本批实际完成并保存 ' + actual + ' 题；今天累计 ' +
+        var completionNote = '本次实际完成并保存 ' + actual + ' 题；今天累计 ' +
           completedToday + ' / ' + requested + ' 题。';
         if (overage > 0) {
           completionNote += ' 多做的 ' + overage + ' 题已经正常计入。';
         }
         var actions = nextShortfall > 0
           ? '<div class="state-actions"><button id="materialAfterResults" class="btn primary" type="button">补充缺少的 ' + nextShortfall + ' 条素材</button><button id="adjustAfterResults" class="btn secondary" type="button">调整今天题数</button></div>'
-          : (hasNextBatch
-            ? '<div class="state-actions"><button id="continueNextBatch" class="btn primary" type="button">继续下一批</button><button id="adjustAfterResults" class="btn secondary" type="button">调整今天题数</button></div>'
+          : (hasContinuation
+            ? '<div class="state-actions"><button id="continueNextBatch" class="btn primary" type="button">继续完成今天剩余题目</button><button id="adjustAfterResults" class="btn secondary" type="button">调整今天题数</button></div>'
             : '<div class="state-actions"><button id="adjustAfterResults" class="btn secondary" type="button">今天再加题或调整题数</button></div>');
         el.stateMount.innerHTML =
           '<section class="state-card" style="max-width:900px">' +
             '<div class="state-icon">✓</div>' +
-            '<h2>' + (finishedToday ? '今天想做的题已完成' : '这一批已经保存') + '</h2>' +
+            '<h2>' + (finishedToday ? '今天想做的题已完成' : '本次学习已经保存') + '</h2>' +
             '<p>' + escapeHtml(completionNote) + ' 数据已通过完整性检查。</p>' +
             '<div class="result-bar">' + metrics + '</div>' +
             renderResultSection("到期复习", dueItems) +
             renderResultSection("今日新搭配", newItems) +
             '<p class="fine-print">' + inventoryNote +
-              (result.nextBatchError ? ' 下一批准备提示：' + escapeHtml(result.nextBatchError) : '') +
+              (result.nextBatchError ? ' 后续题目准备提示：' + escapeHtml(result.nextBatchError) : '') +
             '</p>' + actions +
           '</section>';
         var materialButton = document.getElementById("materialAfterResults");
@@ -3996,7 +3980,7 @@
         });
         var continueButton = document.getElementById("continueNextBatch");
         if (continueButton) continueButton.addEventListener("click", function () {
-          setSaveState("正在载入下一批…", "warn");
+          setSaveState("正在载入今天剩余题目…", "warn");
           callServer("getReviewBootstrapV4").then(handlePayload).catch(showFatal);
         });
         var adjustButton = document.getElementById("adjustAfterResults");
@@ -4031,8 +4015,8 @@
         var shortage = payload.state === "candidate_shortfall";
         var invalidQuestions = payload.state === "question_invalid";
         var title = shortage ? "还缺 " + Number(payload.shortfallCount || 0) + " 条合适素材" :
-          preparing ? "今天的题组正在准备" :
-          invalidQuestions ? "这批题需要重新准备" :
+          preparing ? "今天的完整题组正在准备" :
+          invalidQuestions ? "今天的题目需要重新准备" :
           payload.state === "waiting_next_queue" ? "今天没有待开始的题组" :
           payload.state === "committed_without_result" ? "本次学习已提交" :
           "题组暂时不可用";

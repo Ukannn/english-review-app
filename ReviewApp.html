@@ -812,6 +812,25 @@
     .history-row { padding: 13px; border: 1px solid var(--line); border-radius: 13px; }
     .history-row p { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
 
+    .prompt-copy-area {
+      width: 100%;
+      min-height: min(42dvh, 360px);
+      margin: 16px 0;
+      padding: 14px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color: var(--ink);
+      background: #fbfcfa;
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .prompt-copy-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
     .intake-grid {
       display: grid;
       grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
@@ -1389,6 +1408,19 @@
     <article id="phraseDetailSheet" class="detail-sheet"></article>
   </div>
 
+  <div id="promptCopyModal" class="detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="promptCopyTitle">
+    <article class="detail-sheet">
+      <button id="closePromptCopy" class="btn secondary detail-close" type="button" aria-label="关闭">×</button>
+      <h2 id="promptCopyTitle">复制完整提示词</h2>
+      <p id="promptCopyHelp">浏览器没有允许自动复制。你可以再次复制，或在下方全选后按 ⌘C。</p>
+      <textarea id="promptCopyArea" class="prompt-copy-area" readonly spellcheck="false"></textarea>
+      <div class="prompt-copy-actions">
+        <button id="retryPromptCopy" class="btn primary" type="button">复制并打开 ChatGPT</button>
+        <a id="openPromptTarget" class="btn secondary" href="https://chatgpt.com/" target="_blank" rel="noopener">只打开 ChatGPT</a>
+      </div>
+    </article>
+  </div>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script>
@@ -1533,7 +1565,8 @@
         localVersions: {},
         savedAnswers: {},
         savePromises: {},
-        conflicts: {}
+        conflicts: {},
+        pendingPrompt: null
       };
       var demoCloudDrafts = {};
       var demoContextItems = [];
@@ -1605,6 +1638,13 @@
         archivedContextList: document.getElementById("archivedContextList"),
         phraseDetailModal: document.getElementById("phraseDetailModal"),
         phraseDetailSheet: document.getElementById("phraseDetailSheet"),
+        promptCopyModal: document.getElementById("promptCopyModal"),
+        promptCopyTitle: document.getElementById("promptCopyTitle"),
+        promptCopyHelp: document.getElementById("promptCopyHelp"),
+        promptCopyArea: document.getElementById("promptCopyArea"),
+        retryPromptCopy: document.getElementById("retryPromptCopy"),
+        openPromptTarget: document.getElementById("openPromptTarget"),
+        closePromptCopy: document.getElementById("closePromptCopy"),
         toast: document.getElementById("toast")
       };
 
@@ -2259,10 +2299,15 @@
         el.phraseDetailModal.addEventListener("click", function (event) {
           if (event.target === el.phraseDetailModal) closePhraseDetail();
         });
+        el.promptCopyModal.addEventListener("click", function (event) {
+          if (event.target === el.promptCopyModal) closePromptCopyPanel();
+        });
+        el.closePromptCopy.addEventListener("click", closePromptCopyPanel);
+        el.retryPromptCopy.addEventListener("click", copyPromptFromPanel);
         document.addEventListener("keydown", function (event) {
-          if (event.key === "Escape" && !el.phraseDetailModal.classList.contains("hidden")) {
-            closePhraseDetail();
-          }
+          if (event.key !== "Escape") return;
+          if (!el.promptCopyModal.classList.contains("hidden")) closePromptCopyPanel();
+          else if (!el.phraseDetailModal.classList.contains("hidden")) closePhraseDetail();
         });
         el.answerBox.addEventListener("input", onAnswerInput);
         el.answerBox.addEventListener("keydown", function (event) {
@@ -2690,7 +2735,8 @@
         copyJob.then(function () {
           showToast(opened ? "完整整理指令已复制；请在新页面粘贴并发送。" : "完整整理指令已复制；浏览器未打开新页面，请手动打开关联对话。", 5600);
         }).catch(function () {
-          showToast("无法复制整理指令，请检查浏览器的剪贴板权限。", 5600);
+          if (opened) opened.close();
+          showPromptCopyPanel(prompt, conversationUrl, "复制完整整理指令");
         });
       }
 
@@ -2700,8 +2746,8 @@
         setSaveState("正在准备完整提示词…", "warn");
         callServer("getManualOperationPromptV4", [mode, identity || ""]).then(function (payload) {
           if (!payload || !payload.prompt) throw new Error("完整提示词暂时不可用。");
+          var url = payload.chatGptUrl || "https://chatgpt.com/";
           return copyPlainText(payload.prompt).then(function () {
-            var url = payload.chatGptUrl || "https://chatgpt.com/";
             if (opened) opened.location.href = url;
             setSaveState("提示词已复制", "good");
             showToast(
@@ -2710,6 +2756,10 @@
                 : "完整提示词已复制；请手动打开 ChatGPT、粘贴并发送。",
               5600
             );
+          }).catch(function () {
+            if (opened) opened.close();
+            setSaveState("等待手动复制", "warn");
+            showPromptCopyPanel(payload.prompt, url, "复制完整提示词");
           });
         }).catch(function (error) {
           if (opened) opened.close();
@@ -2808,23 +2858,95 @@
       }
 
       function copyPlainText(value) {
-        if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(value);
-        return new Promise(function (resolve, reject) {
-          var area = document.createElement("textarea");
-          area.value = value;
-          area.style.position = "fixed";
-          area.style.opacity = "0";
-          document.body.appendChild(area);
-          area.select();
-          try {
-            document.execCommand("copy");
-            resolve();
-          } catch (error) {
-            reject(error);
-          } finally {
-            area.remove();
-          }
+        value = String(value || "");
+        if (navigator.clipboard && window.isSecureContext) {
+          return navigator.clipboard.writeText(value).catch(function (clipboardError) {
+            if (legacyCopyPlainText(value)) return;
+            throw clipboardError;
+          });
+        }
+        return legacyCopyPlainText(value)
+          ? Promise.resolve()
+          : Promise.reject(new Error("浏览器没有允许复制到剪贴板。"));
+      }
+
+      function legacyCopyPlainText(value) {
+        var area = document.createElement("textarea");
+        area.value = String(value || "");
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.left = "-9999px";
+        area.style.top = "0";
+        document.body.appendChild(area);
+        area.focus();
+        area.select();
+        area.setSelectionRange(0, area.value.length);
+        var copied = false;
+        try {
+          copied = document.execCommand("copy") === true;
+        } catch (ignore) {
+          copied = false;
+        }
+        area.remove();
+        return copied;
+      }
+
+      function showPromptCopyPanel(value, url, title) {
+        app.pendingPrompt = {
+          value: String(value || ""),
+          url: String(url || "https://chatgpt.com/")
+        };
+        el.promptCopyTitle.textContent = title || "复制完整提示词";
+        el.promptCopyHelp.textContent = "浏览器没有允许自动复制。点击下方按钮重试；如果仍被拦截，下方文字会保持全选，请按 ⌘C。";
+        el.promptCopyArea.value = app.pendingPrompt.value;
+        el.openPromptTarget.href = app.pendingPrompt.url;
+        el.promptCopyModal.classList.remove("hidden");
+        document.body.style.overflow = "hidden";
+        el.promptCopyArea.focus();
+        el.promptCopyArea.select();
+        el.promptCopyArea.setSelectionRange(0, el.promptCopyArea.value.length);
+      }
+
+      function copyPromptFromPanel() {
+        if (!app.pendingPrompt) return;
+        var pending = app.pendingPrompt;
+        var opened = window.open("about:blank", "_blank");
+        if (opened) opened.opener = null;
+        el.promptCopyArea.focus();
+        el.promptCopyArea.select();
+        el.promptCopyArea.setSelectionRange(0, el.promptCopyArea.value.length);
+        var copied = false;
+        try {
+          copied = document.execCommand("copy") === true;
+        } catch (ignore) {
+          copied = false;
+        }
+        var job = copied ? Promise.resolve() : copyPlainText(pending.value);
+        job.then(function () {
+          if (opened) opened.location.href = pending.url;
+          closePromptCopyPanel();
+          setSaveState("提示词已复制", "good");
+          showToast(
+            opened
+              ? "完整提示词已复制；请在新页面粘贴并发送。"
+              : "完整提示词已复制；浏览器未打开新页面，请点击“只打开 ChatGPT”。",
+            5600
+          );
+        }).catch(function () {
+          if (opened) opened.close();
+          el.promptCopyHelp.textContent = "浏览器仍然拦截复制。提示词已经全选，请按 ⌘C，然后点击“只打开 ChatGPT”。";
+          el.promptCopyArea.focus();
+          el.promptCopyArea.select();
+          el.promptCopyArea.setSelectionRange(0, el.promptCopyArea.value.length);
+          setSaveState("请按 ⌘C 复制", "bad");
         });
+      }
+
+      function closePromptCopyPanel() {
+        el.promptCopyModal.classList.add("hidden");
+        el.promptCopyArea.value = "";
+        app.pendingPrompt = null;
+        if (el.phraseDetailModal.classList.contains("hidden")) document.body.style.overflow = "";
       }
 
       function renderSectionError(view, error) {

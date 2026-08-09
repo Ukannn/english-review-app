@@ -100,23 +100,24 @@ question_prepare：按冻结 Queue 出题
 - Planned Count=N，N 为 1–150 的整数，所有行一致；旧行 Planned Count 为空时按 20；
 - 恰好 N 行；
 - Position 恰好为 1–N 且无重复；
+- Adjusted Target=T，T 为 1–N 的整数且所有行一致；为空时 T=N；T 是本次实际生效题数，N 只表示该 Queue 已保留的最大题目集合；
 - N 个身份唯一：旧词块用 Phrase ID，新词块用 Candidate ID；
 - Queue Status 必须整组一致，只能 planned 或 presented；presented 时 Session ID 和 Presented At 必须分别全组一致且非空；
 - Created At 均为真实时间戳，Asia/Shanghai 日期部分等于 Queue Date；
 - Contract Version 全部为文本 4.0；
-- 如果存在 EXPECTED_QUEUE_ID / EXPECTED_COUNT，必须分别等于 Queue ID / N。
+- 如果存在 EXPECTED_QUEUE_ID / EXPECTED_COUNT，必须分别等于 Queue ID / T。
 不得读取 superseded、deferred 或 committed Queue 作为本次题组，不重新计算、不换题、不用非到期旧词补位。presented 只用于给同一个未提交场次补充新增 Position，绝不能重写已经存在的题。
 
 若没有 active Queue，检查是否存在唯一 requested 素材缺口并按模式选择规则处理；否则明确报告“当前没有需要准备题目的 v4 当日题组”。若多于一个 active Queue，报告全部 Queue ID/Queue Date 并停止。
 
-3. 读取 Session Questions。active 指 Question Status 为 staged、ready 或 bound，且 Queue ID / Contract Version 匹配。允许多个 Generation ID 作为内部暂存段，但必须满足：
+3. 确定本次 REQUIRED Position：先保留 Answer Drafts 中已经锁定或 submitted 的 Position，再按 Daily Queue 的 Position 从小到大补足到 T 个。读取 Session Questions。active 指 Question Status 为 staged、ready 或 bound，且 Queue ID / Contract Version 匹配。允许多个 Generation ID 作为内部暂存段，但必须满足：
 - 每个 Generation ID 内 Position 无重复；所有 active Generation ID 合并后 Position 也无重复；
 - 每行身份与 Daily Queue 同 Position 精确一致；
 - bound 行必须保留原题、原答案和原 Session ID，绝不重写；
-- active Position 只能是 1–N。
-若 active Position 已完整覆盖 1–N，固定范围回读后直接给出 Web App 链接，不重复生成。否则计算缺失 Position 集合 MISSING；若存在重复或身份冲突，停止并报告歧义。staged/ready 的不完整合法段不是错误，不得覆盖或删除。
+- active Position 必须属于 REQUIRED；Question Status=deferred 或 rejected 的历史行不属于本次题组，不读取其题目内容，也不得因此扩大 REQUIRED。若仍存在 REQUIRED 之外的 active 行，报告状态冲突并停止。
+若 active Position 已完整覆盖 REQUIRED，固定范围回读后直接给出 Web App 链接，不重复生成。否则以 REQUIRED 中尚未覆盖的 Position 作为 MISSING；若存在重复或身份冲突，停止并报告歧义。staged/ready 的不完整合法段不是错误，不得覆盖或删除。
 
-4. 本次只为 MISSING 中最靠前的 S 个 Position 生成题目，S=min(30, MISSING 数量)。这是 AI 内部稳定暂存段，不是新的用户题组；网页仍显示完整 N 题，并最终只提交一次。每个选中身份各生成一道题：
+4. 本次只为 MISSING 中最靠前的 S 个 Position 生成题目，S=min(30, MISSING 数量)。这是 AI 内部稳定暂存段，不是新的用户题组；网页显示本次实际生效的 T 题，并最终只提交一次。每个选中身份各生成一道题：
 - Position、Phrase ID、Candidate ID 与 Daily Queue 原样一一对应；
 - Question Type 只能 recall、cloze、contrast、scenario、oral；
 - 混合回忆、情境表达、辨析和口语，不连续堆叠同一题型；

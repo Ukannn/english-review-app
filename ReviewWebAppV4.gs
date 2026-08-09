@@ -667,9 +667,9 @@ function updateConfigV4_(ss) {
   upsertConfigRowsV4_(ss, [
     ['contract_version', ER4.contractVersion, 'Required by the Web App, ChatGPT staging prompts, queue builder, and commit worker.'],
     ['review_entrypoint', 'Apps Script Web App', 'One responsive URL serves phone and Mac.'],
-    ['ai_transport', 'Optional scheduled task or full copied prompt in any capable ChatGPT conversation; Google Sheet staging; no OpenAI API', 'The Web App supplies standalone question/grading prompts, so the workflow is not tied to one Work conversation or model.'],
+    ['ai_transport', 'Full question prompt once, then bare 批改 in the same ChatGPT conversation; standalone prompts remain available as fallback; Google Sheet staging; no OpenAI API', 'The normal manual flow reuses the question conversation. A complete grading prompt is only needed when that conversation is unavailable.'],
     ['question_prepare_phase', 'scheduled task or Web App manual handoff', 'Reads one active daily set and stages any missing positions; internal segments do not create a new user-visible set.'],
-    ['grading_trigger_command', 'full standalone grading prompt; legacy task conversation may still use 批改', 'ChatGPT resolves exactly one awaiting_chatgpt submission; the user never types a Session ID.'],
+    ['grading_trigger_command', '批改 in the question conversation; standalone grading prompt only as fallback', 'ChatGPT resolves exactly one awaiting_chatgpt submission; the user never types a Session ID.'],
     ['question_staging_sheet', ER4.questionSheet, 'AI-authored question batch; this single-user app preloads answers into browser memory but does not render them before reveal.'],
     ['answer_draft_sheet', ER4.draftSheet, 'Versioned server drafts, per-question reveal locks, and frozen batch snapshots.'],
     ['answer_reveal_flow', 'lock one answer → reveal its stored expected answer → continue', 'A session may be submitted once locked answers reach its Adjusted Target; extra locked answers are all graded and recorded.'],
@@ -687,7 +687,7 @@ function updateConfigV4_(ss) {
     ['web_app_url', 'YOUR_WEB_APP_URL', 'Updated after Web App deployment.'],
     ['chatgpt_task_url', ER4.chatGptTaskUrl, 'Optional legacy Scheduled Task entry point.'],
     ['chatgpt_manual_url', ER4.chatGptManualUrl, 'The Web App copies a complete standalone prompt before opening ChatGPT.'],
-    ['daily_question_count_range', '1–150', 'One active Queue represents the full user-visible daily set; a safe continuation is used only after an earlier session was already formally committed.'],
+    ['daily_question_count_range', '1–150', 'Three scopes are supported: today only, future default only, or today and future together. Lowering today removes excess unconfirmed positions from every current-day surface; their source items remain normally eligible for future queues.'],
     ['max_questions_per_queue_batch', ER4.maxBatchQuestionCount, 'Legacy key retained for compatibility; the Queue can represent the full 1–150 daily set.'],
     ['max_ai_staging_segment', ER4.maxAiStagingSegmentCount, 'AI writes may be segmented internally while the Web App keeps one total and one submission.'],
     ['candidate_ready_pool_target', 'retired', 'Verified grading no longer creates candidates merely to maintain forty ready rows.'],
@@ -1017,6 +1017,14 @@ function reconcilePresentedQueueTargetV4_(ss, queue, dailyTarget, reason) {
         reason || 'question count changed during session'
       );
     }
+    queue.adjustedTarget = desiredForSession;
+    var activePositions = activeQuestionPositionsV4_(ss, queue);
+    reconcileQueueActivePositionsV4_(
+      ss,
+      queue,
+      activePositions,
+      reason || 'question count changed during session'
+    );
     var current = findQueueBySessionV4_(ss, queue.sessionId);
     var currentSummary = summarizeQueueRowsV4_(
       current.rows.map(function(item) { return item.values; }),
@@ -1828,8 +1836,154 @@ function setQueueAdjustedTargetV4_(queue, target, reason) {
 function countLockedDraftsV4_(ss, sessionId) {
   if (!sessionId) return 0;
   return readDraftsForSessionV4_(ss, sessionId).filter(function(draft) {
-    return isDraftRevealedV4_(draft, sessionId);
+    return isProtectedDraftV4_(draft, sessionId);
   }).length;
+}
+
+function isProtectedDraftV4_(draft, sessionId) {
+  if (isDraftRevealedV4_(draft, sessionId)) return true;
+  return Boolean(
+    draft &&
+    stringValue_(draft.submitStatus).toLowerCase() === 'submitted' &&
+    stringValue_(draft.submissionId) &&
+    stringValue_(draft.answer) &&
+    stringValue_(draft.answerHash)
+  );
+}
+
+function selectActiveQuestionPositionsV4_(queuePositions, target, lockedPositions) {
+  var active = {};
+  var positions = [];
+  if (!isFinite(target) || Math.floor(target) !== target || target < 0) {
+    throw new Error('The active question target is invalid.');
+  }
+  (lockedPositions || []).forEach(function(rawPosition) {
+    var position = Number(rawPosition);
+    if (!isFinite(position) || Math.floor(position) !== position || active[position]) return;
+    active[position] = true;
+    positions.push(position);
+  });
+  target = Math.max(target, positions.length);
+  (queuePositions || []).slice().sort(function(a, b) { return Number(a) - Number(b); })
+    .forEach(function(rawPosition) {
+    var position = Number(rawPosition);
+    if (positions.length >= target || active[position]) return;
+    active[position] = true;
+    positions.push(position);
+  });
+  positions.sort(function(a, b) { return a - b; });
+  return {
+    positions: positions,
+    byPosition: active,
+    count: positions.length,
+    target: target
+  };
+}
+
+function activeQuestionPositionsV4_(ss, queue) {
+  var target = queue.adjustedTarget === undefined || queue.adjustedTarget === null
+    ? Number(queue.plannedCount || queue.rows.length)
+    : Number(queue.adjustedTarget);
+  var lockedPositions = queue.sessionId
+    ? readDraftsForSessionV4_(ss, queue.sessionId).filter(function(draft) {
+      return isProtectedDraftV4_(draft, queue.sessionId);
+    }).map(function(draft) { return draft.position; })
+    : [];
+  return selectActiveQuestionPositionsV4_(
+    queue.rows.map(function(item) {
+      return Number(item.values[queue.headers.Position]);
+    }),
+    target,
+    lockedPositions
+  );
+}
+
+function activeQueueRowsV4_(queue) {
+  if (!queue || !queue.rows) return [];
+  var activeStatus = stringValue_(queue.status).toLowerCase();
+  return queue.rows.filter(function(item) {
+    return stringValue_(item.values[queue.headers['Queue Status']]).toLowerCase() === activeStatus;
+  });
+}
+
+function activeQueueCompositionV4_(queue) {
+  var rows = activeQueueRowsV4_(queue);
+  return {
+    due: rows.filter(function(item) {
+      return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() !== 'new';
+    }).length,
+    fresh: rows.filter(function(item) {
+      return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() === 'new';
+    }).length
+  };
+}
+
+function reconcileQueueActivePositionsV4_(ss, queue, activePositions, reason) {
+  var active = activePositions.byPosition;
+  var queueStatus = queue.status === 'planned' ? 'planned' : 'presented';
+  var changedQueueRows = 0;
+  queue.rows.forEach(function(item) {
+    var position = Number(item.values[queue.headers.Position]);
+    var currentStatus = stringValue_(item.values[queue.headers['Queue Status']]).toLowerCase();
+    var nextStatus = active[position]
+      ? (currentStatus === 'deferred' ? queueStatus : currentStatus)
+      : (['planned', 'presented'].indexOf(currentStatus) !== -1 ? 'deferred' : currentStatus);
+    if (nextStatus === currentStatus) return;
+    queue.sheet.getRange(item.rowNumber, queue.headers['Queue Status'] + 1).setValue(nextStatus);
+    queue.sheet.getRange(item.rowNumber, queue.headers['Change Reason'] + 1)
+      .setValue(reason || 'question count changed during session');
+    changedQueueRows++;
+  });
+
+  var questionSheet = requireSheet_(ss, ER4.questionSheet);
+  var questionValues = questionSheet.getDataRange().getValues();
+  var questionHeaders = headerMap_(questionValues[0]);
+  var changedQuestionRows = 0;
+  for (var q = 1; q < questionValues.length; q++) {
+    if (
+      stringValue_(questionValues[q][questionHeaders['Queue ID']]) !== queue.queueId ||
+      stringValue_(questionValues[q][questionHeaders['Contract Version']]) !== ER4.contractVersion
+    ) continue;
+    var questionPosition = Number(questionValues[q][questionHeaders.Position]);
+    var questionStatus = stringValue_(
+      questionValues[q][questionHeaders['Question Status']]
+    ).toLowerCase();
+    var nextQuestionStatus = questionStatus;
+    if (!active[questionPosition] && ['staged', 'ready', 'bound'].indexOf(questionStatus) !== -1) {
+      nextQuestionStatus = 'deferred';
+    } else if (active[questionPosition] && questionStatus === 'deferred') {
+      nextQuestionStatus = stringValue_(questionValues[q][questionHeaders['Session ID']])
+        ? 'bound'
+        : (stringValue_(questionValues[q][questionHeaders['Content Hash']]) ? 'ready' : 'staged');
+    }
+    if (nextQuestionStatus !== questionStatus) {
+      questionSheet.getRange(q + 1, questionHeaders['Question Status'] + 1)
+        .setValue(nextQuestionStatus);
+      changedQuestionRows++;
+    }
+  }
+
+  var changedDraftRows = 0;
+  if (queue.sessionId) {
+    var draftSheet = requireSheet_(ss, ER4.draftSheet);
+    var draftValues = draftSheet.getDataRange().getValues();
+    var draftHeaders = headerMap_(draftValues[0]);
+    for (var d = 1; d < draftValues.length; d++) {
+      if (stringValue_(draftValues[d][draftHeaders['Session ID']]) !== queue.sessionId) continue;
+      var draftPosition = Number(draftValues[d][draftHeaders.Position]);
+      var draftStatus = stringValue_(draftValues[d][draftHeaders['Submit Status']]).toLowerCase();
+      if (!active[draftPosition] && draftStatus === 'draft') {
+        draftSheet.getRange(d + 1, draftHeaders['Submit Status'] + 1).setValue('deferred');
+        changedDraftRows++;
+      }
+    }
+  }
+  if (changedQueueRows || changedQuestionRows || changedDraftRows) SpreadsheetApp.flush();
+  return {
+    queueRows: changedQueueRows,
+    questionRows: changedQuestionRows,
+    draftRows: changedDraftRows
+  };
 }
 
 function supersedeQueueV4_(ss, queue, replacementId, reason) {
@@ -1954,6 +2108,7 @@ function getReviewBootstrapV4() {
     };
     var shortfallQueue = findQueueForDateV4_(ss, formatDateKey_(today));
     if (shortfallQueue && shortfallQueue.status === 'presented') {
+      var shortfallComposition = activeQueueCompositionV4_(shortfallQueue);
       shortfallResponse.queueMeta = {
         planned: shortfallQueue.plannedCount,
         adjustedTarget: shortfallQueue.adjustedTarget,
@@ -1965,16 +2120,8 @@ function getReviewBootstrapV4() {
         ),
         completedInBatch: countLockedDraftsV4_(ss, shortfallQueue.sessionId),
         queueKind: shortfallQueue.queueKind,
-        due: shortfallQueue.rows.filter(function(item) {
-          return stringValue_(
-            item.values[shortfallQueue.headers['Selection Type']]
-          ).toLowerCase() !== 'new';
-        }).length,
-        fresh: shortfallQueue.rows.filter(function(item) {
-          return stringValue_(
-            item.values[shortfallQueue.headers['Selection Type']]
-          ).toLowerCase() === 'new';
-        }).length
+        due: shortfallComposition.due,
+        fresh: shortfallComposition.fresh
       };
     }
     return shortfallResponse;
@@ -2013,6 +2160,7 @@ function getReviewBootstrapV4() {
   try {
     questionBatch = validatePreparedQuestionBatchV4_(ss, queue);
   } catch (error) {
+    var invalidComposition = activeQueueCompositionV4_(queue);
     return {
       ok: true,
       state: 'question_invalid',
@@ -2025,25 +2173,23 @@ function getReviewBootstrapV4() {
         completedBeforeBatch: completedQuestionsForDateV4_(ss, queue.dateKey, queue.sessionId),
         completedInBatch: countLockedDraftsV4_(ss, queue.sessionId),
         queueKind: queue.queueKind,
-        due: queue.rows.filter(function(item) {
-          return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() !== 'new';
-        }).length,
-        fresh: queue.rows.filter(function(item) {
-          return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() === 'new';
-        }).length
+        due: invalidComposition.due,
+        fresh: invalidComposition.fresh
       },
       chatGptTaskUrl: ER4.chatGptTaskUrl
     };
   }
   if (!questionBatch) {
+    var activeQuestionTarget = activeQuestionPositionsV4_(ss, queue).count;
+    var preparingComposition = activeQueueCompositionV4_(queue);
     return {
       ok: true,
       state: 'preparing',
       message:
-        '今天完整题组共 ' + queue.plannedCount +
-        ' 道题，仍有题目正在内部暂存。自动化可以完成；你也可以复制完整出题提示词，交给任意可使用 Google Drive 的高模型。',
+        '今日生效题数为 ' + activeQuestionTarget +
+        ' 题，仍有题目尚未准备完成。你可以复制完整出题提示词，交给可使用 Google Drive 的高能力模型。',
       queueId: queue.queueId,
-      plannedCount: queue.plannedCount,
+      plannedCount: activeQuestionTarget,
       queueMeta: {
         planned: queue.plannedCount,
         adjustedTarget: queue.adjustedTarget,
@@ -2051,12 +2197,8 @@ function getReviewBootstrapV4() {
         completedBeforeBatch: completedQuestionsForDateV4_(ss, queue.dateKey, queue.sessionId),
         completedInBatch: countLockedDraftsV4_(ss, queue.sessionId),
         queueKind: queue.queueKind,
-        due: queue.rows.filter(function(item) {
-          return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() !== 'new';
-        }).length,
-        fresh: queue.rows.filter(function(item) {
-          return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() === 'new';
-        }).length
+        due: preparingComposition.due,
+        fresh: preparingComposition.fresh
       },
       chatGptTaskUrl: ER4.chatGptTaskUrl,
       chatGptManualUrl: ER4.chatGptManualUrl
@@ -2102,6 +2244,16 @@ function findQueueForDateV4_(ss, dateKey) {
     var aggregateStatus;
     if (statuses.length === 1 && ['planned', 'presented', 'superseded'].indexOf(statuses[0]) !== -1) {
       aggregateStatus = statuses[0];
+    } else if (
+      statuses.every(function(status) { return status === 'planned' || status === 'deferred'; }) &&
+      statuses.indexOf('planned') !== -1
+    ) {
+      aggregateStatus = 'planned';
+    } else if (
+      statuses.every(function(status) { return status === 'presented' || status === 'deferred'; }) &&
+      statuses.indexOf('presented') !== -1
+    ) {
+      aggregateStatus = 'presented';
     } else if (
       statuses.length >= 1 &&
       statuses.every(function(status) { return status === 'committed' || status === 'deferred'; }) &&
@@ -2223,14 +2375,21 @@ function validatePreparedQuestionBatchV4_(ss, queue) {
   });
   SpreadsheetApp.flush();
 
-  if (allItems.length < queue.plannedCount) return null;
-  if (allItems.length !== queue.plannedCount) {
+  if (allItems.length > queue.plannedCount) {
     throw new Error('Active question rows exceed the Daily Queue Planned Count.');
   }
-  for (var position = 1; position <= queue.plannedCount; position++) {
-    if (!positionOwner[position]) {
-      throw new Error('Question preparation is missing position ' + position + '.');
-    }
+  var activePositions = activeQuestionPositionsV4_(ss, queue);
+  var surplusPositions = Object.keys(positionOwner).map(Number).filter(function(position) {
+    return !activePositions.byPosition[position];
+  });
+  if (surplusPositions.length) {
+    throw new Error(
+      'Active question rows remain outside the current target: ' +
+      surplusPositions.sort(function(a, b) { return a - b; }).join(', ') + '.'
+    );
+  }
+  for (var requiredIndex = 0; requiredIndex < activePositions.positions.length; requiredIndex++) {
+    if (!positionOwner[activePositions.positions[requiredIndex]]) return null;
   }
   allItems.sort(function(a, b) {
     return Number(a.values[headers.Position]) - Number(b.values[headers.Position]);
@@ -2471,6 +2630,7 @@ function buildQuizResponseV4_(ss, queue, batch, presentedAt) {
   questions.forEach(function(question, index) {
     question.displayPosition = completedBeforeBatch + index + 1;
   });
+  var activeComposition = activeQueueCompositionV4_(queue);
   return {
     ok: true,
     state: 'answering',
@@ -2487,12 +2647,8 @@ function buildQuizResponseV4_(ss, queue, batch, presentedAt) {
       requested: countSettings.targetCount,
       completedBeforeBatch: completedBeforeBatch,
       queueKind: queue.queueKind || 'primary',
-      due: queue.rows.filter(function(item) {
-        return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() !== 'new';
-      }).length,
-      fresh: queue.rows.filter(function(item) {
-        return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() === 'new';
-      }).length
+      due: activeComposition.due,
+      fresh: activeComposition.fresh
     },
     questions: questions,
     chatGptTaskUrl: ER4.chatGptTaskUrl,
@@ -3002,6 +3158,11 @@ function findQueueBySessionV4_(ss, sessionId) {
   if (statuses.length === 1 && statuses[0] === 'presented') {
     status = 'presented';
   } else if (
+    statuses.every(function(value) { return value === 'presented' || value === 'deferred'; }) &&
+    statuses.indexOf('presented') !== -1
+  ) {
+    status = 'presented';
+  } else if (
     statuses.length >= 1 &&
     statuses.every(function(value) { return value === 'committed' || value === 'deferred'; }) &&
     statuses.indexOf('committed') !== -1
@@ -3099,6 +3260,7 @@ function responseForJournalV4_(journal) {
   var queue = findQueueBySessionV4_(ss, journal.sessionId);
   if (queue) {
     var settings = readQuestionCountSettingsV4_(ss, queue.dateKey);
+    var journalComposition = activeQueueCompositionV4_(queue);
     response.queueMeta = {
       planned: queue.plannedCount,
       adjustedTarget: queue.adjustedTarget,
@@ -3108,12 +3270,8 @@ function responseForJournalV4_(journal) {
         return stringValue_(item.submitStatus).toLowerCase() === 'submitted';
       }).length,
       queueKind: queue.queueKind,
-      due: queue.rows.filter(function(item) {
-        return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() !== 'new';
-      }).length,
-      fresh: queue.rows.filter(function(item) {
-        return stringValue_(item.values[queue.headers['Selection Type']]).toLowerCase() === 'new';
-      }).length
+      due: journalComposition.due,
+      fresh: journalComposition.fresh
     };
   }
   if (journal.resultJson) {
@@ -3161,7 +3319,7 @@ function getManualOperationPromptV4(mode, expectedIdentity) {
       throw new Error('The planned Queue changed before the manual prompt was prepared. Reload the page.');
     }
     details.queueId = queue.queueId;
-    details.count = queue.plannedCount;
+    details.count = activeQuestionPositionsV4_(ss, queue).count;
     details.queueStatus = queue.status;
   } else if (mode === 'grading') {
     var journalSheet = requireSheet_(ss, ER4.journalSheet);
@@ -5726,8 +5884,12 @@ function buildLearningDashboardV4_(ss, todayKey) {
   var questionCountControl = buildQuestionCountControlV4_(ss, todayKey);
   var currentQueue = findQueueForDateV4_(ss, todayKey);
   var currentQueueId = currentQueue ? currentQueue.queueId : '';
+  var queueStatus = currentQueue ? currentQueue.status : 'missing';
   var todayQueueRows = queueTable.rows.filter(function(row) {
-    return dashboardDateKeyV4_(row[queueTable.headers['Queue Date']]) === todayKey &&
+    var rowStatus = dashboardStringV4_(row, queueTable.headers, 'Queue Status').toLowerCase();
+    var activeStatus = queueStatus === 'committed' ? rowStatus === 'committed' : rowStatus === queueStatus;
+    return activeStatus &&
+      dashboardDateKeyV4_(row[queueTable.headers['Queue Date']]) === todayKey &&
       dashboardStringV4_(row, queueTable.headers, 'Queue ID') === currentQueueId &&
       dashboardStringV4_(row, queueTable.headers, 'Contract Version') === ER4.contractVersion;
   });
@@ -5737,12 +5899,15 @@ function buildLearningDashboardV4_(ss, todayKey) {
   });
   var queueId = currentQueueId;
   var sessionId = currentQueue ? currentQueue.sessionId : '';
-  var queueStatus = currentQueue ? currentQueue.status : 'missing';
-  var expectedQueueCount = currentQueue ? currentQueue.plannedCount : 0;
+  var storedQueueCount = currentQueue ? currentQueue.plannedCount : 0;
+  var expectedQueueCount = currentQueue
+    ? activeQuestionPositionsV4_(ss, currentQueue).count
+    : 0;
   var todayQuestions = questionTable.rows.filter(function(row) {
+    var questionStatus = dashboardStringV4_(row, questionTable.headers, 'Question Status').toLowerCase();
     return queueId && dashboardStringV4_(row, questionTable.headers, 'Queue ID') === queueId &&
       dashboardStringV4_(row, questionTable.headers, 'Contract Version') === ER4.contractVersion &&
-      dashboardStringV4_(row, questionTable.headers, 'Question Status').toLowerCase() !== 'rejected';
+      ['staged', 'ready', 'bound'].indexOf(questionStatus) !== -1;
   });
   var todayGrades = gradeTable.rows.filter(function(row) {
     return sessionId && dashboardStringV4_(row, gradeTable.headers, 'Session ID') === sessionId &&
@@ -5763,6 +5928,8 @@ function buildLearningDashboardV4_(ss, todayKey) {
   var generationIds = dashboardUniqueV4_(todayQuestions.map(function(row) {
     return dashboardStringV4_(row, questionTable.headers, 'Generation ID');
   }).filter(Boolean));
+  var activeQueueCount = Math.min(todayQueueRows.length, expectedQueueCount);
+  var activeQuestionCount = Math.min(todayQuestions.length, expectedQueueCount);
 
   var futureDue = [];
   for (var futureOffset = 0; futureOffset < 14; futureOffset++) {
@@ -5831,8 +5998,8 @@ function buildLearningDashboardV4_(ss, todayKey) {
   var sessionReadback = latestSession
     ? dashboardStringV4_(latestSession, sessionTable.headers, 'Readback Status').toLowerCase()
     : '';
-  var queueHealthy = !currentQueue || todayQueueRows.length === expectedQueueCount;
-  var questionsHealthy = !todayQueueRows.length || todayQuestions.length === expectedQueueCount;
+  var queueHealthy = !currentQueue || activeQueueCount === expectedQueueCount;
+  var questionsHealthy = !todayQueueRows.length || activeQuestionCount === expectedQueueCount;
   var formalHealthy = queueStatus !== 'committed' ||
     (journalStatus === 'committed' && journalReadback === 'verified' &&
       sessionWrite === 'verified' && sessionReadback === 'verified' && pendingGrades === 0);
@@ -5886,10 +6053,12 @@ function buildLearningDashboardV4_(ss, todayKey) {
     system: {
       tone: pipelineTone,
       contractVersion: ER4.contractVersion,
-      queueCount: todayQueueRows.length,
+      queueCount: activeQueueCount,
       queueExpectedCount: expectedQueueCount,
+      storedQueueCount: storedQueueCount,
       queueStatus: queueStatus,
-      questionCount: todayQuestions.length,
+      questionCount: activeQuestionCount,
+      storedQuestionCount: todayQuestions.length,
       generationCount: generationIds.length,
       gradeCount: todayGrades.length,
       pendingGradeCount: pendingGrades,
@@ -6308,6 +6477,33 @@ function selfTestReviewWebAppV4() {
   expect('daily minimum accepted', normalizeDailyQuestionCountV4_(1, 20), 1);
   expect('daily maximum accepted', normalizeDailyQuestionCountV4_(150, 20), 150);
   expect('daily-set maximum accepted', normalizeQuestionCount_(150, 20), 150);
+  var activeTwenty = selectActiveQuestionPositionsV4_(
+    Array.from({ length: 40 }, function(_, index) { return index + 1; }),
+    20,
+    []
+  );
+  expect('lower target selects twenty active positions', activeTwenty.count, 20);
+  expect('lower target excludes retained position 40', Boolean(activeTwenty.byPosition[40]), false);
+  var activeWithLockedTail = selectActiveQuestionPositionsV4_(
+    Array.from({ length: 40 }, function(_, index) { return index + 1; }),
+    20,
+    [40]
+  );
+  expect('locked tail remains active after lowering', Boolean(activeWithLockedTail.byPosition[40]), true);
+  expect('locked tail does not increase target cardinality', activeWithLockedTail.count, 20);
+  var compositionHeaders = { 'Queue Status': 0, 'Selection Type': 1 };
+  var compositionQueue = {
+    status: 'presented',
+    headers: compositionHeaders,
+    rows: Array.from({ length: 40 }, function(_, index) {
+      return {
+        values: [index < 25 ? 'presented' : 'deferred', index < 23 ? 'due_today' : 'new']
+      };
+    })
+  };
+  var activeComposition = activeQueueCompositionV4_(compositionQueue);
+  expect('lowered set counts only active due rows', activeComposition.due, 23);
+  expect('lowered set counts only active new rows', activeComposition.fresh, 2);
   var revealDraft = {
     position: 3,
     answer: 'the stored answer',
@@ -6318,6 +6514,13 @@ function selfTestReviewWebAppV4() {
   expect('reveal lock validates', isDraftRevealedV4_(revealDraft, 'SESSION-1'), true);
   revealDraft.answer = 'changed after reveal';
   expect('reveal lock rejects edits', isDraftRevealedV4_(revealDraft, 'SESSION-1'), false);
+  expect('submitted answer remains protected', isProtectedDraftV4_({
+    position: 3,
+    answer: 'submitted answer',
+    submitStatus: 'submitted',
+    submissionId: 'SUBMISSION-1',
+    answerHash: 'batch-hash'
+  }, 'SESSION-1'), true);
   expect('personal origin precedes fallback', candidateOriginRank_('user_context') < candidateOriginRank_('ai_fallback'), true);
   expect('learning evidence precedes legacy', candidateOriginRank_('learning_evidence') < candidateOriginRank_('legacy'), true);
   expect('fallback blocked by personal inventory', shouldGenerateAiFallbackV4_(1, 1, 0), false);

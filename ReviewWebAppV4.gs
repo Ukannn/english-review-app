@@ -18,6 +18,7 @@ var ER4 = {
   gradeTrigger: 'processPendingGradeInboxV4',
   questionSheet: 'Session Questions',
   draftSheet: 'Answer Drafts',
+  draftHistorySheet: 'Answer Draft History',
   gradeSheet: 'Grade Inbox',
   journalSheet: 'Commit Journal',
   contextSheet: 'Context Inbox',
@@ -75,6 +76,25 @@ var ER4_DRAFT_HEADERS = [
   'Updated At',
   'Submit Status',
   'Submission ID',
+  'Answer Hash',
+  'Contract Version'
+];
+
+var ER4_DRAFT_HISTORY_HEADERS = [
+  'History ID',
+  'Session ID',
+  'Queue ID',
+  'Position',
+  'Phrase ID',
+  'Candidate ID',
+  'Previous Answer',
+  'Previous Revision',
+  'Next Answer',
+  'Next Revision',
+  'Event Type',
+  'Client Instance ID',
+  'Page Started At',
+  'Recorded At',
   'Answer Hash',
   'Contract Version'
 ];
@@ -196,7 +216,7 @@ var ER4_CONTEXT_PROCESSING_PROMPT = [
   "",
   "绝对边界：",
   "1. 你只允许向 Context Candidate Inbox 写入暂存数据。",
-  "2. 不得直接新增或修改 Context Inbox、Candidate Bank、Phrase Bank、Daily Queue、Review Log、Error Log、Session Questions、Grade Inbox、Session Log、Answer Drafts 或 Commit Journal。",
+  "2. 不得直接新增或修改 Context Inbox、Candidate Bank、Phrase Bank、Daily Queue、Review Log、Error Log、Session Questions、Grade Inbox、Session Log、Answer Drafts、Answer Draft History 或 Commit Journal。",
   "3. 原文读取自 Context Inbox；不得要求用户再次粘贴、转述或重新标记原文。",
   "4. 正式 Candidate ID、Candidate Bank、Phrase Bank、SRS 和日志全部由 Apps Script 负责。",
   "5. 任一身份、数量、状态、契约或固定范围回读不符合要求时，停止并报告确切失败项；不得猜测或补位。",
@@ -328,6 +348,7 @@ function verifyReviewWebAppV4Setup_() {
   var surfaces = [
     [ER4.questionSheet, ER4_QUESTION_HEADERS],
     [ER4.draftSheet, ER4_DRAFT_HEADERS],
+    [ER4.draftHistorySheet, ER4_DRAFT_HISTORY_HEADERS],
     [ER4.gradeSheet, ER4_GRADE_HEADERS],
     [ER4.journalSheet, ER4_JOURNAL_HEADERS],
     [ER4.contextSheet, ER4_CONTEXT_HEADERS],
@@ -383,6 +404,12 @@ function ensureV4DataSurfaces_(ss) {
   );
   ensureV4Sheet_(
     ss,
+    ER4.draftHistorySheet,
+    ER4_DRAFT_HISTORY_HEADERS,
+    [210, 150, 150, 70, 95, 105, 420, 90, 420, 90, 145, 180, 170, 155, 240, 105]
+  );
+  ensureV4Sheet_(
+    ss,
     ER4.gradeSheet,
     ER4_GRADE_HEADERS,
     [190, 150, 240, 70, 95, 105, 100, 340, 150, 90, 320, 240, 180, 120, 115, 155, 420, 105]
@@ -421,6 +448,9 @@ function ensureV4DataSurfaces_(ss) {
   applyListValidationV4_(questionSheet, 6, ER4_QUESTION_TYPES);
   applyListValidationV4_(questionSheet, 17, ['staged', 'ready', 'bound', 'deferred', 'rejected']);
   applyListValidationV4_(ER4Sheet_(ss, ER4.draftSheet), 9, ['draft', 'submitted', 'deferred']);
+  applyListValidationV4_(ER4Sheet_(ss, ER4.draftHistorySheet), 11, [
+    'autosave', 'reveal_lock', 'replace_locked', 'submission_freeze'
+  ]);
   applyListValidationV4_(gradeSheet, 7, ER4_RESULTS);
   applyListValidationV4_(gradeSheet, 15, ['staged', 'needs_confirmation', 'accepted', 'rejected', 'committed']);
   applyListValidationV4_(ER4Sheet_(ss, ER4.contextSheet), 7, [
@@ -465,6 +495,7 @@ function contractVersionSurfacesV4_() {
   return [
     ER4.questionSheet,
     ER4.draftSheet,
+    ER4.draftHistorySheet,
     ER4.gradeSheet,
     ER4.journalSheet,
     ER4.contextSheet,
@@ -672,6 +703,7 @@ function updateConfigV4_(ss) {
     ['grading_trigger_command', '批改 in the question conversation; standalone grading prompt only as fallback', 'ChatGPT resolves exactly one awaiting_chatgpt submission; the user never types a Session ID.'],
     ['question_staging_sheet', ER4.questionSheet, 'AI-authored question batch; this single-user app preloads answers into browser memory but does not render them before reveal.'],
     ['answer_draft_sheet', ER4.draftSheet, 'Versioned server drafts, per-question reveal locks, and frozen batch snapshots.'],
+    ['answer_draft_history_sheet', ER4.draftHistorySheet, 'Append-only before/after evidence for autosave, reveal lock, locked-answer correction, and submission freeze.'],
     ['answer_reveal_flow', 'lock one answer → reveal its stored expected answer → continue', 'A session may be submitted once locked answers reach its Adjusted Target; extra locked answers are all graded and recorded.'],
     ['grade_inbox_sheet', ER4.gradeSheet, 'ChatGPT grading staging only; no formal SRS writes.'],
     ['context_inbox_sheet', ER4.contextSheet, 'Immutable user-captured source text and validated UTF-16 selection spans.'],
@@ -2668,6 +2700,7 @@ function readDraftsForSessionV4_(ss, sessionId) {
         position: Number(values[i][headers.Position]),
         answer: stringValue_(values[i][headers.Answer]),
         revision: Number(values[i][headers.Revision]) || 0,
+        updatedAt: formatDateTimeV4_(values[i][headers['Updated At']]),
         submitStatus: stringValue_(values[i][headers['Submit Status']]),
         submissionId: stringValue_(values[i][headers['Submission ID']]),
         answerHash: stringValue_(values[i][headers['Answer Hash']])
@@ -2675,6 +2708,149 @@ function readDraftsForSessionV4_(ss, sessionId) {
     }
   }
   return rows;
+}
+
+function normalizeDraftClientInfoV4_(value) {
+  value = value && typeof value === 'object' ? value : {};
+  return {
+    clientInstanceId: stringValue_(value.clientInstanceId).slice(0, 120),
+    pageStartedAt: stringValue_(value.pageStartedAt).slice(0, 80)
+  };
+}
+
+function ensureDraftHistorySheetV4_(ss) {
+  var sheet = ensureV4Sheet_(
+    ss,
+    ER4.draftHistorySheet,
+    ER4_DRAFT_HISTORY_HEADERS,
+    [210, 150, 150, 70, 95, 105, 420, 90, 420, 90, 145, 180, 170, 155, 240, 105]
+  );
+  applyListValidationV4_(sheet, 11, [
+    'autosave', 'reveal_lock', 'replace_locked', 'submission_freeze'
+  ]);
+  return sheet;
+}
+
+function draftHistoryIdV4_(entry) {
+  return 'DHI-' + hashV4_([[
+    stringValue_(entry.sessionId),
+    Number(entry.position),
+    Number(entry.nextRevision),
+    stringValue_(entry.eventType),
+    stringValue_(entry.nextAnswer),
+    stringValue_(entry.answerHash)
+  ]]).slice(0, 32);
+}
+
+function appendDraftHistoriesV4_(ss, entries) {
+  var sheet = ensureDraftHistorySheetV4_(ss);
+  var values = sheet.getDataRange().getValues();
+  var headers = headerMap_(values[0]);
+  var existing = {};
+  for (var i = 1; i < values.length; i++) {
+    existing[stringValue_(values[i][headers['History ID']])] = i + 1;
+  }
+  var newRows = [];
+  var results = [];
+  entries.forEach(function(entry) {
+    var historyId = draftHistoryIdV4_(entry);
+    if (existing[historyId]) {
+      results.push({ historyId: historyId, rowNumber: existing[historyId], duplicate: true });
+      return;
+    }
+    var client = normalizeDraftClientInfoV4_(entry.clientInfo);
+    newRows.push({
+      historyId: historyId,
+      entry: entry,
+      values: [
+        historyId,
+        stringValue_(entry.sessionId),
+        stringValue_(entry.queueId),
+        Number(entry.position),
+        stringValue_(entry.phraseId),
+        stringValue_(entry.candidateId),
+        stringValue_(entry.previousAnswer),
+        Number(entry.previousRevision) || 0,
+        stringValue_(entry.nextAnswer),
+        Number(entry.nextRevision) || 0,
+        stringValue_(entry.eventType),
+        client.clientInstanceId,
+        client.pageStartedAt,
+        new Date(),
+        stringValue_(entry.answerHash),
+        ER4.contractVersion
+      ]
+    });
+    existing[historyId] = -1;
+  });
+  if (!newRows.length) return results;
+  var firstRow = sheet.getLastRow() + 1;
+  sheet.getRange(firstRow, 1, newRows.length, ER4_DRAFT_HISTORY_HEADERS.length)
+    .setValues(newRows.map(function(item) { return item.values; }));
+  sheet.getRange(firstRow, headers['Recorded At'] + 1, newRows.length, 1)
+    .setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  sheet.getRange(firstRow, headers['Contract Version'] + 1, newRows.length, 1)
+    .setNumberFormat('@');
+  SpreadsheetApp.flush();
+  var verifiedRows = sheet.getRange(
+    firstRow,
+    1,
+    newRows.length,
+    ER4_DRAFT_HISTORY_HEADERS.length
+  ).getValues();
+  newRows.forEach(function(item, index) {
+    var verified = verifiedRows[index];
+    if (
+      stringValue_(verified[headers['History ID']]) !== item.historyId ||
+      stringValue_(verified[headers['Session ID']]) !== stringValue_(item.entry.sessionId) ||
+      Number(verified[headers.Position]) !== Number(item.entry.position) ||
+      Number(verified[headers['Next Revision']]) !== Number(item.entry.nextRevision) ||
+      stringValue_(verified[headers['Next Answer']]) !== stringValue_(item.entry.nextAnswer)
+    ) {
+      throw new Error('Answer Draft History readback failed.');
+    }
+    results.push({ historyId: item.historyId, rowNumber: firstRow + index, duplicate: false });
+  });
+  return results;
+}
+
+function appendDraftHistoryV4_(ss, entry) {
+  return appendDraftHistoriesV4_(ss, [entry])[0];
+}
+
+function latestDraftWriterV4_(ss, sessionId, position, revision) {
+  var sheet = ss.getSheetByName(ER4.draftHistorySheet);
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  var values = sheet.getDataRange().getValues();
+  var headers = headerMap_(values[0]);
+  requireHeaders_(headers, ER4_DRAFT_HISTORY_HEADERS, ER4.draftHistorySheet);
+  for (var i = values.length - 1; i >= 1; i--) {
+    if (
+      stringValue_(values[i][headers['Session ID']]) === stringValue_(sessionId) &&
+      Number(values[i][headers.Position]) === Number(position) &&
+      Number(values[i][headers['Next Revision']]) === Number(revision)
+    ) {
+      return {
+        clientInstanceId: stringValue_(values[i][headers['Client Instance ID']]),
+        pageStartedAt: stringValue_(values[i][headers['Page Started At']]),
+        recordedAt: formatDateTimeV4_(values[i][headers['Recorded At']]),
+        eventType: stringValue_(values[i][headers['Event Type']])
+      };
+    }
+  }
+  return null;
+}
+
+function draftConflictResponseV4_(ss, sessionId, position, revision, answer, updatedAt) {
+  return {
+    ok: false,
+    conflict: true,
+    position: Number(position),
+    revision: Number(revision) || 0,
+    answer: stringValue_(answer),
+    updatedAt: formatDateTimeV4_(updatedAt),
+    writer: latestDraftWriterV4_(ss, sessionId, position, revision)
+  };
 }
 
 function revealedDraftHashV4_(sessionId, position, answer) {
@@ -2700,7 +2876,7 @@ function expectedAnswerForQuestionRowV4_(row, headers, position) {
   )[0];
 }
 
-function saveDraftV4(sessionId, position, answer, expectedRevision) {
+function saveDraftV4(sessionId, position, answer, expectedRevision, clientInfo) {
   assertV4Enabled_();
   assertAuthorizedV4_();
   var lock = LockService.getScriptLock();
@@ -2711,6 +2887,7 @@ function saveDraftV4(sessionId, position, answer, expectedRevision) {
     position = Number(position);
     answer = stringValue_(answer);
     expectedRevision = Number(expectedRevision) || 0;
+    clientInfo = normalizeDraftClientInfoV4_(clientInfo);
     if (position < 1 || position > ER4.maxBatchQuestionCount) {
       throw new Error('Invalid question position.');
     }
@@ -2729,6 +2906,7 @@ function saveDraftV4(sessionId, position, answer, expectedRevision) {
     var currentSubmitStatus = '';
     var currentSubmissionId = '';
     var currentAnswerHash = '';
+    var currentUpdatedAt = '';
     for (var i = 1; i < values.length; i++) {
       if (
         stringValue_(values[i][headers['Session ID']]) === sessionId &&
@@ -2740,6 +2918,7 @@ function saveDraftV4(sessionId, position, answer, expectedRevision) {
         currentSubmitStatus = stringValue_(values[i][headers['Submit Status']]);
         currentSubmissionId = stringValue_(values[i][headers['Submission ID']]);
         currentAnswerHash = stringValue_(values[i][headers['Answer Hash']]);
+        currentUpdatedAt = values[i][headers['Updated At']];
         break;
       }
     }
@@ -2760,17 +2939,35 @@ function saveDraftV4(sessionId, position, answer, expectedRevision) {
         revealed: true,
         position: position,
         revision: currentRevision,
-        answer: currentAnswer
+        answer: currentAnswer,
+        updatedAt: formatDateTimeV4_(currentUpdatedAt),
+        writer: latestDraftWriterV4_(ss, sessionId, position, currentRevision)
       };
     }
     if (currentRevision !== expectedRevision) {
-      return {
-        ok: false,
-        conflict: true,
-        position: position,
-        revision: currentRevision,
-        answer: existingRow ? stringValue_(values[existingRow - 1][headers.Answer]) : ''
-      };
+      if (
+        existingRow &&
+        currentAnswer === answer &&
+        stringValue_(currentSubmitStatus).toLowerCase() === 'draft' &&
+        !currentSubmissionId &&
+        !currentAnswerHash
+      ) {
+        return {
+          ok: true,
+          synchronized: true,
+          position: position,
+          revision: currentRevision,
+          answer: currentAnswer
+        };
+      }
+      return draftConflictResponseV4_(
+        ss,
+        sessionId,
+        position,
+        currentRevision,
+        currentAnswer,
+        currentUpdatedAt
+      );
     }
     var identity = identityForQueuePositionV4_(queue, position);
     var revision = currentRevision + 1;
@@ -2808,13 +3005,33 @@ function saveDraftV4(sessionId, position, answer, expectedRevision) {
     ) {
       throw new Error('Draft readback failed.');
     }
-    return { ok: true, position: position, revision: revision, answer: answer };
+    var history = appendDraftHistoryV4_(ss, {
+      sessionId: sessionId,
+      queueId: queue.queueId,
+      position: position,
+      phraseId: identity.phraseId,
+      candidateId: identity.candidateId,
+      previousAnswer: currentAnswer,
+      previousRevision: currentRevision,
+      nextAnswer: answer,
+      nextRevision: revision,
+      eventType: 'autosave',
+      clientInfo: clientInfo,
+      answerHash: ''
+    });
+    return {
+      ok: true,
+      position: position,
+      revision: revision,
+      answer: answer,
+      historyId: history.historyId
+    };
   } finally {
     lock.releaseLock();
   }
 }
 
-function revealAnswerV4(sessionId, position, answer, expectedRevision) {
+function revealAnswerV4(sessionId, position, answer, expectedRevision, clientInfo) {
   assertV4Enabled_();
   assertAuthorizedV4_();
   var lock = LockService.getScriptLock();
@@ -2826,6 +3043,7 @@ function revealAnswerV4(sessionId, position, answer, expectedRevision) {
     position = Number(position);
     answer = stringValue_(answer);
     expectedRevision = Number(expectedRevision) || 0;
+    clientInfo = normalizeDraftClientInfoV4_(clientInfo);
     if (position < 1 || position > ER4.maxBatchQuestionCount) {
       throw new Error('Invalid question position.');
     }
@@ -2863,14 +3081,16 @@ function revealAnswerV4(sessionId, position, answer, expectedRevision) {
       revision: Number(item.values[headers.Revision]) || 0,
       submitStatus: stringValue_(item.values[headers['Submit Status']]),
       submissionId: stringValue_(item.values[headers['Submission ID']]),
-      answerHash: stringValue_(item.values[headers['Answer Hash']])
+      answerHash: stringValue_(item.values[headers['Answer Hash']]),
+      updatedAt: item.values[headers['Updated At']]
     } : {
       position: position,
       answer: '',
       revision: 0,
       submitStatus: '',
       submissionId: '',
-      answerHash: ''
+      answerHash: '',
+      updatedAt: ''
     };
     var questionRow = batch.rows.filter(function(questionItem) {
       return Number(questionItem.values[batch.headers.Position]) === position;
@@ -2883,6 +3103,16 @@ function revealAnswerV4(sessionId, position, answer, expectedRevision) {
     );
 
     if (item && isDraftRevealedV4_(current, sessionId)) {
+      if (current.answer !== answer) {
+        return draftConflictResponseV4_(
+          ss,
+          sessionId,
+          position,
+          current.revision,
+          current.answer,
+          current.updatedAt
+        );
+      }
       return {
         ok: true,
         position: position,
@@ -2890,7 +3120,9 @@ function revealAnswerV4(sessionId, position, answer, expectedRevision) {
         answer: current.answer,
         revealed: true,
         locked: true,
-        expectedAnswer: expectedAnswer
+        expectedAnswer: expectedAnswer,
+        updatedAt: formatDateTimeV4_(current.updatedAt),
+        writer: latestDraftWriterV4_(ss, sessionId, position, current.revision)
       };
     }
     if (item && (
@@ -2908,13 +3140,14 @@ function revealAnswerV4(sessionId, position, answer, expectedRevision) {
       (item && current.revision < expectedRevision) ||
       (item && current.answer !== answer)
     ) {
-      return {
-        ok: false,
-        conflict: true,
-        position: position,
-        revision: current.revision,
-        answer: current.answer
-      };
+      return draftConflictResponseV4_(
+        ss,
+        sessionId,
+        position,
+        current.revision,
+        current.answer,
+        current.updatedAt
+      );
     }
 
     var revealHash = revealedDraftHashV4_(sessionId, position, answer);
@@ -2963,6 +3196,20 @@ function revealAnswerV4(sessionId, position, answer, expectedRevision) {
     ) {
       throw new Error('Per-question answer lock readback failed.');
     }
+    var history = appendDraftHistoryV4_(ss, {
+      sessionId: sessionId,
+      queueId: queue.queueId,
+      position: position,
+      phraseId: identity.phraseId,
+      candidateId: identity.candidateId,
+      previousAnswer: current.answer,
+      previousRevision: current.revision,
+      nextAnswer: answer,
+      nextRevision: nextRevision,
+      eventType: 'reveal_lock',
+      clientInfo: clientInfo,
+      answerHash: revealHash
+    });
     return {
       ok: true,
       position: position,
@@ -2970,14 +3217,170 @@ function revealAnswerV4(sessionId, position, answer, expectedRevision) {
       answer: answer,
       revealed: true,
       locked: true,
-      expectedAnswer: expectedAnswer
+      expectedAnswer: expectedAnswer,
+      historyId: history.historyId
     };
   } finally {
     lock.releaseLock();
   }
 }
 
-function submitSessionV4(sessionId, answers) {
+function replaceLockedDraftV4(sessionId, position, answer, expectedRevision, clientInfo) {
+  assertV4Enabled_();
+  assertAuthorizedV4_();
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    assertContractV4_(ss);
+    sessionId = stringValue_(sessionId);
+    position = Number(position);
+    answer = stringValue_(answer).trim();
+    expectedRevision = Number(expectedRevision) || 0;
+    clientInfo = normalizeDraftClientInfoV4_(clientInfo);
+    if (position < 1 || position > ER4.maxBatchQuestionCount) {
+      throw new Error('Invalid question position.');
+    }
+    if (!answer) throw new Error('The replacement answer is blank.');
+    if (answer.length > 2000) throw new Error('The replacement answer is too long.');
+    if (findJournalBySessionV4_(ss, sessionId)) {
+      throw new Error('Submitted answers cannot be replaced.');
+    }
+    var queue = findQueueBySessionV4_(ss, sessionId);
+    if (!queue || queue.status !== 'presented') {
+      throw new Error('Session is not open for locked-answer correction.');
+    }
+    var batch = validatePreparedQuestionBatchV4_(ss, queue);
+    if (!batch) throw new Error('The prepared question batch is unavailable.');
+    var questionRow = batch.rows.filter(function(item) {
+      return Number(item.values[batch.headers.Position]) === position;
+    })[0];
+    if (!questionRow) throw new Error('Prepared question is missing at position ' + position + '.');
+    var expectedAnswer = expectedAnswerForQuestionRowV4_(
+      questionRow.values,
+      batch.headers,
+      position
+    );
+
+    var draftSheet = requireSheet_(ss, ER4.draftSheet);
+    var values = draftSheet.getDataRange().getValues();
+    var headers = headerMap_(values[0]);
+    var matches = [];
+    for (var i = 1; i < values.length; i++) {
+      if (
+        stringValue_(values[i][headers['Session ID']]) === sessionId &&
+        Number(values[i][headers.Position]) === position
+      ) {
+        matches.push({ rowNumber: i + 1, values: values[i] });
+      }
+    }
+    if (matches.length !== 1) {
+      throw new Error('Locked-answer correction requires exactly one draft row.');
+    }
+    var item = matches[0];
+    var current = {
+      position: position,
+      answer: stringValue_(item.values[headers.Answer]),
+      revision: Number(item.values[headers.Revision]) || 0,
+      submitStatus: stringValue_(item.values[headers['Submit Status']]),
+      submissionId: stringValue_(item.values[headers['Submission ID']]),
+      answerHash: stringValue_(item.values[headers['Answer Hash']]),
+      updatedAt: item.values[headers['Updated At']]
+    };
+    if (!isDraftRevealedV4_(current, sessionId)) {
+      throw new Error('Only a valid pre-submission locked draft can be corrected.');
+    }
+    if (current.revision !== expectedRevision) {
+      return draftConflictResponseV4_(
+        ss,
+        sessionId,
+        position,
+        current.revision,
+        current.answer,
+        current.updatedAt
+      );
+    }
+    if (current.answer === answer) {
+      return {
+        ok: true,
+        unchanged: true,
+        position: position,
+        revision: current.revision,
+        answer: current.answer,
+        revealed: true,
+        locked: true,
+        expectedAnswer: expectedAnswer
+      };
+    }
+
+    var identity = identityForQueuePositionV4_(queue, position);
+    var nextRevision = current.revision + 1;
+    var nextHash = revealedDraftHashV4_(sessionId, position, answer);
+    var row = [
+      sessionId,
+      queue.queueId,
+      position,
+      identity.phraseId,
+      identity.candidateId,
+      answer,
+      nextRevision,
+      new Date(),
+      'draft',
+      '',
+      nextHash,
+      ER4.contractVersion
+    ];
+    draftSheet.getRange(item.rowNumber, 1, 1, ER4_DRAFT_HEADERS.length).setValues([row]);
+    draftSheet.getRange(item.rowNumber, 8).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+    draftSheet.getRange(item.rowNumber, headers['Contract Version'] + 1)
+      .setNumberFormat('@')
+      .setValue(ER4.contractVersion);
+    SpreadsheetApp.flush();
+    var verified = draftSheet.getRange(
+      item.rowNumber,
+      1,
+      1,
+      ER4_DRAFT_HEADERS.length
+    ).getValues()[0];
+    if (
+      Number(verified[headers.Revision]) !== nextRevision ||
+      stringValue_(verified[headers.Answer]) !== answer ||
+      stringValue_(verified[headers['Answer Hash']]) !== nextHash ||
+      stringValue_(verified[headers['Submit Status']]).toLowerCase() !== 'draft' ||
+      stringValue_(verified[headers['Submission ID']])
+    ) {
+      throw new Error('Locked-answer correction readback failed.');
+    }
+    var history = appendDraftHistoryV4_(ss, {
+      sessionId: sessionId,
+      queueId: queue.queueId,
+      position: position,
+      phraseId: identity.phraseId,
+      candidateId: identity.candidateId,
+      previousAnswer: current.answer,
+      previousRevision: current.revision,
+      nextAnswer: answer,
+      nextRevision: nextRevision,
+      eventType: 'replace_locked',
+      clientInfo: clientInfo,
+      answerHash: nextHash
+    });
+    return {
+      ok: true,
+      position: position,
+      revision: nextRevision,
+      answer: answer,
+      revealed: true,
+      locked: true,
+      expectedAnswer: expectedAnswer,
+      historyId: history.historyId
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function submitSessionV4(sessionId, answers, clientInfo) {
   assertV4Enabled_();
   assertAuthorizedV4_();
   var lock = LockService.getScriptLock();
@@ -2985,6 +3388,7 @@ function submitSessionV4(sessionId, answers) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     assertContractV4_(ss);
+    clientInfo = normalizeDraftClientInfoV4_(clientInfo);
     var queue = findQueueBySessionV4_(ss, sessionId);
     if (!queue || queue.status !== 'presented') {
       throw new Error('Session is not open for submission.');
@@ -3069,6 +3473,25 @@ function submitSessionV4(sessionId, answers) {
         .setNumberFormat('@')
         .setValue(ER4.contractVersion);
     });
+    appendDraftHistoriesV4_(ss, normalized.map(function(item) {
+      var identity = identityForQueuePositionV4_(queue, item.position);
+      var previous = draftByPosition[item.position];
+      var previousRevision = Number(previous[draftHeaders.Revision]) || 0;
+      return {
+        sessionId: sessionId,
+        queueId: queue.queueId,
+        position: item.position,
+        phraseId: identity.phraseId,
+        candidateId: identity.candidateId,
+        previousAnswer: stringValue_(previous[draftHeaders.Answer]),
+        previousRevision: previousRevision,
+        nextAnswer: item.answer,
+        nextRevision: previousRevision + 1,
+        eventType: 'submission_freeze',
+        clientInfo: clientInfo,
+        answerHash: answerHash
+      };
+    }));
     var journalSheet = requireSheet_(ss, ER4.journalSheet);
     journalSheet.appendRow([
       submissionId,

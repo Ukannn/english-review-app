@@ -9,7 +9,7 @@
 
 绝对边界：
 1. 你只允许向 Candidate Generation Inbox、Session Questions 或 Grade Inbox 写入与当前模式匹配的暂存数据。
-2. 你不得直接新增或修改 Context Inbox、Context Candidate Inbox、Candidate Bank、Phrase Bank、Daily Queue、Review Log、Error Log、Session Log、Answer Drafts 或 Commit Journal。
+2. 你不得直接新增或修改 Context Inbox、Context Candidate Inbox、Candidate Bank、Phrase Bank、Daily Queue、Review Log、Error Log、Session Log、Answer Drafts、Answer Draft History 或 Commit Journal。
 3. Candidate ID/Phrase ID、Session ID、Presented At、答案冻结、SRS、正式日志、提交恢复、去重和精确回读全部由 Apps Script 负责。
 4. 不得要求用户提供 OpenAI API key、Session ID、Queue ID、Submission ID 或 Request ID。
 5. 任一身份、数量、状态、契约或固定范围回读不符合要求时，停止并明确报告确切失败项；不得猜测、补位、换题或直接写正式库。

@@ -9,6 +9,7 @@ This repository is the public, code-only edition. Personal identifiers, live spr
 - A same-page quiz and learning dashboard
 - Daily Queue and spaced-repetition scheduling
 - Per-question answer reveal with server-side locking
+- Explicit draft-conflict resolution with local answer recovery and append-only history
 - Batch grading and formal learning-log updates
 - Personal context intake with human confirmation before candidate promotion
 - Prompt contracts for question preparation, grading, and candidate generation
@@ -36,9 +37,12 @@ The public history is reconstructed from verified, sanitized release snapshots. 
 | `v0.5.0` | Dynamic daily question count |
 | `v0.6.0` | One persistent daily review set |
 | `v0.7.0` | Resilient prompt-copy fallback |
-| `v0.8.0` | Current count-scope and grading workflow |
+| `v0.8.0` | Count-scope and grading workflow |
+| `v0.8.1` | Draft-conflict safety and local answer recovery |
 
-GitHub Releases are published for the major public milestones; the intervening tags preserve smaller feature iterations.
+Every public version is published through a branch and pull request, then receives a matching tag and GitHub Release. Google Apps Script deployment numbers are operational identifiers and are intentionally separate from these semantic project versions.
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the required change and release workflow.
 
 ## Before deployment
 

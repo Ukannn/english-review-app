@@ -831,6 +831,56 @@
       gap: 10px;
     }
 
+    .conflict-meta {
+      margin: 16px 0;
+      padding: 12px 14px;
+      border: 1px solid #ead7b8;
+      border-radius: 13px;
+      color: #77521e;
+      background: var(--amber-soft);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .conflict-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin: 18px 0;
+    }
+
+    .conflict-copy {
+      display: grid;
+      gap: 8px;
+    }
+
+    .conflict-copy span {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .conflict-copy textarea {
+      width: 100%;
+      min-height: 150px;
+      padding: 13px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      color: var(--ink);
+      background: #fff;
+      font: inherit;
+      line-height: 1.55;
+    }
+
+    .conflict-copy textarea[readonly] { background: #f5f7f4; }
+
+    .conflict-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
     .intake-grid {
       display: grid;
       grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
@@ -1212,6 +1262,9 @@
       .result-bar { grid-template-columns: repeat(2, 1fr); }
       .choice-grid { grid-template-columns: repeat(2, 1fr); }
       .result-item dl { grid-template-columns: 66px minmax(0, 1fr); }
+      .conflict-grid { grid-template-columns: 1fr; }
+      .conflict-actions { display: grid; grid-template-columns: 1fr; }
+      .conflict-actions .btn { width: 100%; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -1283,6 +1336,7 @@
               <button id="prevBtn" class="btn secondary" type="button" aria-label="上一题">←</button>
               <div class="action-group">
                 <button id="revealBtn" class="btn primary" type="button">锁定并查看标准答案</button>
+                <button id="correctLockedBtn" class="btn secondary hidden" type="button">纠正我的答案</button>
                 <button id="nextBtn" class="btn secondary hidden" type="button">下一题</button>
                 <button id="submitBtn" class="btn primary hidden" type="button">检查并提交</button>
               </div>
@@ -1421,6 +1475,30 @@
     </article>
   </div>
 
+  <div id="draftConflictModal" class="detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="draftConflictTitle">
+    <article class="detail-sheet">
+      <button id="closeDraftConflict" class="btn secondary detail-close" type="button" aria-label="暂不处理">×</button>
+      <h2 id="draftConflictTitle">发现两个不同的答案</h2>
+      <p id="draftConflictHelp">系统不会自动覆盖或锁定任何一个答案。请先对照，再明确选择。</p>
+      <div id="draftConflictMeta" class="conflict-meta"></div>
+      <div class="conflict-grid">
+        <label class="conflict-copy">
+          <span>当前页面的答案（可修改）</span>
+          <textarea id="draftConflictLocal" maxlength="2000" spellcheck="true"></textarea>
+        </label>
+        <label class="conflict-copy">
+          <span>云端草稿（只读）</span>
+          <textarea id="draftConflictCloud" readonly spellcheck="false"></textarea>
+        </label>
+      </div>
+      <div class="conflict-actions">
+        <button id="keepLocalDraft" class="btn primary" type="button">保留当前答案并更新云端</button>
+        <button id="useCloudDraft" class="btn secondary" type="button">使用云端草稿</button>
+        <button id="dismissDraftConflict" class="btn secondary" type="button">暂不处理</button>
+      </div>
+    </article>
+  </div>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script>
@@ -1435,6 +1513,7 @@
       }
       var demoMode = templateDemo || query.get("demo") === "1";
       var demoState = query.get("state") || "answering";
+      var demoConflictMode = query.get("draft_conflict") === "1";
       var RESULT_LABELS = {
         forgotten: "没想起来",
         difficult: "比较生疏",
@@ -1566,10 +1645,15 @@
         savedAnswers: {},
         savePromises: {},
         conflicts: {},
+        clientInstanceId: "web-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10),
+        pageStartedAt: new Date().toISOString(),
+        draftBackup: null,
+        pendingConflict: null,
         pendingPrompt: null,
         focusQuestionCount: false
       };
       var demoCloudDrafts = {};
+      var demoConflictSeeded = false;
       var demoContextItems = [];
       var demoQuestionCount = 40;
       var demoStoredQuestionCount = 40;
@@ -1599,6 +1683,7 @@
         expectedAnswer: document.getElementById("expectedAnswer"),
         prevBtn: document.getElementById("prevBtn"),
         revealBtn: document.getElementById("revealBtn"),
+        correctLockedBtn: document.getElementById("correctLockedBtn"),
         nextBtn: document.getElementById("nextBtn"),
         submitBtn: document.getElementById("submitBtn"),
         stateMount: document.getElementById("stateMount"),
@@ -1647,6 +1732,16 @@
         retryPromptCopy: document.getElementById("retryPromptCopy"),
         openPromptTarget: document.getElementById("openPromptTarget"),
         closePromptCopy: document.getElementById("closePromptCopy"),
+        draftConflictModal: document.getElementById("draftConflictModal"),
+        draftConflictTitle: document.getElementById("draftConflictTitle"),
+        draftConflictHelp: document.getElementById("draftConflictHelp"),
+        draftConflictMeta: document.getElementById("draftConflictMeta"),
+        draftConflictLocal: document.getElementById("draftConflictLocal"),
+        draftConflictCloud: document.getElementById("draftConflictCloud"),
+        closeDraftConflict: document.getElementById("closeDraftConflict"),
+        keepLocalDraft: document.getElementById("keepLocalDraft"),
+        useCloudDraft: document.getElementById("useCloudDraft"),
+        dismissDraftConflict: document.getElementById("dismissDraftConflict"),
         toast: document.getElementById("toast")
       };
 
@@ -1689,7 +1784,9 @@
                   conflict: true,
                   position: args[1],
                   revision: savedDraft.revision,
-                  answer: savedDraft.answer
+                  answer: savedDraft.answer,
+                  updatedAt: "2026-08-11 12:29:49",
+                  writer: { clientInstanceId: "demo-other-page", pageStartedAt: "2026-08-11T04:20:00.000Z" }
                 });
                 return;
               }
@@ -1708,6 +1805,17 @@
               var revealDraft = demoCloudDraftForPosition(args[1]);
               var revealRevision = Number(args[3] || 0);
               if (revealDraft.locked) {
+                if (String(revealDraft.answer || "") !== String(args[2] || "")) {
+                  resolve({
+                    ok: false,
+                    conflict: true,
+                    position: args[1],
+                    revision: revealDraft.revision,
+                    answer: revealDraft.answer,
+                    updatedAt: "2026-08-11 12:29:49"
+                  });
+                  return;
+                }
                 resolve({
                   ok: true,
                   position: args[1],
@@ -1729,7 +1837,9 @@
                   conflict: true,
                   position: args[1],
                   revision: revealDraft.revision,
-                  answer: revealDraft.answer
+                  answer: revealDraft.answer,
+                  updatedAt: "2026-08-11 12:29:49",
+                  writer: { clientInstanceId: "demo-other-page", pageStartedAt: "2026-08-11T04:20:00.000Z" }
                 });
                 return;
               }
@@ -1742,6 +1852,32 @@
                 position: args[1],
                 revision: revealDraft.revision,
                 answer: revealDraft.answer,
+                revealed: true,
+                locked: true,
+                expectedAnswer: demoExpectedAnswer(args[1])
+              });
+              return;
+            }
+            if (name === "replaceLockedDraftV4") {
+              var lockedDraft = demoCloudDraftForPosition(args[1]);
+              if (!lockedDraft.locked || lockedDraft.revision !== Number(args[3] || 0)) {
+                resolve({
+                  ok: false,
+                  conflict: true,
+                  position: args[1],
+                  revision: lockedDraft.revision,
+                  answer: lockedDraft.answer,
+                  updatedAt: "2026-08-11 12:29:49"
+                });
+                return;
+              }
+              lockedDraft.answer = args[2];
+              lockedDraft.revision += 1;
+              resolve({
+                ok: true,
+                position: args[1],
+                revision: lockedDraft.revision,
+                answer: lockedDraft.answer,
                 revealed: true,
                 locked: true,
                 expectedAnswer: demoExpectedAnswer(args[1])
@@ -2307,11 +2443,19 @@
         el.promptCopyModal.addEventListener("click", function (event) {
           if (event.target === el.promptCopyModal) closePromptCopyPanel();
         });
+        el.draftConflictModal.addEventListener("click", function (event) {
+          if (event.target === el.draftConflictModal) finishDraftConflict("dismiss");
+        });
         el.closePromptCopy.addEventListener("click", closePromptCopyPanel);
         el.retryPromptCopy.addEventListener("click", copyPromptFromPanel);
+        el.closeDraftConflict.addEventListener("click", function () { finishDraftConflict("dismiss"); });
+        el.keepLocalDraft.addEventListener("click", function () { finishDraftConflict("keep_local"); });
+        el.useCloudDraft.addEventListener("click", function () { finishDraftConflict("use_cloud"); });
+        el.dismissDraftConflict.addEventListener("click", function () { finishDraftConflict("dismiss"); });
         document.addEventListener("keydown", function (event) {
           if (event.key !== "Escape") return;
-          if (!el.promptCopyModal.classList.contains("hidden")) closePromptCopyPanel();
+          if (!el.draftConflictModal.classList.contains("hidden")) finishDraftConflict("dismiss");
+          else if (!el.promptCopyModal.classList.contains("hidden")) closePromptCopyPanel();
           else if (!el.phraseDetailModal.classList.contains("hidden")) closePhraseDetail();
         });
         el.answerBox.addEventListener("input", onAnswerInput);
@@ -2323,6 +2467,7 @@
         });
         el.prevBtn.addEventListener("click", function () { navigateTo(app.current - 1); });
         el.revealBtn.addEventListener("click", revealCurrentAnswer);
+        el.correctLockedBtn.addEventListener("click", correctLockedAnswer);
         el.nextBtn.addEventListener("click", goNext);
         el.submitBtn.addEventListener("click", reviewBeforeSubmit);
         document.addEventListener("visibilitychange", function () {
@@ -3434,6 +3579,9 @@
           showFatal(new Error(payload && payload.message ? payload.message : "载入失败"));
           return;
         }
+        if (["awaiting_chatgpt", "committed"].indexOf(payload.state) !== -1) {
+          clearDraftBackup(payload.sessionId);
+        }
         renderTodayStrip(payload);
         if (payload.state === "answering") {
           startAnswering(payload);
@@ -3529,6 +3677,8 @@
       }
 
       function startAnswering(payload) {
+        var backup = loadDraftBackup(payload.sessionId);
+        var restoredLocalCount = 0;
         app.questions = (payload.questions || []).slice().sort(function (a, b) {
           return a.position - b.position;
         });
@@ -3539,6 +3689,12 @@
         app.savedAnswers = {};
         app.savePromises = {};
         app.conflicts = {};
+        app.pendingConflict = null;
+        app.draftBackup = backup || {
+          sessionId: payload.sessionId,
+          queueId: payload.queueId || "",
+          positions: {}
+        };
         var completedBefore = Number(payload.queueMeta && payload.queueMeta.completedBeforeBatch || 0);
         app.questions.forEach(function (question, index) {
           question.displayPosition = Number(question.displayPosition || completedBefore + index + 1);
@@ -3546,11 +3702,42 @@
           question.locked = question.locked == null ? question.revealed : Boolean(question.locked);
           question.syncing = false;
           question.syncError = false;
-          app.answers[question.position] = question.answer || "";
+          var serverAnswer = question.answer || "";
+          var localBackup = app.draftBackup.positions[question.position];
+          app.answers[question.position] = serverAnswer;
           app.revisions[question.position] = Number(question.revision || 0);
           app.localVersions[question.position] = 0;
-          app.savedAnswers[question.position] = question.answer || "";
+          app.savedAnswers[question.position] = serverAnswer;
+          if (localBackup) {
+            var recoverable = localBackup.recoveryAnswer != null
+              ? String(localBackup.recoveryAnswer)
+              : String(localBackup.answer || "");
+            if (question.locked) {
+              if (recoverable && recoverable !== serverAnswer) question.recoveryAnswer = recoverable;
+            } else if (String(localBackup.answer || "") !== serverAnswer) {
+              app.answers[question.position] = String(localBackup.answer || "");
+              app.dirty[question.position] = true;
+              restoredLocalCount += 1;
+            }
+            if (
+              !question.locked &&
+              localBackup.recoveryAnswer &&
+              String(localBackup.recoveryAnswer) !== String(app.answers[question.position] || "")
+            ) {
+              question.recoveryAnswer = String(localBackup.recoveryAnswer);
+            }
+          }
         });
+        if (demoMode && demoConflictMode && !demoConflictSeeded && app.questions.length) {
+          var demoPosition = app.questions[0].position;
+          demoCloudDrafts[demoPosition] = {
+            exists: true,
+            answer: "Cloud draft from another page",
+            revision: Number(app.revisions[demoPosition] || 0) + 1,
+            locked: false
+          };
+          demoConflictSeeded = true;
+        }
         app.current = Math.max(0, app.questions.findIndex(function (question) {
           return !question.locked;
         }));
@@ -3561,7 +3748,12 @@
         el.progressWrap.style.display = "flex";
         buildNumberNavigation();
         renderQuestion();
-        setSaveState("草稿已恢复", "good");
+        if (restoredLocalCount) {
+          setSaveState("已恢复浏览器本地答案", "warn");
+          showToast("已从本浏览器恢复 " + restoredLocalCount + " 道尚未覆盖到云端的答案。");
+        } else {
+          setSaveState("草稿已恢复", "good");
+        }
       }
 
       function hideQuiz() {
@@ -3595,7 +3787,7 @@
         el.promptEn.textContent = question.promptEn || "";
         el.promptEn.classList.toggle("hidden", !question.promptEn);
         el.answerBox.value = app.answers[question.position] || "";
-        el.answerBox.disabled = Boolean(question.revealed || app.busy);
+        el.answerBox.disabled = Boolean(question.revealed || question.syncing || app.busy);
         el.expectedAnswer.textContent = question.revealed ? (question.expectedAnswer || "") : "";
         el.answerReveal.classList.toggle("hidden", !question.revealed);
         el.prevBtn.disabled = app.current === 0;
@@ -3608,6 +3800,11 @@
         el.revealBtn.textContent = question.revealed ?
           (question.syncing ? "正在保存本题…" : "重试保存本题") : "锁定并查看标准答案";
         el.revealBtn.disabled = Boolean(app.busy || question.syncing);
+        el.correctLockedBtn.classList.toggle("hidden", !question.locked && !question.recoveryAnswer);
+        el.correctLockedBtn.disabled = Boolean(app.busy || question.syncing);
+        el.correctLockedBtn.textContent = question.recoveryAnswer
+          ? "还原本地答案"
+          : "纠正我的答案";
         el.nextBtn.classList.toggle(
           "hidden",
           !question.revealed || app.current === app.questions.length - 1
@@ -3657,6 +3854,145 @@
         return Number.isFinite(target) ? Math.max(0, target) : app.questions.length;
       }
 
+      function draftClientInfo() {
+        return {
+          clientInstanceId: app.clientInstanceId,
+          pageStartedAt: app.pageStartedAt
+        };
+      }
+
+      function draftBackupKey(sessionId) {
+        return "english-review-answer-backup-v4:" + String(sessionId || "");
+      }
+
+      function loadDraftBackup(sessionId) {
+        try {
+          var parsed = JSON.parse(sessionStorage.getItem(draftBackupKey(sessionId)) || "null");
+          if (!parsed || parsed.sessionId !== sessionId || typeof parsed.positions !== "object") return null;
+          return parsed;
+        } catch (error) {
+          return null;
+        }
+      }
+
+      function persistDraftBackup(position, extra) {
+        if (!app.payload || !app.payload.sessionId) return;
+        if (!app.draftBackup || app.draftBackup.sessionId !== app.payload.sessionId) {
+          app.draftBackup = {
+            sessionId: app.payload.sessionId,
+            queueId: app.payload.queueId || "",
+            positions: {}
+          };
+        }
+        var current = app.draftBackup.positions[position] || {};
+        current.answer = String(app.answers[position] || "");
+        current.revision = Number(app.revisions[position] || 0);
+        current.updatedAt = new Date().toISOString();
+        Object.keys(extra || {}).forEach(function (key) { current[key] = extra[key]; });
+        app.draftBackup.positions[position] = current;
+        try {
+          sessionStorage.setItem(draftBackupKey(app.payload.sessionId), JSON.stringify(app.draftBackup));
+        } catch (error) {
+          showToast("浏览器本地备份暂时不可用，请不要关闭本页。");
+        }
+      }
+
+      function clearDraftBackup(sessionId) {
+        if (!sessionId) return;
+        try { sessionStorage.removeItem(draftBackupKey(sessionId)); } catch (error) {}
+        if (app.draftBackup && app.draftBackup.sessionId === sessionId) app.draftBackup = null;
+      }
+
+      function openDraftConflict(position, result, mode) {
+        app.conflicts[position] = { result: result, mode: mode || "draft" };
+        if (app.pendingConflict) {
+          if (app.pendingConflict.position === position) return app.pendingConflict.promise;
+          showToast("另有一道题也发生同步冲突；当前问题处理后再处理它。");
+          return Promise.resolve("dismiss");
+        }
+        var question = app.questions.filter(function (item) {
+          return item.position === Number(position);
+        })[0];
+        var isLocked = mode === "locked";
+        el.draftConflictTitle.textContent = isLocked ? "纠正已锁定的答案" : "发现两个不同的答案";
+        el.draftConflictHelp.textContent = isLocked
+          ? "提交前仍可纠正。只有点击“保留当前答案并更新云端”才会改写已锁定答案。"
+          : "系统已停止查看标准答案和自动锁定。请先对照，再明确选择。";
+        el.draftConflictLocal.value = String(
+          isLocked && question && question.recoveryAnswer != null
+            ? question.recoveryAnswer
+            : app.answers[position] || ""
+        );
+        el.draftConflictCloud.value = String(result.answer || "");
+        var writer = result.writer || {};
+        var writerNote = writer.clientInstanceId
+          ? "；来源页面 " + writer.clientInstanceId + (writer.pageStartedAt ? "（打开于 " + writer.pageStartedAt + "）" : "")
+          : "";
+        el.draftConflictMeta.textContent =
+          "第 " + (question ? question.displayPosition || question.position : position) +
+          " 题 · 云端版本 " + Number(result.revision || 0) +
+          (result.updatedAt ? " · 更新于 " + result.updatedAt : "") + writerNote;
+        el.keepLocalDraft.textContent = isLocked ? "用当前答案纠正云端" : "保留当前答案并更新云端";
+        el.useCloudDraft.textContent = isLocked ? "保留现有云端答案" : "使用云端草稿";
+        el.draftConflictModal.classList.remove("hidden");
+        var resolveDecision;
+        var promise = new Promise(function (resolve) { resolveDecision = resolve; });
+        app.pendingConflict = {
+          position: position,
+          result: result,
+          mode: mode || "draft",
+          promise: promise,
+          resolve: resolveDecision
+        };
+        window.setTimeout(function () { el.draftConflictLocal.focus(); }, 30);
+        return promise;
+      }
+
+      function finishDraftConflict(choice) {
+        if (!app.pendingConflict) return;
+        var pending = app.pendingConflict;
+        app.pendingConflict = null;
+        el.draftConflictModal.classList.add("hidden");
+        pending.resolve({ choice: choice, localAnswer: el.draftConflictLocal.value });
+      }
+
+      function applyDraftConflictDecision(position, result, decision, mode) {
+        var question = app.questions.filter(function (item) {
+          return item.position === Number(position);
+        })[0];
+        var localAnswer = String(decision.localAnswer == null ? app.answers[position] || "" : decision.localAnswer);
+        app.revisions[position] = Number(result.revision || 0);
+        if (decision.choice === "keep_local") {
+          app.answers[position] = localAnswer;
+          app.localVersions[position] = Number(app.localVersions[position] || 0) + 1;
+          app.dirty[position] = mode !== "locked";
+          if (question) question.recoveryAnswer = localAnswer;
+          delete app.conflicts[position];
+          persistDraftBackup(position, { recoveryAnswer: localAnswer, adoptedCloud: false });
+          return { retrySave: mode !== "locked", replaceLocked: mode === "locked", answer: localAnswer };
+        }
+        if (decision.choice === "use_cloud") {
+          if (question) question.recoveryAnswer = localAnswer;
+          app.answers[position] = String(result.answer || "");
+          app.savedAnswers[position] = app.answers[position];
+          app.localVersions[position] = Number(app.localVersions[position] || 0) + 1;
+          app.dirty[position] = false;
+          delete app.conflicts[position];
+          persistDraftBackup(position, { recoveryAnswer: localAnswer, adoptedCloud: true });
+          showToast(mode === "locked" ? "已保留现有云端答案；当前页面答案仍留在本地备份中。" : "已使用云端草稿；当前页面答案仍留在本地备份中，且不会自动锁定。");
+          return { abortReveal: true, adoptedCloud: true };
+        }
+        app.answers[position] = mode === "locked" ? String(result.answer || "") : localAnswer;
+        app.savedAnswers[position] = mode === "locked"
+          ? String(result.answer || "")
+          : app.savedAnswers[position];
+        app.dirty[position] = mode !== "locked";
+        if (mode === "locked" && question) question.recoveryAnswer = localAnswer;
+        persistDraftBackup(position, { recoveryAnswer: localAnswer });
+        setSaveState("同步冲突尚未处理", "warn");
+        return { abortReveal: true, deferredConflict: true };
+      }
+
       function updateNumberNavigation() {
         [el.desktopNumbers, el.mobileNumbers].forEach(function (container) {
           Array.prototype.forEach.call(container.children, function (button, index) {
@@ -3679,6 +4015,7 @@
         app.answers[question.position] = el.answerBox.value;
         app.dirty[question.position] = true;
         app.localVersions[question.position] = Number(app.localVersions[question.position] || 0) + 1;
+        persistDraftBackup(question.position, { adoptedCloud: false });
         setSaveState("未保存", "warn");
         updateProgress();
         updateNumberNavigation();
@@ -3689,7 +4026,30 @@
       }
 
       function savePosition(position) {
-        if (app.conflicts[position]) return Promise.resolve({ conflict: true });
+        if (app.conflicts[position]) {
+          var unresolved = app.conflicts[position];
+          return openDraftConflict(position, unresolved.result, unresolved.mode).then(function (decision) {
+            var outcome = applyDraftConflictDecision(
+              position,
+              unresolved.result,
+              decision,
+              unresolved.mode
+            );
+            if (outcome.retrySave) {
+              return savePosition(position).then(function (saved) {
+                return { ok: true, conflictResolved: true, abortReveal: true, savedResult: saved };
+              });
+            }
+            if (outcome.replaceLocked) {
+              return replaceLockedDraftAnswer(position, outcome.answer).then(function (replaced) {
+                return { ok: true, conflictResolved: true, abortReveal: true, replacedResult: replaced };
+              });
+            }
+            renderQuestion();
+            refreshSaveState();
+            return outcome;
+          });
+        }
         if (!app.dirty[position]) return app.savePromises[position] || Promise.resolve();
         if (app.savePromises[position]) {
           return app.savePromises[position].then(function () {
@@ -3703,19 +4063,34 @@
           app.payload.sessionId,
           position,
           answer,
-          app.revisions[position] || 0
+          app.revisions[position] || 0,
+          draftClientInfo()
         ]).then(function (result) {
           if (result && result.locked) {
-            app.dirty[position] = false;
-            return callServer("getReviewBootstrapV4").then(function (payload) {
-              handlePayload(payload);
-              showToast("这道题已在另一台设备锁定，已载入标准答案。");
+            var lockedQuestion = app.questions.filter(function (item) {
+              return item.position === Number(position);
+            })[0];
+            if (String(result.answer || "") === String(answer)) {
+              app.revisions[position] = Number(result.revision || 0);
+              app.savedAnswers[position] = String(result.answer || "");
+              app.dirty[position] = false;
+              if (lockedQuestion) {
+                lockedQuestion.revealed = true;
+                lockedQuestion.locked = true;
+                lockedQuestion.syncing = false;
+                lockedQuestion.syncError = false;
+              }
+              persistDraftBackup(position, { adoptedCloud: false });
               return result;
+            }
+            return openDraftConflict(position, result, "locked").then(function (decision) {
+              return applyDraftConflictDecision(position, result, decision, "locked");
             });
           }
           if (result && result.conflict) {
-            resolveDraftConflict(position, result);
-            return result;
+            return openDraftConflict(position, result, "draft").then(function (decision) {
+              return applyDraftConflictDecision(position, result, decision, "draft");
+            });
           }
           app.revisions[position] = Number(result.revision || app.revisions[position] || 0);
           app.savedAnswers[position] = result.answer == null ? answer : result.answer;
@@ -3723,6 +4098,7 @@
             Number(app.localVersions[position] || 0) === localVersion &&
             String(app.answers[position] || "") === answer
           );
+          persistDraftBackup(position, { adoptedCloud: false });
           refreshSaveState();
           return result;
         }).catch(function (error) {
@@ -3733,10 +4109,21 @@
         });
         app.savePromises[position] = request.then(function (result) {
           delete app.savePromises[position];
+          if (result && result.retrySave) {
+            return savePosition(position).then(function (saved) {
+              return { ok: true, conflictResolved: true, abortReveal: true, savedResult: saved };
+            });
+          }
+          if (result && result.replaceLocked) {
+            return replaceLockedDraftAnswer(position, result.answer).then(function (replaced) {
+              return { ok: true, conflictResolved: true, abortReveal: true, replacedResult: replaced };
+            });
+          }
           if (app.dirty[position] && !app.conflicts[position]) {
-            return savePosition(position).then(function () { return result; });
+            return savePosition(position);
           }
           refreshSaveState();
+          renderQuestion();
           return result;
         }, function (error) {
           delete app.savePromises[position];
@@ -3745,35 +4132,96 @@
         return app.savePromises[position];
       }
 
-      function resolveDraftConflict(position, result) {
-        var serverAnswer = result.answer || "";
-        var localAnswer = app.answers[position] || "";
-        app.conflicts[position] = true;
-        app.revisions[position] = Number(result.revision || 0);
-        setSaveState("需要处理同步冲突", "warn");
-        var keepLocal = window.confirm(
-          "云端草稿与当前页面的答案不一致。\n\n" +
-          "点“确定”保留当前页面的完整答案并更新云端；" +
-          "点“取消”才载入云端草稿。"
-        );
-        delete app.conflicts[position];
-        app.localVersions[position] = Number(app.localVersions[position] || 0) + 1;
-        if (keepLocal) {
-          app.answers[position] = localAnswer;
-          app.dirty[position] = true;
-          showToast("已保留当前页面的完整答案，正在更新云端草稿。");
-        } else {
-          app.answers[position] = serverAnswer;
-          app.savedAnswers[position] = serverAnswer;
+      function replaceLockedDraftAnswer(position, answer) {
+        answer = String(answer || "").trim();
+        if (!answer) {
+          showToast("纠正后的答案不能为空。");
+          return Promise.resolve({ abortReveal: true });
+        }
+        setSaveState("正在纠正已锁定答案…", "warn");
+        return callServer("replaceLockedDraftV4", [
+          app.payload.sessionId,
+          position,
+          answer,
+          app.revisions[position] || 0,
+          draftClientInfo()
+        ]).then(function (result) {
+          if (result && result.conflict) {
+            return openDraftConflict(position, result, "locked").then(function (decision) {
+              var outcome = applyDraftConflictDecision(position, result, decision, "locked");
+              if (outcome.replaceLocked) return replaceLockedDraftAnswer(position, outcome.answer);
+              renderQuestion();
+              refreshSaveState();
+              return outcome;
+            });
+          }
+          if (!result || result.ok === false) throw new Error("已锁定答案纠正没有完成。");
+          var question = app.questions.filter(function (item) {
+            return item.position === Number(position);
+          })[0];
+          app.answers[position] = String(result.answer || answer);
+          app.savedAnswers[position] = app.answers[position];
+          app.revisions[position] = Number(result.revision || 0);
           app.dirty[position] = false;
-          showToast("已载入云端草稿。");
+          delete app.conflicts[position];
+          if (question) {
+            question.answer = app.answers[position];
+            question.revealed = true;
+            question.locked = true;
+            question.syncing = false;
+            question.syncError = false;
+            question.recoveryAnswer = "";
+            if (result.expectedAnswer != null) question.expectedAnswer = result.expectedAnswer;
+          }
+          persistDraftBackup(position, { recoveryAnswer: "", adoptedCloud: false });
+          refreshSaveState();
+          renderQuestion();
+          showToast("已用当前页面答案纠正云端锁定记录，并完成回读。");
+          return result;
+        }).catch(function (error) {
+          setSaveState("纠正失败", "bad");
+          showToast(error.message || "已锁定答案纠正失败");
+          throw error;
+        });
+      }
+
+      function correctLockedAnswer() {
+        if (app.busy) return;
+        var question = app.questions[app.current];
+        if (!question) return;
+        if (!question.locked && question.recoveryAnswer) {
+          app.answers[question.position] = String(question.recoveryAnswer);
+          app.localVersions[question.position] = Number(app.localVersions[question.position] || 0) + 1;
+          app.dirty[question.position] = true;
+          question.recoveryAnswer = "";
+          persistDraftBackup(question.position, { recoveryAnswer: "", adoptedCloud: false });
+          refreshSaveState();
+          renderQuestion();
+          showToast("已还原本浏览器保留的当前页面答案；尚未更新云端。");
+          return;
         }
-        if (app.questions[app.current] && app.questions[app.current].position === position) {
-          el.answerBox.value = app.answers[position];
-        }
-        refreshSaveState();
-        updateProgress();
-        updateNumberNavigation();
+        if (!question.locked) return;
+        var current = {
+          answer: app.savedAnswers[question.position] == null
+            ? app.answers[question.position]
+            : app.savedAnswers[question.position],
+          revision: Number(app.revisions[question.position] || 0),
+          updatedAt: ""
+        };
+        openDraftConflict(question.position, current, "locked").then(function (decision) {
+          var outcome = applyDraftConflictDecision(
+            question.position,
+            current,
+            decision,
+            "locked"
+          );
+          if (outcome.replaceLocked) return replaceLockedDraftAnswer(question.position, outcome.answer);
+          renderQuestion();
+          refreshSaveState();
+          return outcome;
+        }).catch(function (error) {
+          showToast(error.message || "答案纠正没有完成");
+        });
       }
 
       function refreshSaveState() {
@@ -3846,11 +4294,10 @@
           return;
         }
         window.clearTimeout(app.timers[question.position]);
-        question.revealed = true;
         question.syncing = true;
         question.syncError = false;
         renderQuestion();
-        setSaveState("标准答案已显示，正在保存本题…", "warn");
+        setSaveState("正在保存并锁定本题…", "warn");
         var answerToLock = answer;
         // The debounced autosave may still be writing an earlier partial
         // answer. Drain that per-position save queue first, including any
@@ -3859,6 +4306,9 @@
           var liveQuestion = app.questions.filter(function (item) {
             return item.position === question.position;
           })[0];
+          if (saveResult && saveResult.abortReveal) {
+            return { abortReveal: true, conflictResolved: saveResult.conflictResolved };
+          }
           if ((saveResult && saveResult.locked) || (liveQuestion && liveQuestion.locked)) {
             return { alreadyLocked: true };
           }
@@ -3868,10 +4318,22 @@
             app.payload.sessionId,
             question.position,
             answerToLock,
-            app.revisions[question.position] || 0
+            app.revisions[question.position] || 0,
+            draftClientInfo()
           ]);
         }).then(function (result) {
+          if (result && result.abortReveal) {
+            question.syncing = false;
+            question.syncError = false;
+            refreshSaveState();
+            renderQuestion();
+            showToast(result.conflictResolved
+              ? "冲突已按你的选择处理；本次没有显示或锁定标准答案，请确认后再次点击。"
+              : "本次没有显示或锁定标准答案。处理冲突后请再次点击。");
+            return;
+          }
           if (result && result.alreadyLocked) {
+            question.syncing = false;
             refreshSaveState();
             renderQuestion();
             return;
@@ -3880,13 +4342,24 @@
             throw new Error("本题锁定没有完成。");
           }
           if (result.conflict) {
-            question.syncing = false;
-            question.syncError = true;
-            resolveDraftConflict(question.position, result);
-            renderQuestion();
-            showToast("标准答案已显示，但云端答案版本发生变化，请处理冲突后重试保存。");
-            return;
+            return openDraftConflict(question.position, result, "draft").then(function (decision) {
+              var outcome = applyDraftConflictDecision(
+                question.position,
+                result,
+                decision,
+                "draft"
+              );
+              var followup = outcome.retrySave ? savePosition(question.position) : Promise.resolve(outcome);
+              return followup.then(function () {
+                question.syncing = false;
+                question.syncError = false;
+                refreshSaveState();
+                renderQuestion();
+                showToast("冲突处理已结束；标准答案没有显示或锁定，请确认后再次点击。");
+              });
+            });
           }
+          question.revealed = true;
           question.locked = true;
           question.syncing = false;
           question.syncError = false;
@@ -3894,18 +4367,43 @@
           app.savedAnswers[question.position] = app.answers[question.position];
           app.revisions[question.position] = Number(result.revision || 0);
           app.dirty[question.position] = false;
+          question.recoveryAnswer = "";
+          persistDraftBackup(question.position, { recoveryAnswer: "", adoptedCloud: false });
           refreshSaveState();
           renderQuestion();
         }).catch(function (error) {
           question.syncing = false;
           question.syncError = true;
-          setSaveState("标准答案已显示，但本题尚未同步", "bad");
+          setSaveState("本题尚未锁定", "bad");
           renderQuestion();
-          showToast((error && error.message ? error.message : "本题没有锁定") + "。请点击“重试保存本题”。");
+          showToast((error && error.message ? error.message : "本题没有锁定") + "。标准答案没有显示，请重试。");
         });
       }
 
       function reviewBeforeSubmit() {
+        var unresolvedPositions = Object.keys(app.conflicts);
+        if (unresolvedPositions.length) {
+          var unresolvedPosition = Number(unresolvedPositions[0]);
+          var unresolvedQuestion = app.questions.filter(function (question) {
+            return question.position === unresolvedPosition;
+          })[0];
+          if (unresolvedQuestion) app.current = app.questions.indexOf(unresolvedQuestion);
+          renderQuestion();
+          savePosition(unresolvedPosition).catch(function () {});
+          showToast("还有同步冲突未处理，提交已停止。");
+          return;
+        }
+        var recoverableQuestion = app.questions.filter(function (question) {
+          return question.locked && question.recoveryAnswer &&
+            String(question.recoveryAnswer) !== String(app.answers[question.position] || "");
+        })[0];
+        if (recoverableQuestion) {
+          app.current = app.questions.indexOf(recoverableQuestion);
+          renderQuestion();
+          correctLockedAnswer();
+          showToast("发现尚未确认的本地答案，提交已停止。请先选择要保留的版本。");
+          return;
+        }
         var target = currentBatchSubmissionTarget();
         var locked = app.questions.filter(function (question) {
           return question.locked;
@@ -3980,7 +4478,8 @@
             app.payload.sessionId,
             locked.map(function (question) {
               return { position: question.position, answer: app.answers[question.position] };
-            })
+            }),
+            draftClientInfo()
           ]);
         }).then(handlePayload).catch(function (error) {
           app.busy = false;

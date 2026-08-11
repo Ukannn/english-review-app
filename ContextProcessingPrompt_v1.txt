@@ -1,0 +1,77 @@
+你正在执行一次性的“真实语料整理”。这不是 Scheduled Task，也不是每日出题或批改。请立即通过当前 Work 对话中的 @Google Drive 连接器读取 Google Sheet；不要要求用户在聊天里重新粘贴原文。
+
+目标工作簿：
+- 标题：English Review Database
+- Spreadsheet ID：YOUR_SPREADSHEET_ID
+- 语料箱：YOUR_WEB_APP_URL
+- 时区：Asia/Shanghai
+- Config 的 contract_version 必须精确为文本 4.0。
+
+绝对边界：
+1. 你只允许向 Context Candidate Inbox 写入暂存数据。
+2. 不得直接新增或修改 Context Inbox、Candidate Bank、Phrase Bank、Daily Queue、Review Log、Error Log、Session Questions、Grade Inbox、Session Log、Answer Drafts 或 Commit Journal。
+3. 原文读取自 Context Inbox；不得要求用户再次粘贴、转述或重新标记原文。
+4. 正式 Candidate ID、Candidate Bank、Phrase Bank、SRS 和日志全部由 Apps Script 负责。
+5. 任一身份、数量、状态、契约或固定范围回读不符合要求时，停止并报告确切失败项；不得猜测或补位。
+6. 如果当前对话无法使用 Google Drive 连接器，明确报告连接器不可用；不得改成“请把原文贴过来”。
+
+==========================
+context_processing 一次性执行
+==========================
+
+1. 读取 Config 并确认 contract_version=4.0；读取 Context Inbox 和 Context Candidate Inbox 的真实表头。Context Inbox 的正式表头为：
+Context ID | Raw Text | Selected Spans JSON | Source URL | Source Title | User Note | Processing Status | Processing Batch ID | Created At | Processed At | Capture Request ID | Contract Version
+
+Context Candidate Inbox 的正式表头为：
+Context ID | Proposal Position | Selected Text | Candidate | Chinese Cue | Candidate Type | Context Meaning | Why Useful | Topic | Difficulty | Natural Example | Common Mistake | Extraction Rationale | Confidence | Decision Status | Edited Candidate | Processing Batch ID | Created At | Committed At | Candidate ID | Contract Version
+
+2. 只处理 Contract Version=4.0 且 Processing Status=pending 的 Context。若当前没有 pending Context，回复“当前没有待整理的语料”，不得写入任何表。每次最多处理20条，按 Created At、Context ID 从早到晚；其余留给下一次运行。
+
+3. 对每条 Context 先校验：
+- Context ID 唯一且格式为 CTX-六位以上数字；
+- Raw Text 非空且不超过12000字符；
+- Selected Spans JSON 可解析为数组；
+- 每个 span 含 text/start/end，start/end 使用 JavaScript UTF-16 offset；
+- Raw Text.slice(start,end) 必须精确等于 text；
+- span 不越界、不为空、不重复、不重叠；
+- Contract Version 精确为文本4.0。
+任何一条校验失败都停止并报告确切 Context ID 与失败项，不得猜测或修正原文。
+
+4. 读取 Phrase Bank 的 Chunk/Canonical Pattern、Candidate Bank 的 Candidate，以及本批已经生成的 Candidate，用标准化文本去重。对每条 Context：
+- 有用户标记时，优先围绕每个标记结合完整 Raw Text 判断真实含义；不得只按字面切词；
+- 无标记时，识别最可能造成理解障碍且值得长期复习的表达；
+- 每条 Context 生成0–3个建议；
+- 优先固定搭配、短语动词、介词结构、习惯表达、可复用句型和组合含义不能逐词推导的表达；
+- 不优先普通孤立单词、专有名词、一次性术语、过长完整句子、只适用于当前文章的表达；
+- Candidate 必须规范化为可复习 chunk，例如 steering customers toward → steer someone toward something，subject to availability → be subject to availability；
+- Candidate Type=chunk；Difficulty只能是 easy/medium/hard；
+- Candidate、Chinese Cue、Context Meaning、Why Useful、Topic、Natural Example、Extraction Rationale 必须非空；Confidence为0到1的小数；
+- 发现文本完全重复时不生成重复建议；发现可能的语义近似重复时，在 Extraction Rationale 中明确写“可能语义重复”，留给用户决定。
+
+5. 如果某条 Context 没有值得进入SRS的建议，仍写入一条说明行：Proposal Position=0，Candidate留空，Candidate Type=explanation_only，Chinese Cue与Context Meaning写清当前解释，Decision Status=explanation_only。这样 Web App 可以确定该 Context 已处理，但不会创建 Candidate。
+
+6. 先读取 Context Candidate Inbox，按 Context ID 检查是否已有 active 处理结果。active 指同一 Context 已有 Contract Version=4.0 且 Decision Status 属于 staged/accepted/edited/committed/explanation_only 的行：
+- 若恰好一个 Processing Batch ID 且行数/Position合法，复用现有结果，不重复写；
+- 若出现多个 active Processing Batch ID，停止并报告歧义；
+- 只有完全没有 active 结果的 Context 才能生成新暂存行。
+
+7. 使用本次唯一 Processing Batch ID，例如 CTXB-<yyyyMMddHHmmss>。调用 Google Drive 的 Batch update spreadsheet，以结构化 appendCells 一次追加本次所有新暂存行；每行严格21个 CellData，fields精确为userEnteredValue，按上面 Context Candidate Inbox 的列顺序写入：
+- Proposal Position：chunk建议为1–3；explanation_only为0；
+- Selected Text：有标记时写对应原文文字；无标记时可留空；
+- Edited Candidate、Committed At、Candidate ID留空；
+- Decision Status：chunk建议写staged；说明行写explanation_only；
+- Created At写当前真实Asia/Shanghai时间；
+- Contract Version写文本4.0。
+
+8. 立即回读刚追加的固定范围，确认：
+- 新写入行数与计划完全一致；
+- 每个 Context 最多3条chunk建议，或恰好1条explanation_only说明行；
+- Context ID、Proposal Position、Selected Text、Candidate和Processing Batch ID与计划逐行一致；
+- Confidence、Difficulty、Decision Status合法；
+- Contract Version全部为文本4.0；
+- Context Candidate Inbox中每个已处理Context只有一个active Processing Batch ID。
+
+9. 只有固定范围回读全部通过后，回复：
+“语料整理暂存已完成。请返回语料箱确认要加入候选池的表达：YOUR_WEB_APP_URL”
+
+不得宣称 Candidate Bank 已写入。只有用户在 Web App 确认、Apps Script 正式写入并精确回读后，才算进入候选池。

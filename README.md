@@ -23,6 +23,23 @@ This repository is the public, code-only edition. Personal identifiers, live spr
 - `CONTEXT_INTAKE_CONTRACT.md` — intake and candidate-confirmation boundaries
 - `appsscript.json` — Apps Script manifest
 
+## Version history
+
+The public history is reconstructed from verified, sanitized release snapshots. It reflects the real feature sequence without exposing private operational identifiers.
+
+| Version | Milestone |
+| --- | --- |
+| `v0.1.0` | Context intake foundation |
+| `v0.2.0` | Guided context-processing workflow |
+| `v0.3.0` | Personal-source candidate priority |
+| `v0.4.0` | Three-state intake lifecycle |
+| `v0.5.0` | Dynamic daily question count |
+| `v0.6.0` | One persistent daily review set |
+| `v0.7.0` | Resilient prompt-copy fallback |
+| `v0.8.0` | Current count-scope and grading workflow |
+
+GitHub Releases are published for the major public milestones; the intervening tags preserve smaller feature iterations.
+
 ## Before deployment
 
 Search for the following placeholders and configure them only in a private deployment environment:

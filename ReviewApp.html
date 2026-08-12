@@ -1827,7 +1827,12 @@
 
       function callDemo(name, args) {
         return new Promise(function (resolvePromise) {
-          var isDraftWrite = ["saveDraftV4", "revealAnswerV4", "replaceLockedDraftV4"]
+          var isDraftWrite = [
+            "saveDraftV4",
+            "revealAnswerV4",
+            "replaceLockedDraftV4",
+            "submitExtraPracticeV4"
+          ]
             .indexOf(name) !== -1;
           if (isDraftWrite) {
             window.__reviewDemoMetrics.activeDraftWrites += 1;
@@ -4824,7 +4829,7 @@
             }
             button.disabled = true;
             button.textContent = "正在保存…";
-            callServer("submitExtraPracticeV4", [result.sessionId, practiceId, answer])
+            enqueueDraftWrite("submitExtraPracticeV4", [result.sessionId, practiceId, answer])
               .then(function (payload) {
                 practice.status = "completed";
                 practice.answer = payload.answer;

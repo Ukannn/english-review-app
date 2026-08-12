@@ -50,14 +50,29 @@ assert.match(
   /enqueueDraftWrite\("replaceLockedDraftV4"/,
   'locked-answer corrections must use the global draft queue'
 );
+assert.match(
+  html,
+  /enqueueDraftWrite\("submitExtraPracticeV4"/,
+  'extra-practice submissions must use the same global write queue'
+);
+assert.match(
+  html,
+  /var isDraftWrite = \[[\s\S]*"submitExtraPracticeV4"[\s\S]*\][\s\S]*\.indexOf\(name\) !== -1/,
+  'demo busy-lock injection must cover extra-practice submissions'
+);
 
-for (const functionName of ['saveDraftV4', 'revealAnswerV4', 'replaceLockedDraftV4']) {
+for (const functionName of [
+  'saveDraftV4',
+  'revealAnswerV4',
+  'replaceLockedDraftV4',
+  'submitExtraPracticeV4'
+]) {
   const start = backend.indexOf(`function ${functionName}(`);
   assert.notEqual(start, -1, `${functionName} must exist`);
-  const snippet = backend.slice(start, start + 320);
+  const snippet = backend.slice(start, start + 640);
   assert.match(snippet, /lock\.tryLock\(1000\)/, `${functionName} must fail fast when the lock is busy`);
   assert.match(snippet, /draftBusyResponseV4_\(\)/, `${functionName} must return BUSY_RETRY`);
-  assert.doesNotMatch(snippet, /waitLock\(15000\)/, `${functionName} must not wait fifteen seconds`);
+  assert.doesNotMatch(snippet, /waitLock\((15000|30000)\)/, `${functionName} must not use a long lock wait`);
 }
 
 assert.match(

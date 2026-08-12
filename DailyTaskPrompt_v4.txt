@@ -117,10 +117,22 @@ question_prepare：按冻结 Queue 出题
 - active Position 必须属于 REQUIRED；Question Status=deferred 或 rejected 的历史行不属于本次题组，不读取其题目内容，也不得因此扩大 REQUIRED。若仍存在 REQUIRED 之外的 active 行，报告状态冲突并停止。
 若 active Position 已完整覆盖 REQUIRED，固定范围回读后直接给出 Web App 链接，不重复生成。否则以 REQUIRED 中尚未覆盖的 Position 作为 MISSING；若存在重复或身份冲突，停止并报告歧义。staged/ready 的不完整合法段不是错误，不得覆盖或删除。
 
-4. 本次只为 MISSING 中最靠前的 S 个 Position 生成题目，S=min(30, MISSING 数量)。这是 AI 内部稳定暂存段，不是新的用户题组；网页显示本次实际生效的 T 题，并最终只提交一次。每个选中身份各生成一道题：
+4. 出题前必须为 MISSING 中每个身份读取下列有界历史：Phrase Bank 的 Review Stage、Last Result、Common Mistake、Natural Example；Review Log / Error Log 中该 Phrase ID 最近错误及真实答案；Session Questions 中该 Phrase ID 或 Candidate ID 的全部历史题目，至少重点比较最近5题。不得只看 Daily Queue 当前行。
+
+按记忆阶段选择正式题型：
+- 新词、上次 forgotten、Review Stage 1–2：优先 cloze，只挖掉词块内部最关键的1个组成部分，作答范围标为“词块组成部分”；
+- Review Stage 3–5：优先 cloze，要求回忆完整目标词块，作答范围标为“完整目标词块”；
+- Review Stage 6–8：优先 recall / scenario / contrast / oral，从中文含义或短情境回忆完整目标词块，作答范围标为“完整目标词块”；
+- 最近 Error Log 暴露出近义词混淆、介词、时态、搭配边界或漏词时，下一题必须定向检查该错误点，但不能泄露答案。
+
+每道正式题的 Prompt ZH 开头必须且只能出现一个明确标签：`【作答范围：词块组成部分】` 或 `【作答范围：完整目标词块】`。标签之后只给完成作答所需的最短背景；不得出现一大段无法判断要不要翻译的背景，不得要求翻译整段或写完整英文句子。完整句写作属于正式题组之外的迁移挑战。
+
+同一身份的语境必须轮换：禁止复用历史完整句；不得重复最近3题的核心场景；与最近1题相比，actor / domain / event / syntax 四项中至少改变两项。即使目标词块相同，也要让用户脱离旧场景线索独立回忆。
+
+5. 本次只为 MISSING 中最靠前的 S 个 Position 生成题目，S=min(30, MISSING 数量)。这是 AI 内部稳定暂存段，不是新的用户题组；网页显示本次实际生效的 T 题，并最终只提交一次。每个选中身份各生成一道题：
 - Position、Phrase ID、Candidate ID 与 Daily Queue 原样一一对应；
 - Question Type 只能 recall、cloze、contrast、scenario、oral；
-- 混合回忆、情境表达、辨析和口语，不连续堆叠同一题型；
+- 在符合上述阶段映射的前提下混合回忆、情境表达、辨析和口语，不连续堆叠同一题型；
 - Prompt ZH / Prompt EN 至少一个非空，且不能直接出现目标 Chunk 或完整 Expected Answer；
 - 若常见近义表达也成立，Semantic Boundary 必须明确区分；
 - Expected Answers JSON、Accepted Variants JSON 均为非空 JSON 字符串数组；
@@ -128,14 +140,14 @@ question_prepare：按冻结 Queue 出题
 - Candidate ID 非空且 Origin Type=user_context 时，读取其 Origin Context ID、Selected Text 和对应 Context Inbox Raw Text；首次学习优先利用真实语境，但不能泄露答案；
 - 不在聊天中发送参考答案。
 
-5. 使用新的唯一 Generation ID，例如 GEN-<Queue ID>-<yyyyMMddHHmmss>。向 Session Questions 一次性追加 S 行，每行严格 21 个 CellData，顺序为：
+6. 使用新的唯一 Generation ID，例如 GEN-<Queue ID>-<yyyyMMddHHmmss>。向 Session Questions 一次性追加 S 行，每行严格 21 个 CellData，顺序为：
 Queue Date | Queue ID | Position | Phrase ID | Candidate ID | Question Type | Prompt ZH | Prompt EN | Expected Answers JSON | Accepted Variants JSON | Semantic Boundary | Grading Rubric | Generation ID | Model ID | Prompt Version | Content Hash | Question Status | Session ID | Created At | Bound At | Contract Version
 
-写入规则：Position 使用本段实际缺失 Position；Model ID 写当前实际模型；Prompt Version=english-review-v4-question-3；Content Hash 留空；Question Status=staged；Session ID/Bound At 留空（即使 Queue 已 presented，也由 Apps Script 绑定）；Created At 写真实 Asia/Shanghai 时间；Contract Version 写文本 4.0。
+写入规则：Position 使用本段实际缺失 Position；Model ID 写当前实际模型；Prompt Version=english-review-v4-question-4；Content Hash 留空；Question Status=staged；Session ID/Bound At 留空（即使 Queue 已 presented，也由 Apps Script 绑定）；Created At 写真实 Asia/Shanghai 时间；Contract Version 写文本 4.0。
 
-6. 固定范围回读确认：本次恰好 S 行、同一个新 Generation ID、Position 精确等于本段选中的缺失集合、身份与 Queue 逐行一致、JSON 可解析且非空、状态全为 staged、Contract Version 全为文本 4.0；再回读该 Queue 的全部 active 行，确认无重复且覆盖数增加 S。
+7. 固定范围回读确认：本次恰好 S 行、同一个新 Generation ID、Position 精确等于本段选中的缺失集合、身份与 Queue 逐行一致、每题恰好一个作答范围标签、没有历史原句复用、JSON 可解析且非空、状态全为 staged、Contract Version 全为文本 4.0；再回读该 Queue 的全部 active 行，确认无重复且覆盖数增加 S。
 
-7. 成功后回复：
+8. 成功后回复：
 “题目暂存段已准备好。请返回答题网页检查完整题组；若仍有缺失，网页会继续提供下一段完整提示词：YOUR_WEB_APP_URL”
 不要在聊天中直接展示题目，不要把 Queue 改为 presented。
 
@@ -160,16 +172,24 @@ A 必须是 1–150。实际 Position 可以是不连续集合；三处的 Posit
 
 每题还要提供 Feedback ZH、Error Category（无错可空）、0–1 Confidence、Evidence、Expected Answer。Confidence<0.75 仍给最可能结果，Apps Script 只让用户确认这些低信心题。
 
-4. 读取 Grade Inbox 中该 Submission ID / Session ID / Answer Hash 的 active staged 行。允许多个 Grading Batch ID 作为内部暂存段，但所有 active Position 合并后必须无重复、身份与冻结答案一致且只能属于实际提交集合。若已完整覆盖全部 A 个 Position，固定范围回读后复用；否则计算 MISSING。重复或冲突时停止。本模式不生成候选素材：如果现有 active staged 行中尚未出现 Candidate Suggestions JSON，本次新段第一行必须精确写文本 []、其余行留空；如果已经出现一次，本次所有行都留空。
+同时读取 Phrase Bank 中对应 Phrase ID 的 Review Stage，并生成“正式题组之外”的加练计划：
+- 每个 Result=forgotten 或 difficult 的正式错误必须恰好生成1道 reinforcement；不设置本场或每日总上限，一错一题；
+- reinforcement 必须换一个与正式题不同的短场景，只要求填写完整目标词块，针对本次具体错误点；不得再生成 reinforcement 的 reinforcement；
+- Result=mastered 且批改前 Review Stage>=6 时，生成1道 sentence_challenge，要求用户用目标词块写一个完整英文句子；其他正式结果不生成完整句挑战；
+- 加练不改变正式 Result，不计入正式题数，不影响 SRS。
 
-5. 本次只批改 MISSING 中最靠前的 G 个 Position，G=min(30, MISSING 数量)。使用新的唯一 Grading Batch ID，例如 GRD-<Submission ID>-<yyyyMMddHHmmss>。向 Grade Inbox 一次性追加 G 行，每行严格 18 个 CellData，顺序为：
-Submission ID | Session ID | Answer Hash | Position | Phrase ID | Candidate ID | Result | Feedback ZH | Error Category | Confidence | Evidence | Expected Answer | Grading Batch ID | Prompt Version | Grade Status | Created At | Candidate Suggestions JSON | Contract Version
+Extra Practice JSON 必须是 JSON 数组。每个对象严格包含：sourcePosition、practiceType（reinforcement 或 sentence_challenge）、promptZh、expectedAnswers（非空字符串数组）、acceptedVariants（字符串数组，可空）、referenceAnswer（非空）、contextSignature（非空且能说明新场景）。reinforcement 的 expectedAnswers/acceptedVariants 只放目标词块；sentence_challenge 的 referenceAnswer 放一条自然完整例句。
 
-写入规则：沿用同一 Submission ID、Session ID、Answer Hash；本段共享新的 Grading Batch ID；Position 使用本段实际缺失集合；Prompt Version=english-review-v4-grade-4；Grade Status=staged；Created At 写真实 Asia/Shanghai 时间；Contract Version 写文本 4.0。
+4. 读取 Grade Inbox 中该 Submission ID / Session ID / Answer Hash 的 active staged 行。允许多个 Grading Batch ID 作为内部暂存段，但所有 active Position 合并后必须无重复、身份与冻结答案一致且只能属于实际提交集合。若已完整覆盖全部 A 个 Position，固定范围回读后复用；否则计算 MISSING。重复或冲突时停止。本模式不生成候选素材：如果现有 active staged 行中尚未出现 Candidate Suggestions JSON，本次新段第一行必须精确写文本 []、其余行留空；如果已经出现一次，本次所有行都留空。Extra Practice JSON 必须在整个提交的 active 行中恰好出现一次：首次暂存段第一行写入覆盖全部 A 题的完整加练数组（允许 []），其余行全部留空；若 active 行已经出现一次，本次所有行留空。
+
+5. 本次只批改 MISSING 中最靠前的 G 个 Position，G=min(30, MISSING 数量)。使用新的唯一 Grading Batch ID，例如 GRD-<Submission ID>-<yyyyMMddHHmmss>。向 Grade Inbox 一次性追加 G 行，每行严格 19 个 CellData，顺序为：
+Submission ID | Session ID | Answer Hash | Position | Phrase ID | Candidate ID | Result | Feedback ZH | Error Category | Confidence | Evidence | Expected Answer | Grading Batch ID | Prompt Version | Grade Status | Created At | Candidate Suggestions JSON | Contract Version | Extra Practice JSON
+
+写入规则：沿用同一 Submission ID、Session ID、Answer Hash；本段共享新的 Grading Batch ID；Position 使用本段实际缺失集合；Prompt Version=english-review-v4-grade-5；Grade Status=staged；Created At 写真实 Asia/Shanghai 时间；Contract Version 写文本 4.0。
 
 rejected 旧行不算 active，可修正后使用新 Grading Batch ID。不得覆盖先前合法 staged 段。
 
-6. 固定范围回读确认：本次恰好 G 行、Position 精确等于本段缺失集合、一个新的 Grading Batch ID、身份/hash 一致、Result/Confidence 合法、状态全为 staged、Contract Version 全为文本 4.0；再回读该提交的全部 active staged 行，确认无重复、覆盖数增加 G，且 Candidate Suggestions JSON 在全部 active 行中只出现一次并精确为 []。
+6. 固定范围回读确认：本次恰好 G 行、Position 精确等于本段缺失集合、一个新的 Grading Batch ID、身份/hash 一致、Result/Confidence 合法、状态全为 staged、Contract Version 全为文本 4.0；再回读该提交的全部 active staged 行，确认无重复、覆盖数增加 G，Candidate Suggestions JSON 只出现一次并精确为 []，Extra Practice JSON 只出现一次、可解析，且每个 formal error 恰好对应1道 reinforcement、没有总量截断。
 
 7. 成功后回复：
 “批改暂存段已完成。请返回答题页面；全部已提交题目覆盖后，系统才会统一核验、写入并显示结果。若仍有缺失，网页会继续提供下一段完整提示词：YOUR_WEB_APP_URL”

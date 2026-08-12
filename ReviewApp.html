@@ -1089,6 +1089,31 @@
       white-space: pre-wrap;
     }
 
+    .extra-practice-list { display: grid; gap: 12px; }
+    .extra-practice {
+      padding: 17px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fffdf8;
+    }
+    .extra-practice h4 { margin: 0 0 8px; font-size: 15px; }
+    .extra-practice p { margin: 6px 0; }
+    .extra-practice textarea {
+      width: 100%;
+      min-height: 78px;
+      margin: 10px 0;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      resize: vertical;
+      background: white;
+    }
+    .extra-practice .reference {
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--green-soft);
+    }
+
     .confirmation-row h3 { margin: 0 0 7px; font-size: 17px; }
     .confirmation-row p { margin: 4px 0; text-align: left; }
 
@@ -1900,6 +1925,20 @@
               resolve(demoCommittedPayload());
               return;
             }
+            if (name === "submitExtraPracticeV4") {
+              resolve({
+                ok: true,
+                practiceId: args[1],
+                answer: args[2],
+                result: String(args[1]).slice(-2) === "-S" ? "completed" : "normal",
+                referenceAnswer: String(args[1]).slice(-2) === "-S"
+                  ? "The rollout stayed on track despite the delay."
+                  : "run late",
+                affectsSrs: false,
+                recursive: false
+              });
+              return;
+            }
             if (name === "getSubmissionStatusV4" || name === "retrySubmissionCommitV4") {
               resolve(demoState === "committed" ? demoCommittedPayload() : app.payload);
               return;
@@ -2150,6 +2189,26 @@
             personalReadyCandidateCount: 32,
             personalIntakeBacklogCount: 3,
             counts: { forgotten: 2, difficult: 4, normal: 8, mastered: 6 },
+            extraPractices: [
+              {
+                practiceId: "XP-DEMO-SESSION-Q003-R",
+                sourcePosition: 3,
+                practiceType: "reinforcement",
+                phraseId: "ENG-0003",
+                promptZh: "【错误强化｜只填写完整目标词块】航班比原定时间晚到。写出表示‘晚点’的目标词块。",
+                answerScope: "完整目标词块",
+                status: "pending"
+              },
+              {
+                practiceId: "XP-DEMO-SESSION-Q001-S",
+                sourcePosition: 1,
+                practiceType: "sentence_challenge",
+                phraseId: "ENG-0001",
+                promptZh: "【完整句挑战｜写一个完整英文句子】用目标词块描述一次进展顺利的真实安排。",
+                answerScope: "完整英文句子",
+                status: "pending"
+              }
+            ],
             items: source.map(function (item, index) {
               return {
                 position: index + 1,
@@ -4635,6 +4694,7 @@
             '<div class="result-bar">' + metrics + '</div>' +
             renderResultSection("到期复习", dueItems) +
             renderResultSection("今日新搭配", newItems) +
+            renderExtraPracticeSection(result.extraPractices || []) +
             '<p class="fine-print">' + inventoryNote +
               (result.nextBatchError ? ' 后续题目准备提示：' + escapeHtml(result.nextBatchError) : '') +
             '</p>' + actions +
@@ -4650,6 +4710,76 @@
         });
         var adjustButton = document.getElementById("adjustAfterResults");
         if (adjustButton) adjustButton.addEventListener("click", adjustTodayQuestionCount);
+        Array.prototype.forEach.call(document.querySelectorAll(".extra-practice-submit"), function (button) {
+          button.addEventListener("click", function () {
+            var practiceId = button.dataset.practiceId;
+            var practice = (result.extraPractices || []).filter(function (item) {
+              return item.practiceId === practiceId;
+            })[0];
+            var input = document.querySelector('[data-practice-answer="' + escapeAttribute(practiceId) + '"]');
+            var answer = input ? input.value.trim() : "";
+            if (!answer) {
+              showToast("请先填写这道加练题");
+              return;
+            }
+            button.disabled = true;
+            button.textContent = "正在保存…";
+            callServer("submitExtraPracticeV4", [result.sessionId, practiceId, answer])
+              .then(function (payload) {
+                practice.status = "completed";
+                practice.answer = payload.answer;
+                practice.result = payload.result;
+                practice.referenceAnswer = payload.referenceAnswer;
+                renderResults(result);
+                showToast("加练已保存；不影响正式 SRS");
+              })
+              .catch(function (error) {
+                button.disabled = false;
+                button.textContent = "提交并查看参考";
+                showToast(error.message || "加练保存失败");
+              });
+          });
+        });
+      }
+
+      function renderExtraPracticeSection(practices) {
+        if (!practices.length) return "";
+        var reinforcement = practices.filter(function (item) {
+          return item.practiceType === "reinforcement";
+        });
+        var sentence = practices.filter(function (item) {
+          return item.practiceType === "sentence_challenge";
+        });
+        return renderExtraPracticeGroup("错误强化", reinforcement,
+          "正式题每错一题就有一题，不设总上限；只强化一次，不递归，不影响 SRS。") +
+          renderExtraPracticeGroup("完整句迁移挑战", sentence,
+            "只在稳定掌握后出现，位于正式题组之外，不影响 SRS。");
+      }
+
+      function renderExtraPracticeGroup(title, practices, note) {
+        if (!practices.length) return "";
+        return '<section class="result-section"><h3>' + title + ' · ' + practices.length + '</h3>' +
+          '<p class="fine-print">' + escapeHtml(note) + '</p><div class="extra-practice-list">' +
+          practices.map(function (practice) {
+            var completed = practice.status === "completed";
+            var label = practice.practiceType === "reinforcement"
+              ? "只填写完整目标词块"
+              : "写一个完整英文句子";
+            return '<article class="extra-practice">' +
+              '<h4>源自正式题第 ' + Number(practice.sourcePosition) + ' 题 · ' + label + '</h4>' +
+              '<p>' + escapeHtml(practice.promptZh || "") + '</p>' +
+              (completed
+                ? '<p><strong>你的答案：</strong>' + escapeHtml(practice.answer || "") + '</p>' +
+                  (practice.referenceAnswer
+                    ? '<p class="reference"><strong>参考：</strong>' + escapeHtml(practice.referenceAnswer) + '</p>'
+                    : '') +
+                  '<p class="fine-print">已完成；本题不改变正式复习阶段。</p>'
+                : '<textarea data-practice-answer="' + escapeAttribute(practice.practiceId) +
+                  '" placeholder="' + escapeAttribute(label) + '"></textarea>' +
+                  '<button class="btn secondary extra-practice-submit" type="button" data-practice-id="' +
+                  escapeAttribute(practice.practiceId) + '">提交并查看参考</button>') +
+            '</article>';
+          }).join("") + '</div></section>';
       }
 
       function renderResultSection(title, items) {

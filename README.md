@@ -11,6 +11,10 @@ This repository is the public, code-only edition. Personal identifiers, live spr
 - Per-question answer reveal with server-side locking
 - Explicit draft-conflict resolution with local answer recovery and append-only history
 - Batch grading and formal learning-log updates
+- Stage- and error-aware formal questions with explicit answer scope
+- Historical context rotation and exact prompt-reuse rejection
+- One uncapped, non-recursive reinforcement per formal error outside SRS
+- Full-sentence transfer challenges reserved for stable mastery outside SRS
 - Personal context intake with human confirmation before candidate promotion
 - Prompt contracts for question preparation, grading, and candidate generation
 
@@ -22,6 +26,7 @@ This repository is the public, code-only edition. Personal identifiers, live spr
 - `DailyTaskPrompt_v4.txt` — daily AI workflow contract
 - `ContextProcessingPrompt_v1.txt` — one-time context processing contract
 - `CONTEXT_INTAKE_CONTRACT.md` — intake and candidate-confirmation boundaries
+- `ADAPTIVE_QUESTION_ENGINE_PRD.md` — adaptive question and extra-practice contract
 - `appsscript.json` — Apps Script manifest
 
 ## Version history
@@ -39,6 +44,7 @@ The public history is reconstructed from verified, sanitized release snapshots. 
 | `v0.7.0` | Resilient prompt-copy fallback |
 | `v0.8.0` | Count-scope and grading workflow |
 | `v0.8.1` | Draft-conflict safety and local answer recovery |
+| `v0.9.0` | Adaptive question engine and non-SRS extra practice |
 
 Every public version is published through a branch and pull request, then receives a matching tag and GitHub Release. Google Apps Script deployment numbers are operational identifiers and are intentionally separate from these semantic project versions.
 

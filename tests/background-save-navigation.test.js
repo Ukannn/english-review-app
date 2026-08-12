@@ -11,12 +11,17 @@ assert.notEqual(revealEnd, -1, 'reviewBeforeSubmit boundary must exist');
 
 const reveal = source.slice(revealStart, revealEnd);
 const localReveal = reveal.indexOf('question.revealed = true;');
-const saveStart = reveal.indexOf('savePosition(question.position).then');
+const queueStart = reveal.indexOf('enqueueDraftWrite("revealAnswerV4"');
 const cloudLock = reveal.indexOf('question.locked = true;');
 
 assert.ok(localReveal >= 0, 'standard answer must be revealed locally');
-assert.ok(saveStart > localReveal, 'local reveal must happen before cloud save starts');
-assert.ok(cloudLock > saveStart, 'locked must only be set after the cloud chain resolves');
+assert.ok(queueStart > localReveal, 'local reveal must happen before the atomic cloud lock starts');
+assert.ok(cloudLock > queueStart, 'locked must only be set after the cloud chain resolves');
+assert.doesNotMatch(
+  reveal,
+  /savePosition\(question\.position\)\.then/,
+  'normal reveal must not add a separate autosave before the atomic lock'
+);
 assert.match(
   source,
   /!question\.revealed \|\| app\.current === app\.questions\.length - 1/,

@@ -1540,6 +1540,9 @@
       var demoState = query.get("state") || "answering";
       var demoConflictMode = query.get("draft_conflict") === "1";
       var demoLockFailureMode = query.get("lock_failure") === "1";
+      var demoBusyRetriesRemaining = Math.max(0, Number(query.get("busy_retries") || 0));
+      var DRAFT_AUTOSAVE_DELAY_MS = 2000;
+      var DRAFT_BUSY_MAX_RETRIES = 3;
       var RESULT_LABELS = {
         forgotten: "没想起来",
         difficult: "比较生疏",
@@ -1670,6 +1673,7 @@
         localVersions: {},
         savedAnswers: {},
         savePromises: {},
+        draftWriteTail: Promise.resolve(),
         conflicts: {},
         clientInstanceId: "web-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10),
         pageStartedAt: new Date().toISOString(),
@@ -1684,6 +1688,11 @@
       var demoQuestionCount = 40;
       var demoStoredQuestionCount = 40;
       var demoDefaultQuestionCount = 20;
+      window.__reviewDemoMetrics = {
+        calls: [],
+        activeDraftWrites: 0,
+        maxActiveDraftWrites: 0
+      };
 
       var el = {
         saveState: document.getElementById("saveState"),
@@ -1788,9 +1797,66 @@
         });
       }
 
-      function callDemo(name, args) {
+      function waitForDraftRetry(ms) {
         return new Promise(function (resolve) {
+          window.setTimeout(resolve, Math.max(0, Number(ms || 0)));
+        });
+      }
+
+      function callDraftServerWithRetry(name, args, attempt) {
+        return callServer(name, args).then(function (result) {
+          if (!result || !result.busy || result.code !== "BUSY_RETRY") return result;
+          if (attempt >= DRAFT_BUSY_MAX_RETRIES) {
+            throw new Error("云端保存仍在排队，请稍后重试本题。");
+          }
+          setSaveState("云端繁忙，正在自动重试…", "warn");
+          var baseDelay = Math.max(350, Number(result.retryAfterMs || 650));
+          return waitForDraftRetry(baseDelay * Math.pow(2, attempt)).then(function () {
+            return callDraftServerWithRetry(name, args, attempt + 1);
+          });
+        });
+      }
+
+      function enqueueDraftWrite(name, args) {
+        var queued = app.draftWriteTail.catch(function () {}).then(function () {
+          return callDraftServerWithRetry(name, args, 0);
+        });
+        app.draftWriteTail = queued.catch(function () {});
+        return queued;
+      }
+
+      function callDemo(name, args) {
+        return new Promise(function (resolvePromise) {
+          var isDraftWrite = ["saveDraftV4", "revealAnswerV4", "replaceLockedDraftV4"]
+            .indexOf(name) !== -1;
+          if (isDraftWrite) {
+            window.__reviewDemoMetrics.activeDraftWrites += 1;
+            window.__reviewDemoMetrics.maxActiveDraftWrites = Math.max(
+              window.__reviewDemoMetrics.maxActiveDraftWrites,
+              window.__reviewDemoMetrics.activeDraftWrites
+            );
+            window.__reviewDemoMetrics.calls.push({
+              name: name,
+              position: Number(args[1]),
+              startedAt: Date.now()
+            });
+          }
+          function resolve(value) {
+            if (isDraftWrite) window.__reviewDemoMetrics.activeDraftWrites -= 1;
+            resolvePromise(value);
+          }
           window.setTimeout(function () {
+            if (isDraftWrite && demoBusyRetriesRemaining > 0) {
+              demoBusyRetriesRemaining -= 1;
+              resolve({
+                ok: false,
+                busy: true,
+                code: "BUSY_RETRY",
+                retryAfterMs: 50,
+                message: "DEMO busy"
+              });
+              return;
+            }
             if (name === "saveDraftV4") {
               var savedDraft = demoCloudDraftForPosition(args[1]);
               if (savedDraft.locked) {
@@ -1860,7 +1926,11 @@
               if (
                 (!revealDraft.exists && revealRevision !== 0) ||
                 (revealDraft.exists && revealDraft.revision < revealRevision) ||
-                (revealDraft.exists && revealDraft.answer !== args[2])
+                (
+                  revealDraft.exists &&
+                  revealDraft.revision > revealRevision &&
+                  revealDraft.answer !== args[2]
+                )
               ) {
                 resolve({
                   ok: false,
@@ -4086,7 +4156,7 @@
         window.clearTimeout(app.timers[question.position]);
         app.timers[question.position] = window.setTimeout(function () {
           savePosition(question.position);
-        }, 700);
+        }, DRAFT_AUTOSAVE_DELAY_MS);
       }
 
       function savePosition(position) {
@@ -4114,6 +4184,12 @@
             return outcome;
           });
         }
+        var revealedQuestion = app.questions.filter(function (item) {
+          return item.position === Number(position);
+        })[0];
+        if (revealedQuestion && revealedQuestion.revealed && !revealedQuestion.locked) {
+          return revealedQuestion.lockPromise || app.savePromises[position] || Promise.resolve();
+        }
         if (!app.dirty[position]) return app.savePromises[position] || Promise.resolve();
         if (app.savePromises[position]) {
           return app.savePromises[position].then(function () {
@@ -4123,7 +4199,7 @@
         var answer = app.answers[position] || "";
         var localVersion = Number(app.localVersions[position] || 0);
         setSaveState("保存中…", "warn");
-        var request = callServer("saveDraftV4", [
+        var request = enqueueDraftWrite("saveDraftV4", [
           app.payload.sessionId,
           position,
           answer,
@@ -4183,7 +4259,14 @@
               return { ok: true, conflictResolved: true, abortReveal: true, replacedResult: replaced };
             });
           }
-          if (app.dirty[position] && !app.conflicts[position]) {
+          var currentQuestion = app.questions.filter(function (item) {
+            return item.position === Number(position);
+          })[0];
+          if (
+            app.dirty[position] &&
+            !app.conflicts[position] &&
+            !(currentQuestion && currentQuestion.revealed)
+          ) {
             return savePosition(position);
           }
           refreshSaveState();
@@ -4203,7 +4286,7 @@
           return Promise.resolve({ abortReveal: true });
         }
         setSaveState("正在纠正已锁定答案…", "warn");
-        return callServer("replaceLockedDraftV4", [
+        return enqueueDraftWrite("replaceLockedDraftV4", [
           app.payload.sessionId,
           position,
           answer,
@@ -4358,6 +4441,7 @@
           return;
         }
         window.clearTimeout(app.timers[question.position]);
+        var pendingSave = app.savePromises[question.position] || Promise.resolve();
         // Reveal is a local feedback state. Cloud locking continues in the
         // background and remains the only per-question submission gate.
         question.revealed = true;
@@ -4366,10 +4450,15 @@
         renderQuestion();
         setSaveState("标准答案已显示，正在保存本题…", "warn");
         var answerToLock = answer;
-        // The debounced autosave may still be writing an earlier partial
-        // answer. Drain that per-position save queue first, including any
-        // newer local edit it schedules, then lock the exact saved revision.
-        savePosition(question.position).then(function (saveResult) {
+        // A normal reveal is one atomic cloud request. If an older autosave is
+        // already in flight, let it finish, then lock the latest local answer
+        // with the revision it returned. Do not enqueue another autosave.
+        var lockPromise = pendingSave.catch(function () {
+          // An ambiguous autosave failure is safe to follow with reveal: the
+          // backend accepts a newer same-answer revision and conflicts on any
+          // different answer instead of overwriting it.
+          return null;
+        }).then(function (saveResult) {
           var liveQuestion = app.questions.filter(function (item) {
             return item.position === question.position;
           })[0];
@@ -4381,14 +4470,16 @@
           }
           answerToLock = String(app.answers[question.position] || "").trim();
           if (!answerToLock) throw new Error("本题答案为空，无法锁定");
-          return callServer("revealAnswerV4", [
+          return enqueueDraftWrite("revealAnswerV4", [
             app.payload.sessionId,
             question.position,
             answerToLock,
             app.revisions[question.position] || 0,
             draftClientInfo()
           ]);
-        }).then(function (result) {
+        });
+        question.lockPromise = lockPromise;
+        lockPromise.then(function (result) {
           if (result && result.abortReveal) {
             question.syncing = false;
             question.syncError = false;
@@ -4443,6 +4534,8 @@
           setSaveState("标准答案已显示，但本题尚未锁定", "bad");
           renderQuestion();
           showToast((error && error.message ? error.message : "本题没有锁定") + "。标准答案已显示，请稍后重试保存本题。");
+        }).then(function () {
+          if (question.lockPromise === lockPromise) question.lockPromise = null;
         });
       }
 

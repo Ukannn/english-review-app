@@ -117,7 +117,8 @@ var ER4_GRADE_HEADERS = [
   'Grade Status',
   'Created At',
   'Candidate Suggestions JSON',
-  'Contract Version'
+  'Contract Version',
+  'Extra Practice JSON'
 ];
 
 var ER4_JOURNAL_HEADERS = [
@@ -210,7 +211,7 @@ var ER4_CONTEXT_PROCESSING_PROMPT = [
   "目标工作簿：",
   "- 标题：English Review Database",
   "- Spreadsheet ID：YOUR_SPREADSHEET_ID",
-  "- 语料箱：YOUR_WEB_APP_URL",
+  "- 语料箱：YOUR_WEB_APP_URL?view=intake",
   "- 时区：Asia/Shanghai",
   "- Config 的 contract_version 必须精确为文本 4.0。",
   "",
@@ -279,7 +280,7 @@ var ER4_CONTEXT_PROCESSING_PROMPT = [
   "- Context Candidate Inbox中每个已处理Context只有一个active Processing Batch ID。",
   "",
   "9. 只有固定范围回读全部通过后，回复：",
-  "“语料整理暂存已完成。请返回语料箱确认要加入候选池的表达：YOUR_WEB_APP_URL”",
+  "“语料整理暂存已完成。请返回语料箱确认要加入候选池的表达：YOUR_WEB_APP_URL?view=intake”",
   "",
   "不得宣称 Candidate Bank 已写入。只有用户在 Web App 确认、Apps Script 正式写入并精确回读后，才算进入候选池。"
 ].join('\n');
@@ -288,6 +289,9 @@ var ER4_QUESTION_TYPES = ['recall', 'cloze', 'contrast', 'scenario', 'oral'];
 var ER4_INTERVALS = [1, 2, 4, 7, 14, 30, 60, 120];
 
 function doGet(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  assertContractV4_(ss);
+  ensureAdaptiveQuestionEngineSchemaV4_(ss);
   var output = HtmlService.createTemplateFromFile('ReviewApp');
   output.demoMode = Boolean(e && e.parameter && e.parameter.demo === '1');
   var requestedView = e && e.parameter ? stringValue_(e.parameter.view).toLowerCase() : '';
@@ -412,7 +416,7 @@ function ensureV4DataSurfaces_(ss) {
     ss,
     ER4.gradeSheet,
     ER4_GRADE_HEADERS,
-    [190, 150, 240, 70, 95, 105, 100, 340, 150, 90, 320, 240, 180, 120, 115, 155, 420, 105]
+    [190, 150, 240, 70, 95, 105, 100, 340, 150, 90, 320, 240, 180, 120, 115, 155, 420, 105, 520]
   );
   ensureV4Sheet_(
     ss,
@@ -444,6 +448,7 @@ function ensureV4DataSurfaces_(ss) {
   var gradeSheet = requireSheet_(ss, ER4.gradeSheet);
   gradeSheet.hideColumns(11, 2);
   gradeSheet.hideColumns(17, 1);
+  gradeSheet.hideColumns(19, 1);
 
   applyListValidationV4_(questionSheet, 6, ER4_QUESTION_TYPES);
   applyListValidationV4_(questionSheet, 17, ['staged', 'ready', 'bound', 'deferred', 'rejected']);
@@ -587,6 +592,7 @@ function applyListValidationV4_(sheet, column, values) {
 }
 
 function ensureDynamicQuestionCountSchemaV4_(ss) {
+  ensureAdaptiveQuestionEngineSchemaV4_(ss);
   var queueSheet = ensureDailyQueueSheet_(ss);
   var generationSheet = ensureV4Sheet_(
     ss,
@@ -651,6 +657,89 @@ function ensureDynamicQuestionCountSchemaV4_(ss) {
   return queueSheet;
 }
 
+function ensureAdaptiveQuestionEngineSchemaV4_(ss) {
+  var sheet = requireSheet_(ss, ER4.gradeSheet);
+  if (sheet.getMaxColumns() < ER4_GRADE_HEADERS.length) {
+    sheet.insertColumnsAfter(
+      sheet.getMaxColumns(),
+      ER4_GRADE_HEADERS.length - sheet.getMaxColumns()
+    );
+  }
+  var existing = sheet.getRange(1, 1, 1, ER4_GRADE_HEADERS.length).getValues()[0];
+  ER4_GRADE_HEADERS.forEach(function(header, index) {
+    if (stringValue_(existing[index]) && stringValue_(existing[index]) !== header) {
+      throw new Error(ER4.gradeSheet + ' header mismatch at column ' + (index + 1) + '.');
+    }
+  });
+  sheet.getRange(1, 1, 1, ER4_GRADE_HEADERS.length).setValues([ER4_GRADE_HEADERS]);
+  sheet.getRange(1, ER4_GRADE_HEADERS.indexOf('Extra Practice JSON') + 1)
+    .setBackground('#f1f3f4')
+    .setFontColor('#202124')
+    .setFontWeight('bold')
+    .setWrap(true);
+  sheet.setColumnWidth(ER4_GRADE_HEADERS.indexOf('Extra Practice JSON') + 1, 520);
+  sheet.hideColumns(ER4_GRADE_HEADERS.indexOf('Extra Practice JSON') + 1, 1);
+  ensureSrsAwarePhraseFormulasV4_(ss);
+}
+
+function ensureSrsAwarePhraseFormulasV4_(ss) {
+  var sheet = requireSheet_(ss, DQ3.phraseSheet);
+  if (sheet.getLastRow() < 2) return;
+  var headers = headerMap_(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]);
+  requireHeaders_(headers, ['ID', 'Last Reviewed', 'Times Seen', 'Times Correct'], DQ3.phraseSheet);
+  var rowCount = sheet.getLastRow() - 1;
+  var ids = sheet.getRange(2, headers.ID + 1, rowCount, 1).getValues();
+  var lastReviewed = sheet.getRange(2, headers['Last Reviewed'] + 1, rowCount, 1).getFormulas();
+  var timesSeen = sheet.getRange(2, headers['Times Seen'] + 1, rowCount, 1).getFormulas();
+  var timesCorrect = sheet.getRange(2, headers['Times Correct'] + 1, rowCount, 1).getFormulas();
+  var changed = false;
+  ids.forEach(function(row, index) {
+    if (!stringValue_(row[0])) return;
+    var sheetRow = index + 2;
+    var expectedLast =
+      '=IFERROR(MAX(FILTER(\'Review Log\'!$A$2:$A,\'Review Log\'!$H$2:$H=$A' +
+      sheetRow + ',\'Review Log\'!$O$2:$O="yes")),"")';
+    var expectedSeen =
+      '=COUNTIFS(\'Review Log\'!$H$2:$H,$A' + sheetRow +
+      ',\'Review Log\'!$O$2:$O,"yes")';
+    var expectedCorrect =
+      '=COUNTIFS(\'Review Log\'!$H$2:$H,$A' + sheetRow +
+      ',\'Review Log\'!$G$2:$G,"normal",\'Review Log\'!$O$2:$O,"yes")+' +
+      'COUNTIFS(\'Review Log\'!$H$2:$H,$A' + sheetRow +
+      ',\'Review Log\'!$G$2:$G,"mastered",\'Review Log\'!$O$2:$O,"yes")';
+    if (lastReviewed[index][0] !== expectedLast) {
+      lastReviewed[index][0] = expectedLast;
+      changed = true;
+    }
+    if (timesSeen[index][0] !== expectedSeen) {
+      timesSeen[index][0] = expectedSeen;
+      changed = true;
+    }
+    if (timesCorrect[index][0] !== expectedCorrect) {
+      timesCorrect[index][0] = expectedCorrect;
+      changed = true;
+    }
+  });
+  if (!changed) return;
+  sheet.getRange(2, headers['Last Reviewed'] + 1, rowCount, 1).setFormulas(lastReviewed);
+  sheet.getRange(2, headers['Times Seen'] + 1, rowCount, 1).setFormulas(timesSeen);
+  sheet.getRange(2, headers['Times Correct'] + 1, rowCount, 1).setFormulas(timesCorrect);
+  SpreadsheetApp.flush();
+  var verifiedLast = sheet.getRange(2, headers['Last Reviewed'] + 1, rowCount, 1).getFormulas();
+  var verifiedSeen = sheet.getRange(2, headers['Times Seen'] + 1, rowCount, 1).getFormulas();
+  var verifiedCorrect = sheet.getRange(2, headers['Times Correct'] + 1, rowCount, 1).getFormulas();
+  ids.forEach(function(row, index) {
+    if (!stringValue_(row[0])) return;
+    if (
+      verifiedLast[index][0] !== lastReviewed[index][0] ||
+      verifiedSeen[index][0] !== timesSeen[index][0] ||
+      verifiedCorrect[index][0] !== timesCorrect[index][0]
+    ) {
+      throw new Error('Phrase Bank SRS-aware formula readback failed at row ' + (index + 2) + '.');
+    }
+  });
+}
+
 function ensureConfigDefaultsV4_(ss, defaults) {
   var sheet = requireSheet_(ss, DQ3.configSheet);
   var values = sheet.getDataRange().getValues();
@@ -702,10 +791,13 @@ function updateConfigV4_(ss) {
     ['question_prepare_phase', 'scheduled task or Web App manual handoff', 'Reads one active daily set and stages any missing positions; internal segments do not create a new user-visible set.'],
     ['grading_trigger_command', '批改 in the question conversation; standalone grading prompt only as fallback', 'ChatGPT resolves exactly one awaiting_chatgpt submission; the user never types a Session ID.'],
     ['question_staging_sheet', ER4.questionSheet, 'AI-authored question batch; this single-user app preloads answers into browser memory but does not render them before reveal.'],
+    ['adaptive_question_policy', 'stage + latest error + context rotation', 'Formal prompts declare component-or-chunk answer scope, never require a full sentence, and reject exact historical prompt reuse.'],
     ['answer_draft_sheet', ER4.draftSheet, 'Versioned server drafts, per-question reveal locks, and frozen batch snapshots.'],
     ['answer_draft_history_sheet', ER4.draftHistorySheet, 'Append-only before/after evidence for autosave, reveal lock, locked-answer correction, and submission freeze.'],
     ['answer_reveal_flow', 'lock one answer → reveal its stored expected answer → continue', 'A session may be submitted once locked answers reach its Adjusted Target; extra locked answers are all graded and recorded.'],
     ['grade_inbox_sheet', ER4.gradeSheet, 'ChatGPT grading staging only; no formal SRS writes.'],
+    ['error_reinforcement_policy', 'one per formal error; unlimited; non-recursive; Affects SRS?=no', 'Every forgotten/difficult formal attempt receives one separate reinforcement question.'],
+    ['sentence_challenge_policy', 'mastered at Review Stage 6+; outside formal set; Affects SRS?=no', 'Full-sentence transfer is recorded separately and never changes the formal result.'],
     ['context_inbox_sheet', ER4.contextSheet, 'Immutable user-captured source text and validated UTF-16 selection spans.'],
     ['context_candidate_inbox_sheet', ER4.contextCandidateSheet, 'ChatGPT context-processing staging only; Candidate Bank remains Apps Script-only.'],
     ['context_processing_command', 'retired', 'A bare 整理语料 message in the Scheduled Task conversation does not load the task prompt and must not be used.'],
@@ -2370,7 +2462,7 @@ function validatePreparedQuestionBatchV4_(ss, queue) {
       return stringValue_(item.values[headers['Question Status']]).toLowerCase() === 'bound';
     });
     try {
-      validateQuestionItemsV4_(items, headers, queue);
+      validateQuestionItemsV4_(ss, items, headers, queue);
       items.forEach(function(item) {
         var position = Number(item.values[headers.Position]);
         if (positionOwner[position]) {
@@ -2454,7 +2546,7 @@ function questionContentHashV4_(items, headers) {
   }));
 }
 
-function validateQuestionItemsV4_(items, headers, queue) {
+function validateQuestionItemsV4_(ss, items, headers, queue) {
   var plannedCount = queue.plannedCount || queue.rows.length;
   if (!items.length || items.length > plannedCount) {
     throw new Error('Question staging segment has an invalid cardinality.');
@@ -2488,6 +2580,17 @@ function validateQuestionItemsV4_(items, headers, queue) {
     var promptZh = stringValue_(row[headers['Prompt ZH']]);
     var promptEn = stringValue_(row[headers['Prompt EN']]);
     if (!promptZh && !promptEn) throw new Error('Question prompt is blank at position ' + position + '.');
+    var promptVersion = stringValue_(row[headers['Prompt Version']]);
+    if (promptVersion === 'english-review-v4-question-4') {
+      var scopeMatches = promptZh.match(/【作答范围：(词块组成部分|完整目标词块)】/g) || [];
+      if (scopeMatches.length !== 1) {
+        throw new Error('Question must declare exactly one answer scope at position ' + position + '.');
+      }
+      if (/完整英文句子|整句翻译|翻译整句/.test(promptZh + ' ' + promptEn)) {
+        throw new Error('Formal question asks for a full sentence at position ' + position + '.');
+      }
+      validateQuestionHistoryVariationV4_(ss, item, headers, position);
+    }
     var expected = parseJsonArrayV4_(row[headers['Expected Answers JSON']], 'Expected Answers JSON', position);
     parseJsonArrayV4_(row[headers['Accepted Variants JSON']], 'Accepted Variants JSON', position);
     if (!stringValue_(row[headers['Semantic Boundary']])) {
@@ -2504,6 +2607,39 @@ function validateQuestionItemsV4_(items, headers, queue) {
       }
     });
   });
+}
+
+function validateQuestionHistoryVariationV4_(ss, item, headers, position) {
+  var row = item.values;
+  var phraseId = stringValue_(row[headers['Phrase ID']]);
+  var candidateId = stringValue_(row[headers['Candidate ID']]);
+  var promptKey = normalizeQuestionPromptV4_(
+    stringValue_(row[headers['Prompt ZH']]) + ' ' + stringValue_(row[headers['Prompt EN']])
+  );
+  var sheet = requireSheet_(ss, ER4.questionSheet);
+  var values = sheet.getDataRange().getValues();
+  var h = headerMap_(values[0]);
+  for (var i = 1; i < values.length; i++) {
+    if (i + 1 === item.rowNumber) continue;
+    var sameIdentity = phraseId
+      ? stringValue_(values[i][h['Phrase ID']]) === phraseId
+      : stringValue_(values[i][h['Candidate ID']]) === candidateId;
+    if (!sameIdentity) continue;
+    var historicalKey = normalizeQuestionPromptV4_(
+      stringValue_(values[i][h['Prompt ZH']]) + ' ' + stringValue_(values[i][h['Prompt EN']])
+    );
+    if (promptKey && historicalKey === promptKey) {
+      throw new Error('Question repeats a historical prompt at position ' + position + '.');
+    }
+  }
+}
+
+function normalizeQuestionPromptV4_(value) {
+  return stringValue_(value)
+    .toLowerCase()
+    .replace(/【作答范围：(?:词块组成部分|完整目标词块)】/g, '')
+    .replace(/[\s\p{P}\p{S}]+/gu, ' ')
+    .trim();
 }
 
 function startOrResumeReviewSessionV4_(ss, queue, batch) {
@@ -3698,7 +3834,10 @@ function responseForJournalV4_(journal) {
     };
   }
   if (journal.resultJson) {
-    try { response.result = JSON.parse(journal.resultJson); } catch (ignore) {}
+    try {
+      response.result = JSON.parse(journal.resultJson);
+      enrichExtraPracticeStatusesV4_(ss, response.result);
+    } catch (ignore) {}
   }
   if (journal.confirmationJson && journal.status === 'needs_confirmation') {
     try {
@@ -3718,6 +3857,22 @@ function responseForJournalV4_(journal) {
     } catch (ignore2) {}
   }
   return response;
+}
+
+function enrichExtraPracticeStatusesV4_(ss, result) {
+  if (!result || !Array.isArray(result.extraPractices) || !result.extraPractices.length) return;
+  var ids = {};
+  result.extraPractices.forEach(function(item) { ids[item.practiceId] = item; });
+  var sheet = requireSheet_(ss, 'Review Log');
+  var values = sheet.getDataRange().getValues();
+  var headers = headerMap_(values[0]);
+  for (var i = 1; i < values.length; i++) {
+    var attemptId = stringValue_(values[i][headers['Attempt ID']]);
+    if (!ids[attemptId]) continue;
+    ids[attemptId].status = 'completed';
+    ids[attemptId].answer = stringValue_(values[i][headers['User Answer']]);
+    ids[attemptId].result = stringValue_(values[i][headers.Result]).toLowerCase();
+  }
 }
 
 function getManualOperationPromptV4(mode, expectedIdentity) {
@@ -3949,6 +4104,7 @@ function processSubmissionForSessionV4_(sessionId) {
       var snapshot = {
         grades: payload.grades,
         candidateSuggestions: payload.candidateSuggestions,
+        extraPractices: payload.extraPractices,
         gradingBatchId: payload.gradingBatchId,
         gradingBatchIds: payload.gradingBatchIds,
         commitPlan: null
@@ -4035,6 +4191,7 @@ function validateStagedGradesV4_(ss, journal, staged) {
   var gradeByPosition = {};
   var batchIds = {};
   var suggestionJsons = [];
+  var extraPracticeJsons = [];
 
   staged.rows.forEach(function(item) {
     var row = item.values;
@@ -4070,6 +4227,8 @@ function validateStagedGradesV4_(ss, journal, staged) {
     batchIds[gradingBatchId] = true;
     var suggestionJson = stringValue_(row[h['Candidate Suggestions JSON']]);
     if (suggestionJson) suggestionJsons.push(suggestionJson);
+    var extraPracticeJson = stringValue_(row[h['Extra Practice JSON']]);
+    if (extraPracticeJson) extraPracticeJsons.push(extraPracticeJson);
     gradeByPosition[position] = {
       position: position,
       phraseId: draft.phraseId,
@@ -4097,6 +4256,9 @@ function validateStagedGradesV4_(ss, journal, staged) {
   if (suggestionJsons.length > 1) {
     throw new Error('Candidate Suggestions JSON must appear in at most one grade row.');
   }
+  if (extraPracticeJsons.length > 1) {
+    throw new Error('Extra Practice JSON must appear in at most one grade row.');
+  }
   if (staged.rows.length < drafts.length) {
     return {
       complete: false,
@@ -4115,14 +4277,86 @@ function validateStagedGradesV4_(ss, journal, staged) {
   var suggestions = suggestionJsons.length
     ? parseCandidateSuggestionsV4_(suggestionJsons[0])
     : [];
+  if (!extraPracticeJsons.length) {
+    throw new Error('Extra Practice JSON must appear exactly once in a complete grade batch.');
+  }
+  var extraPractices = parseExtraPracticeSuggestionsV4_(extraPracticeJsons[0], grades);
   return {
     complete: true,
     rows: staged.rows,
     gradingBatchId: gradingBatchIds.join(','),
     gradingBatchIds: gradingBatchIds,
     grades: grades,
-    candidateSuggestions: suggestions
+    candidateSuggestions: suggestions,
+    extraPractices: extraPractices
   };
+}
+
+function parseExtraPracticeSuggestionsV4_(value, grades) {
+  var parsed;
+  try {
+    parsed = JSON.parse(stringValue_(value));
+  } catch (error) {
+    throw new Error('Extra Practice JSON is invalid.');
+  }
+  if (!Array.isArray(parsed)) throw new Error('Extra Practice JSON must be an array.');
+  var gradeByPosition = {};
+  grades.forEach(function(grade) { gradeByPosition[Number(grade.position)] = grade; });
+  var reinforcementByPosition = {};
+  var sentenceByPosition = {};
+  var normalized = parsed.map(function(item, index) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error('Extra practice ' + (index + 1) + ' must be an object.');
+    }
+    var sourcePosition = Number(item.sourcePosition);
+    var practiceType = stringValue_(item.practiceType).toLowerCase();
+    var grade = gradeByPosition[sourcePosition];
+    if (!grade || ['reinforcement', 'sentence_challenge'].indexOf(practiceType) === -1) {
+      throw new Error('Extra practice ' + (index + 1) + ' has an invalid source or type.');
+    }
+    var promptZh = stringValue_(item.promptZh);
+    var expectedAnswers = Array.isArray(item.expectedAnswers)
+      ? item.expectedAnswers.map(stringValue_).filter(Boolean)
+      : [];
+    var acceptedVariants = Array.isArray(item.acceptedVariants)
+      ? item.acceptedVariants.map(stringValue_).filter(Boolean)
+      : [];
+    var referenceAnswer = stringValue_(item.referenceAnswer);
+    var contextSignature = stringValue_(item.contextSignature);
+    if (!promptZh || !expectedAnswers.length || !referenceAnswer || !contextSignature) {
+      throw new Error('Extra practice ' + (index + 1) + ' is missing required content.');
+    }
+    if (practiceType === 'reinforcement') {
+      if (reinforcementByPosition[sourcePosition]) {
+        throw new Error('A formal error has more than one reinforcement question.');
+      }
+      reinforcementByPosition[sourcePosition] = true;
+    } else {
+      if (sentenceByPosition[sourcePosition]) {
+        throw new Error('A formal item has more than one sentence challenge.');
+      }
+      sentenceByPosition[sourcePosition] = true;
+    }
+    return {
+      sourcePosition: sourcePosition,
+      practiceType: practiceType,
+      promptZh: promptZh,
+      expectedAnswers: expectedAnswers,
+      acceptedVariants: acceptedVariants,
+      referenceAnswer: referenceAnswer,
+      contextSignature: contextSignature
+    };
+  });
+  grades.forEach(function(grade) {
+    var isError = grade.result === 'forgotten' || grade.result === 'difficult';
+    if (isError && !reinforcementByPosition[grade.position]) {
+      throw new Error('Every formal error must have one reinforcement question; missing position ' + grade.position + '.');
+    }
+    if (!isError && reinforcementByPosition[grade.position]) {
+      throw new Error('Reinforcement was generated for a non-error at position ' + grade.position + '.');
+    }
+  });
+  return normalized;
 }
 
 function readSubmittedDraftsV4_(ss, journal) {
@@ -4279,6 +4513,121 @@ function retrySubmissionCommitV4(sessionId) {
   return processSubmissionForSessionV4_(sessionId);
 }
 
+function submitExtraPracticeV4(sessionId, practiceId, answer) {
+  assertV4Enabled_();
+  assertAuthorizedV4_();
+  sessionId = stringValue_(sessionId);
+  practiceId = stringValue_(practiceId);
+  answer = stringValue_(answer).trim();
+  if (!answer) throw new Error('请先填写这道加练题。');
+  if (answer.length > 2000) throw new Error('加练答案过长。');
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    assertContractV4_(ss);
+    var journal = findJournalBySessionV4_(ss, sessionId);
+    if (!journal || journal.status !== 'committed') {
+      throw new Error('正式题组尚未完成，不能提交加练。');
+    }
+    var snapshot = parseConfirmationSnapshotV4_(journal);
+    var plan = snapshot.commitPlan;
+    if (!plan || !Array.isArray(plan.extraPractices)) {
+      throw new Error('加练计划不可用。');
+    }
+    var practice = plan.extraPractices.filter(function(item) {
+      return item.practiceId === practiceId;
+    })[0];
+    if (!practice) throw new Error('加练题身份不匹配。');
+
+    var sheet = requireSheet_(ss, 'Review Log');
+    var values = sheet.getDataRange().getValues();
+    var headers = headerMap_(values[0]);
+    requireHeaders_(headers, [
+      'Date', 'Session ID', 'Question #', 'Prompt', 'Expected Answer', 'User Answer',
+      'Result', 'Tag', 'Follow-up Needed', 'Notes', 'Attempt ID', 'Attempt Type',
+      'Parent Attempt ID', 'Question Type', 'Affects SRS?', 'Contract Version'
+    ], 'Review Log');
+    for (var i = 1; i < values.length; i++) {
+      if (stringValue_(values[i][headers['Attempt ID']]) !== practiceId) continue;
+      var existingAnswer = stringValue_(values[i][headers['User Answer']]);
+      if (existingAnswer !== answer) {
+        throw new Error('这道加练已经提交，不能用另一份答案覆盖。');
+      }
+      return extraPracticeSubmissionResponseV4_(practice, existingAnswer,
+        stringValue_(values[i][headers.Result]).toLowerCase(), true);
+    }
+
+    var result = practice.practiceType === 'reinforcement'
+      ? gradeReinforcementAnswerV4_(answer, practice)
+      : 'completed';
+    var row = [
+      parseDateKey_(plan.queueDate),
+      sessionId,
+      practice.sourcePosition,
+      practice.promptZh,
+      practice.referenceAnswer,
+      answer,
+      result,
+      practice.phraseId,
+      'no',
+      practice.practiceType === 'reinforcement'
+        ? 'One-step error reinforcement; non-recursive and excluded from SRS.'
+        : 'Full-sentence transfer challenge; completion only and excluded from SRS.',
+      practice.practiceId,
+      practice.practiceType,
+      practice.parentAttemptId,
+      practice.practiceType === 'reinforcement' ? 'reinforcement' : 'sentence_transfer',
+      'no',
+      ER4.contractVersion
+    ];
+    var rowNumber = sheet.getLastRow() + 1;
+    sheet.getRange(rowNumber, headers['Contract Version'] + 1).setNumberFormat('@');
+    sheet.getRange(rowNumber, 1, 1, row.length).setValues([row]);
+    sheet.getRange(rowNumber, headers.Date + 1).setNumberFormat('yyyy-mm-dd');
+    sheet.getRange(rowNumber, headers['Contract Version'] + 1)
+      .setNumberFormat('@')
+      .setValue(ER4.contractVersion);
+    SpreadsheetApp.flush();
+    var readback = sheet.getRange(rowNumber, 1, 1, row.length).getValues()[0];
+    if (
+      stringValue_(readback[headers['Attempt ID']]) !== practice.practiceId ||
+      stringValue_(readback[headers['Parent Attempt ID']]) !== practice.parentAttemptId ||
+      stringValue_(readback[headers['Attempt Type']]) !== practice.practiceType ||
+      stringValue_(readback[headers['User Answer']]) !== answer ||
+      stringValue_(readback[headers['Affects SRS?']]).toLowerCase() !== 'no' ||
+      stringValue_(readback[headers['Contract Version']]) !== ER4.contractVersion
+    ) {
+      throw new Error('加练保存后的精确回读不一致。');
+    }
+    invalidateLearningDashboardCacheV4_();
+    return extraPracticeSubmissionResponseV4_(practice, answer, result, false);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function gradeReinforcementAnswerV4_(answer, practice) {
+  var accepted = practice.expectedAnswers.concat(practice.acceptedVariants || []).map(function(value) {
+    return normalizeChunk_(value);
+  });
+  return accepted.indexOf(normalizeChunk_(answer)) === -1 ? 'difficult' : 'normal';
+}
+
+function extraPracticeSubmissionResponseV4_(practice, answer, result, idempotent) {
+  return {
+    ok: true,
+    practiceId: practice.practiceId,
+    practiceType: practice.practiceType,
+    answer: answer,
+    result: result,
+    referenceAnswer: practice.referenceAnswer,
+    idempotent: Boolean(idempotent),
+    affectsSrs: false,
+    recursive: false
+  };
+}
+
 function parseConfirmationSnapshotV4_(journal) {
   var snapshot;
   try {
@@ -4295,6 +4644,7 @@ function parseConfirmationSnapshotV4_(journal) {
     throw new Error('The verified grading snapshot is incomplete.');
   }
   if (!Array.isArray(snapshot.candidateSuggestions)) snapshot.candidateSuggestions = [];
+  if (!Array.isArray(snapshot.extraPractices)) snapshot.extraPractices = [];
   return snapshot;
 }
 
@@ -4666,6 +5016,7 @@ function createCommitPlanV4_(ss, journal, snapshot) {
       source: candidate
         ? stringValue_(candidateValuesForPlan[candidateHeaders.Source])
         : stringValue_(phrase.values[phraseHeaders.Source]),
+      currentStage: currentStage,
       nextStage: nextStage,
       nextStreak: nextStreak,
       nextStatus: nextStatus,
@@ -4715,6 +5066,38 @@ function createCommitPlanV4_(ss, journal, snapshot) {
       commonMistake: suggestion.commonMistake
     });
   });
+  var extraByKey = {};
+  snapshot.extraPractices.forEach(function(practice) {
+    extraByKey[practice.sourcePosition + ':' + practice.practiceType] = practice;
+  });
+  var extraPractices = [];
+  items.forEach(function(item) {
+    var isError = item.result === 'forgotten' || item.result === 'difficult';
+    var reinforcement = extraByKey[item.position + ':reinforcement'];
+    if (isError) {
+      reinforcement = reinforcement || {
+        promptZh: '【错误强化｜只填写完整目标词块】换一个情境，再写出能表达“' +
+          item.chineseCue + '”的目标词块。',
+        expectedAnswers: [item.expectedAnswer],
+        acceptedVariants: [],
+        referenceAnswer: item.expectedAnswer,
+        contextSignature: 'server-fallback-' + item.position
+      };
+      extraPractices.push(buildExtraPracticePlanV4_(journal, item, reinforcement, 'reinforcement'));
+    }
+    var sentence = extraByKey[item.position + ':sentence_challenge'];
+    if (item.result === 'mastered' && item.currentStage >= 6) {
+      sentence = sentence || {
+        promptZh: '【完整句挑战｜写一个完整英文句子】请用能表达“' + item.chineseCue +
+          '”的目标词块，自拟一个与正式题不同的真实场景。',
+        expectedAnswers: [item.expectedAnswer],
+        acceptedVariants: [],
+        referenceAnswer: item.naturalExample || item.expectedAnswer,
+        contextSignature: 'server-fallback-sentence-' + item.position
+      };
+      extraPractices.push(buildExtraPracticePlanV4_(journal, item, sentence, 'sentence_challenge'));
+    }
+  });
   return {
     submissionId: journal.submissionId,
     sessionId: journal.sessionId,
@@ -4729,6 +5112,7 @@ function createCommitPlanV4_(ss, journal, snapshot) {
     presentedAt: queue.rows[0].values[queue.headers['Presented At']].toISOString(),
     committedAt: new Date().toISOString(),
     items: items,
+    extraPractices: extraPractices,
     suggestionPlans: suggestionPlans,
     readyPoolBeforeSuggestions: readyCountAfterPromotion,
     personalReadyBeforeSuggestions: personalReadyCountAfterPromotion,
@@ -4737,6 +5121,23 @@ function createCommitPlanV4_(ss, journal, snapshot) {
     aiFallbackNeeded: neededSuggestions,
     aiFallbackShortfall: Math.max(0, neededSuggestions - suggestionPlans.length),
     contractVersion: ER4.contractVersion
+  };
+}
+
+function buildExtraPracticePlanV4_(journal, item, practice, practiceType) {
+  return {
+    practiceId: 'XP-' + journal.sessionId + '-Q' + String(item.position).padStart(3, '0') +
+      (practiceType === 'reinforcement' ? '-R' : '-S'),
+    sourcePosition: item.position,
+    parentAttemptId: item.attemptId,
+    practiceType: practiceType,
+    phraseId: item.phraseId,
+    promptZh: stringValue_(practice.promptZh),
+    expectedAnswers: practice.expectedAnswers.map(stringValue_),
+    acceptedVariants: practice.acceptedVariants.map(stringValue_),
+    referenceAnswer: stringValue_(practice.referenceAnswer),
+    contextSignature: stringValue_(practice.contextSignature),
+    answerScope: practiceType === 'reinforcement' ? '完整目标词块' : '完整英文句子'
   };
 }
 
@@ -4770,9 +5171,33 @@ function validateFrozenCommitPlanV4_(journal, snapshot, plan) {
     }
     positions[item.position] = true;
   });
-  if (!Array.isArray(snapshot.candidateSuggestions) || !Array.isArray(plan.suggestionPlans)) {
+  if (
+    !Array.isArray(snapshot.candidateSuggestions) ||
+    !Array.isArray(plan.suggestionPlans) ||
+    !Array.isArray(plan.extraPractices)
+  ) {
     throw new Error('Frozen candidate replenishment plan is missing.');
   }
+  var reinforcementParents = {};
+  plan.extraPractices.forEach(function(practice) {
+    if (!practice.practiceId || !practice.parentAttemptId || !practice.phraseId) {
+      throw new Error('Frozen extra-practice plan is incomplete.');
+    }
+    if (practice.practiceType === 'reinforcement') {
+      if (reinforcementParents[practice.parentAttemptId]) {
+        throw new Error('Frozen plan contains duplicate error reinforcement.');
+      }
+      reinforcementParents[practice.parentAttemptId] = true;
+    }
+  });
+  plan.items.forEach(function(item) {
+    if (
+      (item.result === 'forgotten' || item.result === 'difficult') &&
+      !reinforcementParents[item.attemptId]
+    ) {
+      throw new Error('Frozen plan is missing error reinforcement at position ' + item.position + '.');
+    }
+  });
 }
 
 function nextReviewStageV4_(currentStage, result) {
@@ -5076,15 +5501,19 @@ function writePhraseBankV4_(ss, plan) {
       sheet.getRange(rowNumber, headers['Last Reviewed'] + 1)
         .setFormula(
           '=IFERROR(MAX(FILTER(\'Review Log\'!$A$2:$A,\'Review Log\'!$H$2:$H=$A' +
-          rowNumber + ')),"")'
+          rowNumber + ',\'Review Log\'!$O$2:$O="yes")),"")'
         );
       sheet.getRange(rowNumber, headers['Times Seen'] + 1)
-        .setFormula('=COUNTIF(\'Review Log\'!$H$2:$H,$A' + rowNumber + ')');
+        .setFormula(
+          '=COUNTIFS(\'Review Log\'!$H$2:$H,$A' + rowNumber +
+          ',\'Review Log\'!$O$2:$O,"yes")'
+        );
       sheet.getRange(rowNumber, headers['Times Correct'] + 1)
         .setFormula(
           '=COUNTIFS(\'Review Log\'!$H$2:$H,$A' + rowNumber +
-          ',\'Review Log\'!$G$2:$G,"normal")+COUNTIFS(\'Review Log\'!$H$2:$H,$A' +
-          rowNumber + ',\'Review Log\'!$G$2:$G,"mastered")'
+          ',\'Review Log\'!$G$2:$G,"normal",\'Review Log\'!$O$2:$O,"yes")+' +
+          'COUNTIFS(\'Review Log\'!$H$2:$H,$A' + rowNumber +
+          ',\'Review Log\'!$G$2:$G,"mastered",\'Review Log\'!$O$2:$O,"yes")'
         );
       rowById[item.phraseId] = rowNumber;
     } else {
@@ -5499,6 +5928,17 @@ function buildCommittedResultV4_(plan) {
     personalReadyCandidateCount: plan.personalReadyBeforeSuggestions,
     personalIntakeBacklogCount: plan.personalBacklogCount,
     aiFallbackShortfall: plan.aiFallbackShortfall,
+    extraPractices: plan.extraPractices.map(function(practice) {
+      return {
+        practiceId: practice.practiceId,
+        sourcePosition: practice.sourcePosition,
+        practiceType: practice.practiceType,
+        phraseId: practice.phraseId,
+        promptZh: practice.promptZh,
+        answerScope: practice.answerScope,
+        status: 'pending'
+      };
+    }),
     items: plan.items.map(function(item) {
       return {
         position: item.position,
@@ -6816,7 +7256,7 @@ function findActiveV4SessionsForRollback_(ss) {
 }
 
 function restoreV3ContractSheetsFromBaselineV4_(ss) {
-  var baseline = SpreadsheetApp.openById('YOUR_SPREADSHEET_ID');
+  var baseline = SpreadsheetApp.openById('YOUR_BASELINE_SPREADSHEET_ID');
   ['Config', 'README'].forEach(function(name) {
     var source = requireSheet_(baseline, name);
     var target = requireSheet_(ss, name);

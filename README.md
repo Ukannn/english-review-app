@@ -10,6 +10,7 @@ This repository is the public, code-only edition. Personal identifiers, live spr
 - Daily Queue and spaced-repetition scheduling
 - Per-question answer reveal with server-side locking
 - Immediate next-question navigation while cloud locking finishes in the background
+- Serialized answer writes with bounded busy-lock retry and atomic reveal saves
 - Explicit draft-conflict resolution with local answer recovery and append-only history
 - Batch grading and formal learning-log updates
 - Stage- and error-aware formal questions with explicit answer scope
@@ -29,6 +30,7 @@ This repository is the public, code-only edition. Personal identifiers, live spr
 - `CONTEXT_INTAKE_CONTRACT.md` — intake and candidate-confirmation boundaries
 - `ADAPTIVE_QUESTION_ENGINE_PRD.md` — adaptive question and extra-practice contract
 - `BACKGROUND_SAVE_NAVIGATION_FIX_PRD.md` — immediate reveal and background-lock interaction contract
+- `SAVE_PIPELINE_PERFORMANCE_FIX_PRD.md` — save-latency, serialization, and timeout-recovery contract
 - `appsscript.json` — Apps Script manifest
 
 ## Version history
@@ -48,6 +50,7 @@ The public history is reconstructed from verified, sanitized release snapshots. 
 | `v0.8.1` | Draft-conflict safety and local answer recovery |
 | `v0.9.0` | Adaptive question engine and non-SRS extra practice |
 | `v0.9.1` | Immediate reveal and next-question navigation during background locking |
+| `v0.9.2` | Serialized answer writes and bounded retry for busy save locks |
 
 Every public version is published through a branch and pull request, then receives a matching tag and GitHub Release. Google Apps Script deployment numbers are operational identifiers and are intentionally separate from these semantic project versions.
 

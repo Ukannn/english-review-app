@@ -2878,7 +2878,7 @@ function draftHistoryIdV4_(entry) {
   ]]).slice(0, 32);
 }
 
-function appendDraftHistoriesV4_(ss, entries) {
+function stageDraftHistoriesV4_(ss, entries) {
   var sheet = ensureDraftHistorySheetV4_(ss);
   var values = sheet.getDataRange().getValues();
   var headers = headerMap_(values[0]);
@@ -2919,7 +2919,15 @@ function appendDraftHistoriesV4_(ss, entries) {
     });
     existing[historyId] = -1;
   });
-  if (!newRows.length) return results;
+  if (!newRows.length) {
+    return {
+      sheet: sheet,
+      headers: headers,
+      newRows: [],
+      firstRow: 0,
+      results: results
+    };
+  }
   var firstRow = sheet.getLastRow() + 1;
   sheet.getRange(firstRow, 1, newRows.length, ER4_DRAFT_HISTORY_HEADERS.length)
     .setValues(newRows.map(function(item) { return item.values; }));
@@ -2927,31 +2935,61 @@ function appendDraftHistoriesV4_(ss, entries) {
     .setNumberFormat('yyyy-mm-dd hh:mm:ss');
   sheet.getRange(firstRow, headers['Contract Version'] + 1, newRows.length, 1)
     .setNumberFormat('@');
-  SpreadsheetApp.flush();
-  var verifiedRows = sheet.getRange(
-    firstRow,
+  return {
+    sheet: sheet,
+    headers: headers,
+    newRows: newRows,
+    firstRow: firstRow,
+    results: results
+  };
+}
+
+function verifyStagedDraftHistoriesV4_(staged) {
+  if (!staged.newRows.length) return staged.results;
+  var verifiedRows = staged.sheet.getRange(
+    staged.firstRow,
     1,
-    newRows.length,
+    staged.newRows.length,
     ER4_DRAFT_HISTORY_HEADERS.length
   ).getValues();
-  newRows.forEach(function(item, index) {
+  staged.newRows.forEach(function(item, index) {
     var verified = verifiedRows[index];
     if (
-      stringValue_(verified[headers['History ID']]) !== item.historyId ||
-      stringValue_(verified[headers['Session ID']]) !== stringValue_(item.entry.sessionId) ||
-      Number(verified[headers.Position]) !== Number(item.entry.position) ||
-      Number(verified[headers['Next Revision']]) !== Number(item.entry.nextRevision) ||
-      stringValue_(verified[headers['Next Answer']]) !== stringValue_(item.entry.nextAnswer)
+      stringValue_(verified[staged.headers['History ID']]) !== item.historyId ||
+      stringValue_(verified[staged.headers['Session ID']]) !== stringValue_(item.entry.sessionId) ||
+      Number(verified[staged.headers.Position]) !== Number(item.entry.position) ||
+      Number(verified[staged.headers['Next Revision']]) !== Number(item.entry.nextRevision) ||
+      stringValue_(verified[staged.headers['Next Answer']]) !== stringValue_(item.entry.nextAnswer)
     ) {
       throw new Error('Answer Draft History readback failed.');
     }
-    results.push({ historyId: item.historyId, rowNumber: firstRow + index, duplicate: false });
+    staged.results.push({
+      historyId: item.historyId,
+      rowNumber: staged.firstRow + index,
+      duplicate: false
+    });
   });
-  return results;
+  return staged.results;
+}
+
+function appendDraftHistoriesV4_(ss, entries) {
+  var staged = stageDraftHistoriesV4_(ss, entries);
+  if (staged.newRows.length) SpreadsheetApp.flush();
+  return verifyStagedDraftHistoriesV4_(staged);
 }
 
 function appendDraftHistoryV4_(ss, entry) {
   return appendDraftHistoriesV4_(ss, [entry])[0];
+}
+
+function draftBusyResponseV4_() {
+  return {
+    ok: false,
+    busy: true,
+    code: 'BUSY_RETRY',
+    retryAfterMs: 650,
+    message: 'Another answer save is finishing. Please retry shortly.'
+  };
 }
 
 function latestDraftWriterV4_(ss, sessionId, position, revision) {
@@ -3016,7 +3054,7 @@ function saveDraftV4(sessionId, position, answer, expectedRevision, clientInfo) 
   assertV4Enabled_();
   assertAuthorizedV4_();
   var lock = LockService.getScriptLock();
-  lock.waitLock(15000);
+  if (!lock.tryLock(1000)) return draftBusyResponseV4_();
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     assertContractV4_(ss);
@@ -3131,17 +3169,7 @@ function saveDraftV4(sessionId, position, answer, expectedRevision, clientInfo) 
     draftSheet.getRange(existingRow, headers['Contract Version'] + 1)
       .setNumberFormat('@')
       .setValue(ER4.contractVersion);
-    SpreadsheetApp.flush();
-    var verified = draftSheet.getRange(existingRow, 1, 1, ER4_DRAFT_HEADERS.length).getValues()[0];
-    if (
-      stringValue_(verified[headers['Session ID']]) !== sessionId ||
-      Number(verified[headers.Position]) !== position ||
-      Number(verified[headers.Revision]) !== revision ||
-      stringValue_(verified[headers.Answer]) !== answer
-    ) {
-      throw new Error('Draft readback failed.');
-    }
-    var history = appendDraftHistoryV4_(ss, {
+    var stagedHistory = stageDraftHistoriesV4_(ss, [{
       sessionId: sessionId,
       queueId: queue.queueId,
       position: position,
@@ -3154,7 +3182,18 @@ function saveDraftV4(sessionId, position, answer, expectedRevision, clientInfo) 
       eventType: 'autosave',
       clientInfo: clientInfo,
       answerHash: ''
-    });
+    }]);
+    SpreadsheetApp.flush();
+    var verified = draftSheet.getRange(existingRow, 1, 1, ER4_DRAFT_HEADERS.length).getValues()[0];
+    if (
+      stringValue_(verified[headers['Session ID']]) !== sessionId ||
+      Number(verified[headers.Position]) !== position ||
+      Number(verified[headers.Revision]) !== revision ||
+      stringValue_(verified[headers.Answer]) !== answer
+    ) {
+      throw new Error('Draft readback failed.');
+    }
+    var history = verifyStagedDraftHistoriesV4_(stagedHistory)[0];
     return {
       ok: true,
       position: position,
@@ -3171,7 +3210,7 @@ function revealAnswerV4(sessionId, position, answer, expectedRevision, clientInf
   assertV4Enabled_();
   assertAuthorizedV4_();
   var lock = LockService.getScriptLock();
-  lock.waitLock(15000);
+  if (!lock.tryLock(1000)) return draftBusyResponseV4_();
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     assertContractV4_(ss);
@@ -3268,13 +3307,14 @@ function revealAnswerV4(sessionId, position, answer, expectedRevision, clientInf
     )) {
       throw new Error('The draft cannot be revealed from its current state.');
     }
-    // The reveal call is also the background save. An autosave may win the
-    // script lock first, so accept a same-answer draft at a newer revision;
-    // a different answer still requires the normal conflict flow.
+    // The reveal call is also the final background save. It may replace the
+    // answer at the exact revision the page last read, which lets a completed
+    // answer atomically replace an earlier partial autosave. If another page
+    // advanced the revision, only an identical answer remains safe to accept.
     if (
       (!item && expectedRevision !== 0) ||
       (item && current.revision < expectedRevision) ||
-      (item && current.answer !== answer)
+      (item && current.revision > expectedRevision && current.answer !== answer)
     ) {
       return draftConflictResponseV4_(
         ss,
@@ -3315,6 +3355,20 @@ function revealAnswerV4(sessionId, position, answer, expectedRevision, clientInf
     draftSheet.getRange(rowNumber, headers['Contract Version'] + 1)
       .setNumberFormat('@')
       .setValue(ER4.contractVersion);
+    var stagedHistory = stageDraftHistoriesV4_(ss, [{
+      sessionId: sessionId,
+      queueId: queue.queueId,
+      position: position,
+      phraseId: identity.phraseId,
+      candidateId: identity.candidateId,
+      previousAnswer: current.answer,
+      previousRevision: current.revision,
+      nextAnswer: answer,
+      nextRevision: nextRevision,
+      eventType: 'reveal_lock',
+      clientInfo: clientInfo,
+      answerHash: revealHash
+    }]);
     SpreadsheetApp.flush();
 
     var verified = draftSheet.getRange(
@@ -3332,20 +3386,7 @@ function revealAnswerV4(sessionId, position, answer, expectedRevision, clientInf
     ) {
       throw new Error('Per-question answer lock readback failed.');
     }
-    var history = appendDraftHistoryV4_(ss, {
-      sessionId: sessionId,
-      queueId: queue.queueId,
-      position: position,
-      phraseId: identity.phraseId,
-      candidateId: identity.candidateId,
-      previousAnswer: current.answer,
-      previousRevision: current.revision,
-      nextAnswer: answer,
-      nextRevision: nextRevision,
-      eventType: 'reveal_lock',
-      clientInfo: clientInfo,
-      answerHash: revealHash
-    });
+    var history = verifyStagedDraftHistoriesV4_(stagedHistory)[0];
     return {
       ok: true,
       position: position,
@@ -3365,7 +3406,7 @@ function replaceLockedDraftV4(sessionId, position, answer, expectedRevision, cli
   assertV4Enabled_();
   assertAuthorizedV4_();
   var lock = LockService.getScriptLock();
-  lock.waitLock(15000);
+  if (!lock.tryLock(1000)) return draftBusyResponseV4_();
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     assertContractV4_(ss);
@@ -3471,6 +3512,20 @@ function replaceLockedDraftV4(sessionId, position, answer, expectedRevision, cli
     draftSheet.getRange(item.rowNumber, headers['Contract Version'] + 1)
       .setNumberFormat('@')
       .setValue(ER4.contractVersion);
+    var stagedHistory = stageDraftHistoriesV4_(ss, [{
+      sessionId: sessionId,
+      queueId: queue.queueId,
+      position: position,
+      phraseId: identity.phraseId,
+      candidateId: identity.candidateId,
+      previousAnswer: current.answer,
+      previousRevision: current.revision,
+      nextAnswer: answer,
+      nextRevision: nextRevision,
+      eventType: 'replace_locked',
+      clientInfo: clientInfo,
+      answerHash: nextHash
+    }]);
     SpreadsheetApp.flush();
     var verified = draftSheet.getRange(
       item.rowNumber,
@@ -3487,20 +3542,7 @@ function replaceLockedDraftV4(sessionId, position, answer, expectedRevision, cli
     ) {
       throw new Error('Locked-answer correction readback failed.');
     }
-    var history = appendDraftHistoryV4_(ss, {
-      sessionId: sessionId,
-      queueId: queue.queueId,
-      position: position,
-      phraseId: identity.phraseId,
-      candidateId: identity.candidateId,
-      previousAnswer: current.answer,
-      previousRevision: current.revision,
-      nextAnswer: answer,
-      nextRevision: nextRevision,
-      eventType: 'replace_locked',
-      clientInfo: clientInfo,
-      answerHash: nextHash
-    });
+    var history = verifyStagedDraftHistoriesV4_(stagedHistory)[0];
     return {
       ok: true,
       position: position,

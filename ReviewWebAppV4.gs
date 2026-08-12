@@ -4564,7 +4564,7 @@ function submitExtraPracticeV4(sessionId, practiceId, answer) {
   if (!answer) throw new Error('请先填写这道加练题。');
   if (answer.length > 2000) throw new Error('加练答案过长。');
   var lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  if (!lock.tryLock(1000)) return draftBusyResponseV4_();
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     assertContractV4_(ss);

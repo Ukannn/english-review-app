@@ -1539,6 +1539,7 @@
       var demoMode = templateDemo || query.get("demo") === "1";
       var demoState = query.get("state") || "answering";
       var demoConflictMode = query.get("draft_conflict") === "1";
+      var demoLockFailureMode = query.get("lock_failure") === "1";
       var RESULT_LABELS = {
         forgotten: "没想起来",
         difficult: "比较生疏",
@@ -1827,6 +1828,10 @@
               return;
             }
             if (name === "revealAnswerV4") {
+              if (demoLockFailureMode) {
+                resolve({ ok: false, message: "DEMO lock failure" });
+                return;
+              }
               var revealDraft = demoCloudDraftForPosition(args[1]);
               var revealRevision = Number(args[3] || 0);
               if (revealDraft.locked) {
@@ -4353,10 +4358,13 @@
           return;
         }
         window.clearTimeout(app.timers[question.position]);
+        // Reveal is a local feedback state. Cloud locking continues in the
+        // background and remains the only per-question submission gate.
+        question.revealed = true;
         question.syncing = true;
         question.syncError = false;
         renderQuestion();
-        setSaveState("正在保存并锁定本题…", "warn");
+        setSaveState("标准答案已显示，正在保存本题…", "warn");
         var answerToLock = answer;
         // The debounced autosave may still be writing an earlier partial
         // answer. Drain that per-position save queue first, including any
@@ -4387,8 +4395,8 @@
             refreshSaveState();
             renderQuestion();
             showToast(result.conflictResolved
-              ? "冲突已按你的选择处理；本次没有显示或锁定标准答案，请确认后再次点击。"
-              : "本次没有显示或锁定标准答案。处理冲突后请再次点击。");
+              ? "冲突已按你的选择处理；标准答案已显示，但本题尚未锁定，请确认后重试。"
+              : "标准答案已显示，但本题尚未锁定。处理冲突后请重试。");
             return;
           }
           if (result && result.alreadyLocked) {
@@ -4414,11 +4422,10 @@
                 question.syncError = false;
                 refreshSaveState();
                 renderQuestion();
-                showToast("冲突处理已结束；标准答案没有显示或锁定，请确认后再次点击。");
+                showToast("冲突处理已结束；标准答案已显示，但本题尚未锁定，请确认后重试。");
               });
             });
           }
-          question.revealed = true;
           question.locked = true;
           question.syncing = false;
           question.syncError = false;
@@ -4433,9 +4440,9 @@
         }).catch(function (error) {
           question.syncing = false;
           question.syncError = true;
-          setSaveState("本题尚未锁定", "bad");
+          setSaveState("标准答案已显示，但本题尚未锁定", "bad");
           renderQuestion();
-          showToast((error && error.message ? error.message : "本题没有锁定") + "。标准答案没有显示，请重试。");
+          showToast((error && error.message ? error.message : "本题没有锁定") + "。标准答案已显示，请稍后重试保存本题。");
         });
       }
 

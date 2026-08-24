@@ -19,6 +19,7 @@ var ER4 = {
   questionSheet: 'Session Questions',
   draftSheet: 'Answer Drafts',
   draftHistorySheet: 'Answer Draft History',
+  gradeRequestSheet: 'Grade Requests',
   gradeSheet: 'Grade Inbox',
   journalSheet: 'Commit Journal',
   contextSheet: 'Context Inbox',
@@ -36,6 +37,8 @@ var ER4 = {
   maxContextLength: 12000,
   maxContextProposals: 3,
   lowConfidenceThreshold: 0.75,
+  checkpointSize: 5,
+  gradingSnapshotVersion: '1.0',
   chatGptTaskUrl: 'https://chatgpt.com/scheduled',
   chatGptManualUrl: 'https://chatgpt.com/',
   contextProcessingConversationUrl: 'https://chatgpt.com/'
@@ -118,7 +121,29 @@ var ER4_GRADE_HEADERS = [
   'Created At',
   'Candidate Suggestions JSON',
   'Contract Version',
-  'Extra Practice JSON'
+  'Extra Practice JSON',
+  'Observed Answer'
+];
+
+var ER4_GRADE_REQUEST_HEADERS = [
+  'Submission ID',
+  'Session ID',
+  'Answer Hash',
+  'Position',
+  'Phrase ID',
+  'Candidate ID',
+  'Observed Answer',
+  'Prompt ZH',
+  'Prompt EN',
+  'Expected Answers JSON',
+  'Accepted Variants JSON',
+  'Semantic Boundary',
+  'Grading Rubric',
+  'Review Stage',
+  'Request Status',
+  'Created At',
+  'Snapshot Contract Version',
+  'Contract Version'
 ];
 
 var ER4_JOURNAL_HEADERS = [

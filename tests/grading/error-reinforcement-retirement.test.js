@@ -7,7 +7,7 @@ const html = fs.readFileSync(path.join(root, 'dist', 'ReviewApp.html'), 'utf8');
 const backend = fs.readFileSync(path.join(root, 'dist', 'ReviewWebAppV4.js'), 'utf8');
 const prompt = fs.readFileSync(path.join(root, 'dist', 'DailyTaskPrompt.html'), 'utf8');
 
-assert.match(prompt, /Prompt Version=english-review-v4-grade-6/,
+assert.match(prompt, /Prompt Version=english-review-v4-grade-7/,
   'new grading batches must use the reinforcement-free prompt version');
 assert.match(prompt, /错误强化模块已停用/);
 assert.match(prompt, /practiceType（只能是 sentence_challenge）/);

@@ -4,43 +4,20 @@ const path = require('node:path');
 
 const source = fs.readFileSync(path.join(__dirname, '..', '..', 'dist', 'ReviewApp.html'), 'utf8');
 const revealStart = source.indexOf('function revealCurrentAnswer()');
-const revealEnd = source.indexOf('function reviewBeforeSubmit()', revealStart);
+const revealEnd = source.indexOf('function maybeCheckpointAnswers()', revealStart);
+const reveal = source.slice(revealStart, revealEnd);
 
 assert.notEqual(revealStart, -1, 'revealCurrentAnswer must exist');
-assert.notEqual(revealEnd, -1, 'reviewBeforeSubmit boundary must exist');
+assert.notEqual(revealEnd, -1, 'checkpoint boundary must exist');
+assert.match(reveal, /question\.revealed = true;/, 'standard answer must be revealed locally');
+assert.match(reveal, /persistDraftBackup\([\s\S]*revealed: true/, 'revealed answer must be persisted locally');
+assert.match(reveal, /maybeCheckpointAnswers\(\);/, 'local reveal must offer the answer to the checkpoint collector');
+assert.doesNotMatch(reveal, /callServer\(|enqueueDraftWrite\(/,
+  'a single reveal must not directly issue a cloud request');
+assert.match(source, /ANSWER_CHECKPOINT_SIZE = 5;/, 'checkpoint size must be five');
+assert.match(source, /!question\.revealed \|\| app\.current === app\.questions\.length - 1/,
+  'next button must be driven by immediate local reveal');
+assert.match(source, /var locked = app\.questions\.filter\(function \(question\) \{ return question\.revealed; \}\);/,
+  'final review must include every locally frozen answer, including the tail');
 
-const reveal = source.slice(revealStart, revealEnd);
-const localReveal = reveal.indexOf('question.revealed = true;');
-const queueStart = reveal.indexOf('enqueueDraftWrite("revealAnswerV4"');
-const cloudLock = reveal.indexOf('question.locked = true;');
-
-assert.ok(localReveal >= 0, 'standard answer must be revealed locally');
-assert.ok(queueStart > localReveal, 'local reveal must happen before the atomic cloud lock starts');
-assert.ok(cloudLock > queueStart, 'locked must only be set after the cloud chain resolves');
-assert.doesNotMatch(
-  reveal,
-  /savePosition\(question\.position\)\.then/,
-  'normal reveal must not add a separate autosave before the atomic lock'
-);
-assert.match(
-  source,
-  /!question\.revealed \|\| app\.current === app\.questions\.length - 1/,
-  'next button must be shown from revealed, not locked'
-);
-assert.match(
-  source,
-  /el\.nextBtn\.disabled = app\.busy;/,
-  'per-question syncing must not disable the next button'
-);
-assert.match(
-  source,
-  /return item\.revealed && !item\.locked;/,
-  'revealed but unlocked questions must continue blocking submission'
-);
-assert.match(
-  reveal,
-  /question\.syncError = true;[\s\S]*标准答案已显示，但本题尚未锁定/,
-  'lock failure must preserve visible feedback and expose retry state'
-);
-
-console.log('background-save navigation contract: PASS');
+console.log('local reveal navigation contract: PASS');

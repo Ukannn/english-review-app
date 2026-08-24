@@ -82,6 +82,9 @@ function processSubmissionForSessionV4_(sessionId) {
     assertContractV4_(ss);
     var journal = findJournalBySessionV4_(ss, sessionId);
     if (!journal) throw new Error('Commit Journal entry was not found.');
+    if (journal.status === 'awaiting_chatgpt') {
+      ensureGradeRequestsForJournalV4_(ss, journal);
+    }
     if (journal.status === 'committed' || journal.status === 'needs_confirmation') {
       return responseForJournalV4_(journal);
     }
@@ -181,6 +184,10 @@ function validateStagedGradesV4_(ss, journal, staged) {
     throw new Error('Commit Journal and Daily Queue identity mismatch.');
   }
   var drafts = readSubmittedDraftsV4_(ss, journal);
+  var gradeRequests = readGradeRequestsForJournalV4_(ss, journal);
+  if (gradeRequests.length !== drafts.length) {
+    throw new Error('Trusted Grade Request count does not match frozen answers.');
+  }
   if (staged.rows.length > drafts.length) {
     throw new Error(
       'ChatGPT staged more grade rows than submitted answers; expected at most ' +
@@ -189,10 +196,13 @@ function validateStagedGradesV4_(ss, journal, staged) {
   }
   var draftByPosition = {};
   drafts.forEach(function(item) { draftByPosition[item.position] = item; });
+  var requestByPosition = {};
+  gradeRequests.forEach(function(item) { requestByPosition[item.position] = item; });
   var gradeByPosition = {};
   var batchIds = {};
   var suggestionJsons = [];
   var extraPracticeJsons = [];
+  var hashRowsToFill = [];
 
   staged.rows.forEach(function(item) {
     var row = item.values;
@@ -201,20 +211,35 @@ function validateStagedGradesV4_(ss, journal, staged) {
     if (position < 1 || position > queue.plannedCount || gradeByPosition[position]) {
       throw new Error('Grade batch has an invalid or duplicate position: ' + position + '.');
     }
+    var stagedAnswerHash = stringValue_(row[h['Answer Hash']]);
     if (
-      stringValue_(row[h['Answer Hash']]) !== journal.answerHash ||
-      stringValue_(row[h['Contract Version']]) !== ER4.contractVersion
+      (stagedAnswerHash && stagedAnswerHash !== journal.answerHash) ||
+      stringValue_(row[h['Contract Version']]) !== ER4.contractVersion ||
+      stringValue_(row[h['Prompt Version']]) !== 'english-review-v4-grade-7'
     ) {
-      throw new Error('Grade batch hash or contract mismatch at position ' + position + '.');
+      throw new Error('Grade batch hash, prompt, or contract mismatch at position ' + position + '.');
     }
     var draft = draftByPosition[position];
     if (!draft) throw new Error('Frozen answer is missing at position ' + position + '.');
+    var gradeRequest = requestByPosition[position];
+    if (!gradeRequest) throw new Error('Trusted Grade Request is missing at position ' + position + '.');
     ['phraseId', 'candidateId'].forEach(function(key) {
       var header = key === 'phraseId' ? 'Phrase ID' : 'Candidate ID';
       if (stringValue_(row[h[header]]) !== stringValue_(draft[key])) {
         throw new Error('Grade identity mismatch at position ' + position + '.');
       }
     });
+    var observedAnswer = stringValue_(row[h['Observed Answer']]);
+    if (
+      observedAnswer !== draft.answer ||
+      observedAnswer !== gradeRequest.observedAnswer ||
+      gradeRequest.answerHash !== journal.answerHash ||
+      gradeRequest.phraseId !== draft.phraseId ||
+      gradeRequest.candidateId !== draft.candidateId
+    ) {
+      throw new Error('Observed answer or trusted snapshot identity mismatch at position ' + position + '.');
+    }
+    if (!stagedAnswerHash) hashRowsToFill.push(item);
     var result = stringValue_(row[h.Result]).toLowerCase();
     if (ER4_RESULTS.indexOf(result) === -1) {
       throw new Error('Unsupported Result at position ' + position + '.');
@@ -230,6 +255,15 @@ function validateStagedGradesV4_(ss, journal, staged) {
     if (suggestionJson) suggestionJsons.push(suggestionJson);
     var extraPracticeJson = stringValue_(row[h['Extra Practice JSON']]);
     if (extraPracticeJson) extraPracticeJsons.push(extraPracticeJson);
+    var acceptedAnswers = gradeRequest.expectedAnswers.concat(gradeRequest.acceptedVariants);
+    var normalizedObserved = normalizeGradeAnswerV4_(observedAnswer);
+    var exactMatch = acceptedAnswers.some(function(value) {
+      return normalizeGradeAnswerV4_(value) === normalizedObserved;
+    });
+    if (exactMatch && ['forgotten', 'difficult'].indexOf(result) !== -1) {
+      throw new Error('Exact accepted answer cannot be graded ' + result + ' at position ' + position + '.');
+    }
+    var positiveNonMatch = !exactMatch && ['normal', 'mastered'].indexOf(result) !== -1;
     gradeByPosition[position] = {
       position: position,
       phraseId: draft.phraseId,
@@ -243,7 +277,8 @@ function validateStagedGradesV4_(ss, journal, staged) {
       expectedAnswer: stringValue_(row[h['Expected Answer']]),
       questionType: draft.questionType,
       prompt: draft.prompt,
-      needsConfirmation: confidence < ER4.lowConfidenceThreshold,
+      needsConfirmation: confidence < ER4.lowConfidenceThreshold || positiveNonMatch,
+      exactMatch: exactMatch,
       gradeRowNumber: item.rowNumber
     };
     if (!gradeByPosition[position].expectedAnswer) {
@@ -259,6 +294,22 @@ function validateStagedGradesV4_(ss, journal, staged) {
   }
   if (extraPracticeJsons.length > 1) {
     throw new Error('Extra Practice JSON must appear in at most one grade row.');
+  }
+  if (hashRowsToFill.length) {
+    hashRowsToFill.forEach(function(item) {
+      item.sheet.getRange(item.rowNumber, item.headers['Answer Hash'] + 1)
+        .setValue(journal.answerHash);
+      item.values[item.headers['Answer Hash']] = journal.answerHash;
+    });
+    SpreadsheetApp.flush();
+    hashRowsToFill.forEach(function(item) {
+      var verifiedHash = stringValue_(
+        item.sheet.getRange(item.rowNumber, item.headers['Answer Hash'] + 1).getValue()
+      );
+      if (verifiedHash !== journal.answerHash) {
+        throw new Error('Authoritative Answer Hash readback failed at row ' + item.rowNumber + '.');
+      }
+    });
   }
   if (staged.rows.length < drafts.length) {
     return {
@@ -291,6 +342,14 @@ function validateStagedGradesV4_(ss, journal, staged) {
     candidateSuggestions: suggestions,
     extraPractices: extraPractices
   };
+}
+
+function normalizeGradeAnswerV4_(value) {
+  return stringValue_(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/\s+/g, ' ');
 }
 
 function parseExtraPracticeSuggestionsV4_(value, grades) {

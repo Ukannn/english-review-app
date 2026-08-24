@@ -2,8 +2,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const html = fs.readFileSync(path.join(__dirname, '..', 'ReviewApp.html'), 'utf8');
-const backend = fs.readFileSync(path.join(__dirname, '..', 'ReviewWebAppV4.gs'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '..', '..', 'dist', 'ReviewApp.html'), 'utf8');
+const backend = fs.readFileSync(path.join(__dirname, '..', '..', 'dist', 'ReviewWebAppV4.js'), 'utf8');
 
 assert.match(
   html,

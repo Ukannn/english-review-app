@@ -1,0 +1,16 @@
+{
+  "name": "english-review-app",
+  "version": "0.9.3",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "node scripts/build-apps-script.mjs",
+    "test": "npm run build && node --test tests/**/*.test.js",
+    "check": "npm test && node scripts/verify-baseline.mjs --profile private && node scripts/check-links.mjs && node scripts/check-privacy.mjs --profile private",
+    "check:public": "npm test && node scripts/verify-baseline.mjs --profile public && node scripts/check-links.mjs && node scripts/check-privacy.mjs --profile public",
+    "export:public": "node scripts/export-public.mjs"
+  }
+}

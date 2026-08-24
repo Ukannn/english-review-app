@@ -1,13 +1,8 @@
 # Generated browser/test artifacts; keep locally for evidence, but do not treat as source.
 .playwright-cli/
 output/playwright/
-
-# Private operational history must not enter the public edition.
-rollback/
-archive/
-HANDOFF.md
-PROJECT_INDEX.md
-.clasp.json
+output/
+dist/
 
 # Local machine artifacts and dependencies.
 .DS_Store
@@ -17,6 +12,7 @@ node_modules/
 # rollback snapshots are versioned, but OAuth credentials must never be added.
 .env
 .env.*
+.clasp.json
 .clasprc.json
 *credentials*.json
 *service-account*.json

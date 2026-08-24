@@ -348,15 +348,6 @@ function parseExtraPracticeSuggestionsV4_(value, grades) {
       contextSignature: contextSignature
     };
   });
-  grades.forEach(function(grade) {
-    var isError = grade.result === 'forgotten' || grade.result === 'difficult';
-    if (isError && !reinforcementByPosition[grade.position]) {
-      throw new Error('Every formal error must have one reinforcement question; missing position ' + grade.position + '.');
-    }
-    if (!isError && reinforcementByPosition[grade.position]) {
-      throw new Error('Reinforcement was generated for a non-error at position ' + grade.position + '.');
-    }
-  });
   return normalized;
 }
 
@@ -1073,19 +1064,6 @@ function createCommitPlanV4_(ss, journal, snapshot) {
   });
   var extraPractices = [];
   items.forEach(function(item) {
-    var isError = item.result === 'forgotten' || item.result === 'difficult';
-    var reinforcement = extraByKey[item.position + ':reinforcement'];
-    if (isError) {
-      reinforcement = reinforcement || {
-        promptZh: '【错误强化｜只填写完整目标词块】换一个情境，再写出能表达“' +
-          item.chineseCue + '”的目标词块。',
-        expectedAnswers: [item.expectedAnswer],
-        acceptedVariants: [],
-        referenceAnswer: item.expectedAnswer,
-        contextSignature: 'server-fallback-' + item.position
-      };
-      extraPractices.push(buildExtraPracticePlanV4_(journal, item, reinforcement, 'reinforcement'));
-    }
     var sentence = extraByKey[item.position + ':sentence_challenge'];
     if (item.result === 'mastered' && item.currentStage >= 6) {
       sentence = sentence || {
@@ -1179,24 +1157,9 @@ function validateFrozenCommitPlanV4_(journal, snapshot, plan) {
   ) {
     throw new Error('Frozen candidate replenishment plan is missing.');
   }
-  var reinforcementParents = {};
   plan.extraPractices.forEach(function(practice) {
     if (!practice.practiceId || !practice.parentAttemptId || !practice.phraseId) {
       throw new Error('Frozen extra-practice plan is incomplete.');
-    }
-    if (practice.practiceType === 'reinforcement') {
-      if (reinforcementParents[practice.parentAttemptId]) {
-        throw new Error('Frozen plan contains duplicate error reinforcement.');
-      }
-      reinforcementParents[practice.parentAttemptId] = true;
-    }
-  });
-  plan.items.forEach(function(item) {
-    if (
-      (item.result === 'forgotten' || item.result === 'difficult') &&
-      !reinforcementParents[item.attemptId]
-    ) {
-      throw new Error('Frozen plan is missing error reinforcement at position ' + item.position + '.');
     }
   });
 }

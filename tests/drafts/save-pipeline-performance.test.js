@@ -7,8 +7,8 @@ const backend = fs.readFileSync(path.join(__dirname, '..', '..', 'dist', 'Review
 
 assert.match(
   html,
-  /var DRAFT_AUTOSAVE_DELAY_MS = 2000;/,
-  'cloud autosave debounce must be two seconds'
+  /var DRAFT_AUTOSAVE_DELAY_MS = 750;/,
+  'local-first cloud autosave debounce must be 750ms'
 );
 assert.match(
   html,
@@ -37,8 +37,13 @@ assert.match(
 );
 assert.match(
   html,
-  /enqueueDraftWrite\("saveDraftV4"/,
-  'autosaves must use the global draft queue'
+  /function enqueueDraftSave\(args\)[\s\S]*pendingDraftBatch\[position\]/,
+  'autosaves must coalesce the latest unsent value per position'
+);
+assert.match(
+  html,
+  /function flushDraftBatch\(\)[\s\S]*enqueueDraftWrite\("saveDraftBatchV4"/,
+  'coalesced autosaves must use one bounded server batch through the global queue'
 );
 assert.match(
   html,
@@ -57,8 +62,19 @@ assert.match(
 );
 assert.match(
   html,
-  /var isDraftWrite = \[[\s\S]*"submitExtraPracticeV4"[\s\S]*\][\s\S]*\.indexOf\(name\) !== -1/,
+  /var isDraftWrite = \[[\s\S]*"saveDraftBatchV4"[\s\S]*"submitExtraPracticeV4"[\s\S]*\][\s\S]*\.indexOf\(name\) !== -1/,
   'demo busy-lock injection must cover extra-practice submissions'
+);
+
+assert.match(
+  backend,
+  /function saveDraftBatchV4\(sessionId, drafts, clientInfo\)[\s\S]*drafts\.length > 20[\s\S]*saveDraftV4\(/,
+  'server draft batches must be bounded and preserve the single-draft contract'
+);
+assert.match(
+  backend,
+  /function stageDraftHistoriesV4_[\s\S]*createTextFinder\(historyId\)[\s\S]*matchEntireCell\(true\)/,
+  'history idempotency must use an exact lookup instead of loading the full history sheet'
 );
 
 for (const functionName of [

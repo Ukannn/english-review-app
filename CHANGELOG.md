@@ -2,12 +2,13 @@
 
 Project semantic versions and Google Apps Script immutable versions are separate identifiers.
 
-## Unreleased
+## v0.10.0 — Apps Script version 32
 
 - Reorganize the repository into modular server/UI sources with a deterministic five-file Apps Script build.
-- Replace checked-in rollback snapshots and scattered PRDs with architecture, operations and changelog documentation.
-- Add reproducible private/public baseline checks, CI and sanitized public export tooling.
-- Runtime behavior and the active Apps Script deployment remain unchanged at `v0.9.3` / version 31.
+- Make the HTML shell read-free, split analytics/phrase/system payloads, paginate phrase results and make context-inbox GET lock-free.
+- Save answers locally immediately, coalesce cloud drafts into bounded batches and retain exact reveal-lock, conflict and submission gates.
+- Retire new error-reinforcement generation and result UI while preserving full-sentence transfer challenges and historical compatibility.
+- Add deterministic performance, batching and reinforcement-retirement contract tests.
 
 ## v0.9.3 — Apps Script version 31
 

@@ -9,25 +9,131 @@ function getLearningDashboardV4() {
   assertAuthorizedV4_();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   assertContractV4_(ss);
-  ensureDynamicQuestionCountSchemaV4_(ss);
   var todayKey = formatDateKey_(new Date());
+  return dashboardCachedPayloadV4_(
+    'ER4_DASHBOARD_V2_' + todayKey,
+    300,
+    function() { return buildLearningDashboardV4_(ss, todayKey, 'full'); }
+  );
+}
+
+function getLearningAnalyticsV4() {
+  assertV4Enabled_();
+  assertAuthorizedV4_();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  assertContractV4_(ss);
+  var todayKey = formatDateKey_(new Date());
+  return dashboardCachedPayloadV4_(
+    'ER4_ANALYTICS_V2_' + todayKey,
+    300,
+    function() {
+      var payload = buildLearningDashboardV4_(ss, todayKey, 'analytics');
+      return {
+        ok: true,
+        today: payload.today,
+        generatedAt: payload.generatedAt,
+        definitions: payload.definitions,
+        overview: payload.overview,
+        trend: payload.trend,
+        futureDue: payload.futureDue,
+        mastery: payload.mastery,
+        errorCategories: payload.errorCategories,
+        topErrors: payload.topErrors
+      };
+    }
+  );
+}
+
+function getPhraseLibraryV4(options) {
+  assertV4Enabled_();
+  assertAuthorizedV4_();
+  options = options && typeof options === 'object' ? options : {};
+  var query = stringValue_(options.query).toLowerCase();
+  var statusFilter = stringValue_(options.status || 'all').toLowerCase();
+  var offset = Math.max(0, Number(options.offset) || 0);
+  var limit = Math.min(100, Math.max(1, Number(options.limit) || 50));
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  assertContractV4_(ss);
+  var todayKey = formatDateKey_(new Date());
+  var builder = function() {
+    var payload = buildLearningDashboardV4_(ss, todayKey, 'phrases');
+    var filtered = payload.phrases.filter(function(phrase) {
+      var searchable = [phrase.id, phrase.chunk, phrase.chineseCue, phrase.topic].join(' ').toLowerCase();
+      if (query && searchable.indexOf(query) === -1) return false;
+      if (statusFilter === 'due') return phrase.dueState === 'overdue' || phrase.dueState === 'due_today';
+      if (statusFilter === 'hard') return Boolean(phrase.hard);
+      if (statusFilter === 'mastered') return phrase.status === 'mastered';
+      if (statusFilter === 'learning') return phrase.status !== 'mastered' && phrase.status !== 'suspended';
+      if (statusFilter === 'paused') return phrase.status === 'suspended';
+      return true;
+    });
+    return {
+      ok: true,
+      generatedAt: payload.generatedAt,
+      total: payload.phrases.length,
+      filteredTotal: filtered.length,
+      offset: offset,
+      limit: limit,
+      hasMore: offset + limit < filtered.length,
+      phrases: filtered.slice(offset, offset + limit)
+    };
+  };
+  if (!query && statusFilter === 'all' && offset === 0 && limit === 50) {
+    return dashboardCachedPayloadV4_('ER4_PHRASES_V2_' + todayKey, 300, builder);
+  }
+  return builder();
+}
+
+function getSystemStatusV4() {
+  assertV4Enabled_();
+  assertAuthorizedV4_();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  assertContractV4_(ss);
+  var todayKey = formatDateKey_(new Date());
+  return dashboardCachedPayloadV4_(
+    'ER4_SYSTEM_V2_' + todayKey,
+    180,
+    function() {
+      var payload = buildLearningDashboardV4_(ss, todayKey, 'full');
+      return {
+        ok: true,
+        today: payload.today,
+        generatedAt: payload.generatedAt,
+        todayPlan: payload.todayPlan,
+        questionCount: payload.questionCount,
+        system: payload.system
+      };
+    }
+  );
+}
+
+function dashboardCachedPayloadV4_(cacheKey, ttlSeconds, builder) {
   var cache = CacheService.getUserCache();
-  var cacheKey = 'ER4_DASHBOARD_V1_' + todayKey;
   var cached = cache.get(cacheKey);
   if (cached) {
     try {
-      return JSON.parse(cached);
+      var parsed = JSON.parse(cached);
+      parsed.cacheHit = true;
+      return parsed;
     } catch (ignore) {}
   }
-
-  var dashboard = buildLearningDashboardV4_(ss, todayKey);
+  var payload = builder();
+  payload.cacheHit = false;
   try {
-    cache.put(cacheKey, JSON.stringify(dashboard), 300);
+    var encoded = JSON.stringify(payload);
+    if (encoded.length < 90000) cache.put(cacheKey, encoded, ttlSeconds);
   } catch (ignore2) {}
-  return dashboard;
+  return payload;
 }
 
-function buildLearningDashboardV4_(ss, todayKey) {
+function emptyDashboardTableV4_() {
+  return { sheet: null, headers: {}, rows: [] };
+}
+
+function buildLearningDashboardV4_(ss, todayKey, mode) {
+  mode = mode || 'full';
+  var includeSystem = mode === 'full';
+  var includeErrors = mode !== 'phrases';
   var phraseTable = readDashboardTableV4_(
     ss,
     'Phrase Bank',
@@ -41,12 +147,12 @@ function buildLearningDashboardV4_(ss, todayKey) {
     ['Date', 'Session ID', 'Question #', 'User Answer', 'Result', 'Tag', 'Notes',
       'Attempt Type', 'Question Type', 'Affects SRS?']
   );
-  var errorTable = readDashboardTableV4_(
+  var errorTable = includeErrors ? readDashboardTableV4_(
     ss,
     'Error Log',
     ['Date', 'Chunk', 'Error Type', 'User Answer', 'Correction', 'Explanation',
       'Phrase ID', 'Session ID']
-  );
+  ) : emptyDashboardTableV4_();
   var queueTable = readDashboardTableV4_(
     ss,
     DQ3.queueSheet,
@@ -54,35 +160,37 @@ function buildLearningDashboardV4_(ss, todayKey) {
       'Committed At', 'Presented At', 'Contract Version', 'Planned Count',
       'Adjusted Target', 'Queue Kind']
   );
-  var questionTable = readDashboardTableV4_(
+  var questionTable = includeSystem ? readDashboardTableV4_(
     ss,
     ER4.questionSheet,
     ['Queue ID', 'Position', 'Generation ID', 'Question Status', 'Session ID', 'Created At',
       'Contract Version']
-  );
-  var gradeTable = readDashboardTableV4_(
+  ) : emptyDashboardTableV4_();
+  var gradeTable = includeSystem ? readDashboardTableV4_(
     ss,
     ER4.gradeSheet,
     ['Session ID', 'Position', 'Grade Status', 'Created At', 'Contract Version']
-  );
-  var journalTable = readDashboardTableV4_(
+  ) : emptyDashboardTableV4_();
+  var journalTable = includeSystem ? readDashboardTableV4_(
     ss,
     ER4.journalSheet,
     ['Session ID', 'Status', 'Last Completed Step', 'Updated At', 'Completed At',
       'Readback Status', 'Contract Version']
-  );
-  var sessionTable = readDashboardTableV4_(
+  ) : emptyDashboardTableV4_();
+  var sessionTable = includeSystem ? readDashboardTableV4_(
     ss,
     'Session Log',
     ['Session ID', 'Date', 'Questions Logged', 'Database Write Status', 'Readback Status',
       'Contract Version']
-  );
-  var contextTable = readDashboardTableV4_(ss, ER4.contextSheet, ER4_CONTEXT_HEADERS);
-  var contextCandidateTable = readDashboardTableV4_(
+  ) : emptyDashboardTableV4_();
+  var contextTable = includeSystem
+    ? readDashboardTableV4_(ss, ER4.contextSheet, ER4_CONTEXT_HEADERS)
+    : emptyDashboardTableV4_();
+  var contextCandidateTable = includeSystem ? readDashboardTableV4_(
     ss,
     ER4.contextCandidateSheet,
     ER4_CONTEXT_CANDIDATE_HEADERS
-  );
+  ) : emptyDashboardTableV4_();
   var pendingContextCount = contextTable.rows.filter(function(row) {
     var status = dashboardStringV4_(row, contextTable.headers, 'Processing Status').toLowerCase();
     return status === 'pending' || status === 'processing';
@@ -254,8 +362,10 @@ function buildLearningDashboardV4_(ss, todayKey) {
   });
   var recentSeven = recentThirty.filter(function(item) { return item.date >= sevenStart; });
   var todayRows = recentThirty.filter(function(item) { return item.date === todayKey; });
-  var questionCountControl = buildQuestionCountControlV4_(ss, todayKey);
-  var currentQueue = findQueueForDateV4_(ss, todayKey);
+  var questionCountControl = includeSystem
+    ? buildQuestionCountControlV4_(ss, todayKey)
+    : { requestedCount: 0, shortfallCount: 0, shortfallStatus: '' };
+  var currentQueue = includeSystem ? findQueueForDateV4_(ss, todayKey) : null;
   var currentQueueId = currentQueue ? currentQueue.queueId : '';
   var queueStatus = currentQueue ? currentQueue.status : 'missing';
   var todayQueueRows = queueTable.rows.filter(function(row) {
@@ -648,7 +758,14 @@ function dashboardUniqueV4_(values) {
 
 function invalidateLearningDashboardCacheV4_() {
   try {
-    CacheService.getUserCache().remove('ER4_DASHBOARD_V1_' + formatDateKey_(new Date()));
+    var todayKey = formatDateKey_(new Date());
+    CacheService.getUserCache().removeAll([
+      'ER4_DASHBOARD_V1_' + todayKey,
+      'ER4_DASHBOARD_V2_' + todayKey,
+      'ER4_ANALYTICS_V2_' + todayKey,
+      'ER4_PHRASES_V2_' + todayKey,
+      'ER4_SYSTEM_V2_' + todayKey
+    ]);
   } catch (ignore) {}
 }
 

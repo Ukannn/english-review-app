@@ -73,21 +73,20 @@ function saveContextV4(payload) {
     ) {
       throw new Error('语料保存后的精确回读不一致。');
     }
+    invalidateLearningDashboardCacheV4_();
     return { ok: true, contextId: contextId, status: 'pending', selectedSpanCount: spans.length };
   } finally {
     lock.releaseLock();
   }
 }
 
-function getContextInboxV4() {
+function getContextInboxV4(options) {
   assertV4Enabled_();
   assertAuthorizedV4_();
-  var lock = LockService.getDocumentLock();
-  lock.waitLock(30000);
-  try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    assertContractV4_(ss);
-    reconcileContextStatusesV4_(ss);
+  options = options && typeof options === 'object' ? options : {};
+  var limit = Math.min(100, Math.max(1, Number(options.limit) || 50));
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  assertContractV4_(ss);
     var contextTable = readDashboardTableV4_(ss, ER4.contextSheet, ER4_CONTEXT_HEADERS);
     var proposalTable = readDashboardTableV4_(
       ss,
@@ -105,9 +104,14 @@ function getContextInboxV4() {
     Object.keys(proposalsByContext).forEach(function(contextId) {
       proposalsByContext[contextId].sort(function(a, b) { return a.position - b.position; });
     });
-    var items = contextTable.rows.map(function(row) {
+    var allItems = contextTable.rows.map(function(row) {
       var contextId = dashboardStringV4_(row, contextTable.headers, 'Context ID');
       if (!contextId) return null;
+      var storedStatus = dashboardStringV4_(row, contextTable.headers, 'Processing Status');
+      var derivedStatus = contextDerivedStatusV4_(
+        storedStatus,
+        proposalsByContext[contextId] || []
+      );
       return {
         contextId: contextId,
         rawText: dashboardStringV4_(row, contextTable.headers, 'Raw Text'),
@@ -117,7 +121,7 @@ function getContextInboxV4() {
         sourceUrl: dashboardStringV4_(row, contextTable.headers, 'Source URL'),
         sourceTitle: dashboardStringV4_(row, contextTable.headers, 'Source Title'),
         userNote: dashboardStringV4_(row, contextTable.headers, 'User Note'),
-        status: dashboardStringV4_(row, contextTable.headers, 'Processing Status'),
+        status: derivedStatus,
         processingBatchId: dashboardStringV4_(row, contextTable.headers, 'Processing Batch ID'),
         createdAt: dashboardTimestampV4_(row[contextTable.headers['Created At']]),
         processedAt: dashboardTimestampV4_(row[contextTable.headers['Processed At']]),
@@ -125,9 +129,9 @@ function getContextInboxV4() {
       };
     }).filter(Boolean).sort(function(a, b) {
       return a.createdAt < b.createdAt ? 1 : -1;
-    }).slice(0, 50);
+    });
     var counts = { pending: 0, needsDecision: 0, committed: 0, errors: 0 };
-    items.forEach(function(item) {
+    allItems.forEach(function(item) {
       if (item.status === 'pending' || item.status === 'processing') counts.pending++;
       if (item.status === 'error' || item.status === 'needs_review') counts.errors++;
       item.proposals.forEach(function(proposal) {
@@ -139,13 +143,23 @@ function getContextInboxV4() {
       ok: true,
       generatedAt: Utilities.formatDate(new Date(), ER4.timezone, 'yyyy-MM-dd HH:mm:ss'),
       counts: counts,
-      items: items,
+      items: allItems.slice(0, limit),
+      totalItems: allItems.length,
       processingPrompt: ER4_CONTEXT_PROCESSING_PROMPT,
       contextProcessingConversationUrl: ER4.contextProcessingConversationUrl
     };
-  } finally {
-    lock.releaseLock();
-  }
+}
+
+function contextDerivedStatusV4_(storedStatus, proposals) {
+  var status = stringValue_(storedStatus).toLowerCase();
+  if (!proposals.length || ['rejected', 'error'].indexOf(status) !== -1) return status;
+  var batches = dashboardUniqueV4_(proposals.map(function(item) {
+    return stringValue_(item.processingBatchId);
+  }).filter(Boolean));
+  if (batches.length !== 1) return 'error';
+  return proposals.every(function(item) {
+    return stringValue_(item.candidateType).toLowerCase() === 'explanation_only';
+  }) ? 'explanation_only' : 'processed';
 }
 
 function decideContextCandidateV4(contextId, proposalPosition, action, editedCandidate) {

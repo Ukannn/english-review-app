@@ -13,7 +13,7 @@
       var demoConflictMode = query.get("draft_conflict") === "1";
       var demoLockFailureMode = query.get("lock_failure") === "1";
       var demoBusyRetriesRemaining = Math.max(0, Number(query.get("busy_retries") || 0));
-      var DRAFT_AUTOSAVE_DELAY_MS = 2000;
+      var DRAFT_AUTOSAVE_DELAY_MS = 750;
       var DRAFT_BUSY_MAX_RETRIES = 3;
       var RESULT_LABELS = {
         forgotten: "没想起来",
@@ -125,8 +125,14 @@
         payload: null,
         activeView: "",
         todayLoaded: false,
-        dashboard: null,
-        dashboardPromise: null,
+        analytics: null,
+        analyticsPromise: null,
+        systemStatus: null,
+        systemPromise: null,
+        phraseLibrary: null,
+        phrasePromise: null,
+        phraseRequestKey: "",
+        phraseSearchTimer: null,
         contextInbox: null,
         contextPromise: null,
         contextInboxView: "unprocessed",
@@ -146,6 +152,8 @@
         savedAnswers: {},
         savePromises: {},
         draftWriteTail: Promise.resolve(),
+        pendingDraftBatch: {},
+        draftBatchTimer: null,
         conflicts: {},
         clientInstanceId: "web-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10),
         pageStartedAt: new Date().toISOString(),
@@ -164,6 +172,10 @@
         calls: [],
         activeDraftWrites: 0,
         maxActiveDraftWrites: 0
+      };
+      window.__reviewPerformanceMetrics = {
+        shellReadyMs: 0,
+        calls: []
       };
 
       var el = {
@@ -254,8 +266,8 @@
 
       function callServer(name, args) {
         args = args || [];
-        if (demoMode) return callDemo(name, args);
-        return new Promise(function (resolve, reject) {
+        var startedAt = window.performance ? performance.now() : Date.now();
+        var request = demoMode ? callDemo(name, args) : new Promise(function (resolve, reject) {
           if (!window.google || !google.script || !google.script.run) {
             reject(new Error("当前页面未连接到学习系统。"));
             return;
@@ -267,6 +279,25 @@
             });
           runner[name].apply(runner, args);
         });
+        return request.then(function (result) {
+          recordPerformanceCall(name, startedAt, true);
+          return result;
+        }, function (error) {
+          recordPerformanceCall(name, startedAt, false);
+          throw error;
+        });
+      }
+
+      function recordPerformanceCall(name, startedAt, ok) {
+        var endedAt = window.performance ? performance.now() : Date.now();
+        window.__reviewPerformanceMetrics.calls.push({
+          name: name,
+          durationMs: Math.round((endedAt - startedAt) * 10) / 10,
+          ok: Boolean(ok)
+        });
+        if (window.__reviewPerformanceMetrics.calls.length > 100) {
+          window.__reviewPerformanceMetrics.calls.shift();
+        }
       }
 
       function waitForDraftRetry(ms) {
@@ -297,10 +328,62 @@
         return queued;
       }
 
+      function enqueueDraftSave(args) {
+        var position = Number(args[1]);
+        return new Promise(function (resolve, reject) {
+          var pending = app.pendingDraftBatch[position] || { waiters: [] };
+          pending.args = args;
+          pending.waiters.push({ resolve: resolve, reject: reject });
+          app.pendingDraftBatch[position] = pending;
+          window.clearTimeout(app.draftBatchTimer);
+          app.draftBatchTimer = window.setTimeout(flushDraftBatch, 80);
+        });
+      }
+
+      function flushDraftBatch() {
+        window.clearTimeout(app.draftBatchTimer);
+        app.draftBatchTimer = null;
+        var pending = app.pendingDraftBatch;
+        var positions = Object.keys(pending);
+        if (!positions.length) return Promise.resolve();
+        app.pendingDraftBatch = {};
+        var drafts = positions.map(function (position) {
+          var args = pending[position].args;
+          return {
+            position: Number(args[1]),
+            answer: args[2],
+            expectedRevision: Number(args[3] || 0),
+            clientVersion: Number(app.localVersions[position] || 0)
+          };
+        });
+        var request = enqueueDraftWrite("saveDraftBatchV4", [
+          app.payload.sessionId,
+          drafts,
+          draftClientInfo()
+        ]);
+        request.then(function (payload) {
+          var byPosition = {};
+          (payload && payload.items || []).forEach(function (item) {
+            byPosition[Number(item.position)] = item;
+          });
+          positions.forEach(function (position) {
+            var result = byPosition[Number(position)];
+            if (!result) result = { ok: false, message: "云端没有返回本题保存结果。" };
+            pending[position].waiters.forEach(function (waiter) { waiter.resolve(result); });
+          });
+        }).catch(function (error) {
+          positions.forEach(function (position) {
+            pending[position].waiters.forEach(function (waiter) { waiter.reject(error); });
+          });
+        });
+        return request;
+      }
+
       function callDemo(name, args) {
         return new Promise(function (resolvePromise) {
           var isDraftWrite = [
             "saveDraftV4",
+            "saveDraftBatchV4",
             "revealAnswerV4",
             "replaceLockedDraftV4",
             "submitExtraPracticeV4"
@@ -368,6 +451,31 @@
                 revision: savedDraft.revision,
                 answer: savedDraft.answer
               });
+              return;
+            }
+            if (name === "saveDraftBatchV4") {
+              var batchItems = (args[1] || []).map(function (draft) {
+                var stored = demoCloudDraftForPosition(draft.position);
+                if (stored.revision !== Number(draft.expectedRevision || 0)) {
+                  return {
+                    ok: false,
+                    conflict: true,
+                    position: draft.position,
+                    revision: stored.revision,
+                    answer: stored.answer
+                  };
+                }
+                stored.exists = true;
+                stored.answer = draft.answer;
+                stored.revision += 1;
+                return {
+                  ok: true,
+                  position: draft.position,
+                  revision: stored.revision,
+                  answer: stored.answer
+                };
+              });
+              resolve({ ok: true, items: batchItems });
               return;
             }
             if (name === "revealAnswerV4") {
@@ -495,8 +603,33 @@
               resolve(demoState === "committed" ? demoCommittedPayload() : app.payload);
               return;
             }
-            if (name === "getLearningDashboardV4") {
+            if (name === "getLearningDashboardV4" || name === "getLearningAnalyticsV4" ||
+                name === "getSystemStatusV4") {
               resolve(demoDashboardData());
+              return;
+            }
+            if (name === "getPhraseLibraryV4") {
+              var phraseOptions = args[0] || {};
+              var phrasePayload = demoDashboardData();
+              var phraseQuery = String(phraseOptions.query || "").toLowerCase();
+              var phraseStatus = String(phraseOptions.status || "all");
+              var demoPhrases = (phrasePayload.phrases || []).filter(function (phrase) {
+                var searchable = [phrase.id, phrase.chunk, phrase.chineseCue, phrase.topic].join(" ").toLowerCase();
+                if (phraseQuery && searchable.indexOf(phraseQuery) === -1) return false;
+                if (phraseStatus === "hard") return Boolean(phrase.hard);
+                if (phraseStatus === "mastered") return phrase.status === "mastered";
+                return true;
+              });
+              resolve({
+                ok: true,
+                generatedAt: phrasePayload.generatedAt,
+                total: (phrasePayload.phrases || []).length,
+                filteredTotal: demoPhrases.length,
+                offset: 0,
+                limit: 50,
+                hasMore: false,
+                phrases: demoPhrases
+              });
               return;
             }
               if (name === "getQuestionCountControlV4" || name === "setQuestionCountV4") {
@@ -742,15 +875,6 @@
             personalIntakeBacklogCount: 3,
             counts: { forgotten: 2, difficult: 4, normal: 8, mastered: 6 },
             extraPractices: [
-              {
-                practiceId: "XP-DEMO-SESSION-Q003-R",
-                sourcePosition: 3,
-                practiceType: "reinforcement",
-                phraseId: "ENG-0003",
-                promptZh: "【错误强化｜只填写完整目标词块】航班比原定时间晚到。写出表示‘晚点’的目标词块。",
-                answerScope: "完整目标词块",
-                status: "pending"
-              },
               {
                 practiceId: "XP-DEMO-SESSION-Q001-S",
                 sourcePosition: 1,
@@ -1004,6 +1128,9 @@
 
       function initialize() {
         bindEvents();
+        window.__reviewPerformanceMetrics.shellReadyMs = Math.round(
+          (window.performance ? performance.now() : Date.now()) * 10
+        ) / 10;
         var initialView = viewFromHash();
         if (!window.location.hash) {
           history.replaceState(null, "", window.location.pathname + window.location.search + "#" + initialView);
@@ -1020,8 +1147,8 @@
           });
         });
         window.addEventListener("hashchange", function () { activateView(viewFromHash()); });
-        el.phraseSearch.addEventListener("input", renderPhraseList);
-        el.phraseFilter.addEventListener("change", renderPhraseList);
+        el.phraseSearch.addEventListener("input", schedulePhraseLibraryLoad);
+        el.phraseFilter.addEventListener("change", function () { loadPhraseLibrary(true); });
         el.startMarkingBtn.addEventListener("click", beginContextMarking);
         el.addSelectionBtn.addEventListener("click", addCurrentContextSelection);
         el.clearSelectionsBtn.addEventListener("click", function () {
@@ -1128,28 +1255,92 @@
           return;
         }
         setSaveState("只读", "");
-        loadDashboard().then(function (payload) {
+        var loader = view === "analytics" ? loadAnalytics() :
+          view === "phrases" ? loadPhraseLibrary(false) : loadSystemStatus();
+        loader.then(function (payload) {
           if (view === "analytics") renderAnalytics(payload);
           if (view === "phrases") renderPhraseList();
           if (view === "settings") renderSettings(payload);
-        }).catch(function (error) {
-          renderSectionError(view, error);
-        });
+        }).catch(function (error) { renderSectionError(view, error); });
       }
 
-      function loadDashboard() {
-        if (app.dashboard) return Promise.resolve(app.dashboard);
-        if (app.dashboardPromise) return app.dashboardPromise;
-        app.dashboardPromise = callServer("getLearningDashboardV4").then(function (payload) {
+      function loadAnalytics() {
+        if (app.analytics) return Promise.resolve(app.analytics);
+        if (app.analyticsPromise) return app.analyticsPromise;
+        app.analyticsPromise = callServer("getLearningAnalyticsV4").then(function (payload) {
           if (!payload || payload.ok === false) throw new Error("学习分析载入失败。");
-          app.dashboard = payload;
-          app.dashboardPromise = null;
+          app.analytics = payload;
+          app.analyticsPromise = null;
           return payload;
         }).catch(function (error) {
-          app.dashboardPromise = null;
+          app.analyticsPromise = null;
           throw error;
         });
-        return app.dashboardPromise;
+        return app.analyticsPromise;
+      }
+
+      function loadSystemStatus() {
+        if (app.systemStatus) return Promise.resolve(app.systemStatus);
+        if (app.systemPromise) return app.systemPromise;
+        app.systemPromise = callServer("getSystemStatusV4").then(function (payload) {
+          if (!payload || payload.ok === false) throw new Error("系统状态载入失败。");
+          app.systemStatus = payload;
+          app.systemPromise = null;
+          return payload;
+        }).catch(function (error) {
+          app.systemPromise = null;
+          throw error;
+        });
+        return app.systemPromise;
+      }
+
+      function schedulePhraseLibraryLoad() {
+        window.clearTimeout(app.phraseSearchTimer);
+        app.phraseSearchTimer = window.setTimeout(function () {
+          loadPhraseLibrary(true).catch(function (error) { renderSectionError("phrases", error); });
+        }, 250);
+      }
+
+      function loadPhraseLibrary(reset) {
+        var append = reset === "more";
+        if (!reset && app.phraseLibrary) return Promise.resolve(app.phraseLibrary);
+        var existing = append ? app.phraseLibrary : null;
+        var offset = existing ? existing.phrases.length : 0;
+        if (reset === true) {
+          app.phraseLibrary = null;
+          offset = 0;
+        }
+        var requestOptions = {
+          query: String(el.phraseSearch.value || "").trim(),
+          status: el.phraseFilter.value || "all",
+          offset: offset,
+          limit: 50
+        };
+        var requestKey = [requestOptions.query, requestOptions.status, offset].join("|");
+        if (app.phrasePromise) {
+          if (app.phraseRequestKey === requestKey) return app.phrasePromise;
+          return app.phrasePromise.catch(function () {}).then(function () {
+            return loadPhraseLibrary(reset);
+          });
+        }
+        if (!append) el.phrasesMount.innerHTML = '<div class="chart-empty">正在载入搭配库…</div>';
+        app.phraseRequestKey = requestKey;
+        app.phrasePromise = callServer("getPhraseLibraryV4", [requestOptions]).then(function (payload) {
+          if (!payload || payload.ok === false) throw new Error("搭配库载入失败。");
+          if (existing && offset > 0) {
+            payload.phrases = existing.phrases.concat(payload.phrases || []);
+          }
+          app.phraseLibrary = payload;
+          app.phrasePromise = null;
+          app.phraseRequestKey = "";
+          renderPhraseList();
+          return payload;
+        }).catch(function (error) {
+          app.phrasePromise = null;
+          app.phraseRequestKey = "";
+          throw error;
+        });
+        return app.phrasePromise;
       }
 
       function loadContextInbox(force) {
@@ -1566,12 +1757,13 @@
           } else {
             showToast(successMessages[mode] || "题数设置已更新。", 4200);
           }
-          app.dashboard = null;
-          app.dashboardPromise = null;
+          app.analytics = null;
+          app.systemStatus = null;
+          app.phraseLibrary = null;
           app.todayLoaded = false;
           app.payload = null;
           app.questions = [];
-          return loadDashboard();
+          return loadSystemStatus();
         }).then(renderSettings).catch(function (error) {
           setSaveState("题数保存失败", "bad");
           showToast(error && error.message ? error.message : "题数设置未保存", 5200);
@@ -1615,7 +1807,9 @@
           if (result.decisionStatus === "duplicate") showToast("这个搭配已经存在，没有重复写入。");
           else if (result.candidateId) showToast("已加入候选池：" + result.candidateId);
           else showToast("已保存你的决定。");
-          app.dashboard = null;
+          app.analytics = null;
+          app.systemStatus = null;
+          app.phraseLibrary = null;
           updateContextInboxAfterDecision(contextId, proposalPosition, action, editedCandidate, result);
         }).catch(function (error) {
           button.disabled = false;
@@ -1736,7 +1930,9 @@
           '</section>';
         var button = document.getElementById("retrySection");
         if (button) button.addEventListener("click", function () {
-          app.dashboard = null;
+          if (view === "analytics") app.analytics = null;
+          if (view === "phrases") app.phraseLibrary = null;
+          if (view === "settings") app.systemStatus = null;
           activateView(view);
         });
       }
@@ -1952,23 +2148,13 @@
       }
 
       function renderPhraseList() {
-        if (!app.dashboard) {
+        if (!app.phraseLibrary) {
           el.phrasesMount.innerHTML = '<div class="chart-empty">正在载入搭配库…</div>';
           return;
         }
-        var queryValue = String(el.phraseSearch.value || "").trim().toLowerCase();
-        var filter = el.phraseFilter.value || "all";
-        var phrases = (app.dashboard.phrases || []).filter(function (phrase) {
-          var searchable = [phrase.id, phrase.chunk, phrase.chineseCue, phrase.topic].join(" ").toLowerCase();
-          if (queryValue && searchable.indexOf(queryValue) === -1) return false;
-          if (filter === "due") return phrase.dueState === "overdue" || phrase.dueState === "due_today";
-          if (filter === "hard") return Boolean(phrase.hard);
-          if (filter === "mastered") return phrase.status === "mastered";
-          if (filter === "learning") return phrase.status !== "mastered" && phrase.status !== "suspended";
-          if (filter === "paused") return phrase.status === "suspended";
-          return true;
-        });
-        el.phraseCount.textContent = phrases.length + " / " + (app.dashboard.phrases || []).length + " 个";
+        var phrases = app.phraseLibrary.phrases || [];
+        el.phraseCount.textContent = Number(app.phraseLibrary.filteredTotal || 0) + " / " +
+          Number(app.phraseLibrary.total || 0) + " 个";
         el.phrasesMount.innerHTML = phrases.map(function (phrase) {
           var tone = phrase.hard ? "warn" :
             phrase.dueState === "overdue" ? "bad" :
@@ -1985,11 +2171,19 @@
             '</p></span>' +
             '<span class="status-chip ' + tone + '">' + escapeHtml(status) + '</span>' +
           '</button>';
-        }).join("");
+        }).join("") + (app.phraseLibrary.hasMore
+          ? '<div class="state-actions"><button id="loadMorePhrases" class="btn secondary" type="button">加载更多</button></div>'
+          : '');
         if (!phrases.length) {
           el.phrasesMount.innerHTML = '<div class="chart-empty">没有符合当前搜索和筛选条件的搭配。</div>';
         }
         attachPhraseLinks(el.phrasesMount);
+        var more = document.getElementById("loadMorePhrases");
+        if (more) more.addEventListener("click", function () {
+          more.disabled = true;
+          more.textContent = "正在载入…";
+          loadPhraseLibrary("more").catch(function (error) { renderSectionError("phrases", error); });
+        });
       }
 
       function attachPhraseLinks(container) {
@@ -2627,7 +2821,7 @@
         app.dirty[question.position] = true;
         app.localVersions[question.position] = Number(app.localVersions[question.position] || 0) + 1;
         persistDraftBackup(question.position, { adoptedCloud: false });
-        setSaveState("未保存", "warn");
+        setSaveState("已保存在本机", "good");
         updateProgress();
         updateNumberNavigation();
         window.clearTimeout(app.timers[question.position]);
@@ -2675,8 +2869,8 @@
         }
         var answer = app.answers[position] || "";
         var localVersion = Number(app.localVersions[position] || 0);
-        setSaveState("保存中…", "warn");
-        var request = enqueueDraftWrite("saveDraftV4", [
+        setSaveState("正在同步云端…", "warn");
+        var request = enqueueDraftSave([
           app.payload.sessionId,
           position,
           answer,
@@ -2862,14 +3056,14 @@
           return;
         }
         if (Object.keys(app.savePromises).length) {
-          setSaveState("保存中…", "warn");
+          setSaveState("正在同步云端…", "warn");
           return;
         }
         if (Object.keys(app.dirty).some(function (position) { return app.dirty[position]; })) {
-          setSaveState("未保存", "warn");
+          setSaveState("已保存在本机", "good");
           return;
         }
-        setSaveState("已保存", "good");
+        setSaveState("云端已同步", "good");
       }
 
       function saveCurrent(silent) {
@@ -2918,6 +3112,7 @@
           return;
         }
         window.clearTimeout(app.timers[question.position]);
+        if (app.pendingDraftBatch[question.position]) flushDraftBatch();
         var pendingSave = app.savePromises[question.position] || Promise.resolve();
         // Reveal is a local feedback state. Cloud locking continues in the
         // background and remains the only per-question submission gate.
@@ -3320,17 +3515,12 @@
       }
 
       function renderExtraPracticeSection(practices) {
-        if (!practices.length) return "";
-        var reinforcement = practices.filter(function (item) {
-          return item.practiceType === "reinforcement";
-        });
         var sentence = practices.filter(function (item) {
           return item.practiceType === "sentence_challenge";
         });
-        return renderExtraPracticeGroup("错误强化", reinforcement,
-          "正式题每错一题就有一题，不设总上限；只强化一次，不递归，不影响 SRS。") +
-          renderExtraPracticeGroup("完整句迁移挑战", sentence,
-            "只在稳定掌握后出现，位于正式题组之外，不影响 SRS。");
+        if (!sentence.length) return "";
+        return renderExtraPracticeGroup("完整句迁移挑战", sentence,
+          "只在稳定掌握后出现，位于正式题组之外，不影响 SRS。");
       }
 
       function renderExtraPracticeGroup(title, practices, note) {
@@ -3339,9 +3529,7 @@
           '<p class="fine-print">' + escapeHtml(note) + '</p><div class="extra-practice-list">' +
           practices.map(function (practice) {
             var completed = practice.status === "completed";
-            var label = practice.practiceType === "reinforcement"
-              ? "只填写完整目标词块"
-              : "写一个完整英文句子";
+            var label = "写一个完整英文句子";
             return '<article class="extra-practice">' +
               '<h4>源自正式题第 ' + Number(practice.sourcePosition) + ' 题 · ' + label + '</h4>' +
               '<p>' + escapeHtml(practice.promptZh || "") + '</p>' +

@@ -4,9 +4,12 @@ function getReviewBootstrapV4() {
   assertAuthorizedV4_();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   assertContractV4_(ss);
-  ensureDynamicQuestionCountSchemaV4_(ss);
   var today = new Date();
-  var ensured = buildDailyQueueV4ForDate_(today);
+  var todayKey = formatDateKey_(today);
+  var existingQueue = findQueueForDateV4_(ss, todayKey);
+  var canUseExisting = existingQueue &&
+    ['presented', 'committed'].indexOf(existingQueue.status) !== -1;
+  var ensured = canUseExisting ? null : buildDailyQueueV4ForDate_(today);
   if (ensured && ensured.state === 'candidate_shortfall') {
     var shortfallResponse = {
       ok: true,
@@ -21,7 +24,7 @@ function getReviewBootstrapV4() {
       readyCandidateCount: ensured.readyCandidateCount,
       chatGptManualUrl: ER4.chatGptManualUrl
     };
-    var shortfallQueue = findQueueForDateV4_(ss, formatDateKey_(today));
+    var shortfallQueue = findQueueForDateV4_(ss, todayKey);
     if (shortfallQueue && shortfallQueue.status === 'presented') {
       var shortfallComposition = activeQueueCompositionV4_(shortfallQueue);
       shortfallResponse.queueMeta = {
@@ -41,7 +44,7 @@ function getReviewBootstrapV4() {
     }
     return shortfallResponse;
   }
-  var queue = findQueueForDateV4_(ss, formatDateKey_(today));
+  var queue = canUseExisting ? existingQueue : findQueueForDateV4_(ss, todayKey);
   if (!queue) {
     return {
       ok: true,

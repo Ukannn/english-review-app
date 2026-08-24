@@ -1,0 +1,51 @@
+{
+  "bundles": [
+    {
+      "output": "代码.js",
+      "parts": [
+        "src/server/config/daily-queue-v3-contract.gs",
+        "src/server/setup/daily-queue-v3-entrypoints.gs",
+        "src/server/queue/daily-queue-v3-planning.gs",
+        "src/server/setup/daily-queue-v3-sheets.gs",
+        "src/server/maintenance/daily-queue-v3-operations.gs",
+        "src/server/queue/daily-queue-v3-utilities.gs"
+      ]
+    },
+    {
+      "output": "ReviewWebAppV4.js",
+      "parts": [
+        "src/server/config/review-contract.gs",
+        "src/server/setup/review-setup.gs",
+        "src/server/queue/review-queue-v4.gs",
+        "src/server/session/review-session.gs",
+        "src/server/drafts/draft-service.gs",
+        "src/server/grading/submission-service.gs",
+        "src/server/context/context-intake.gs",
+        "src/server/dashboard/learning-dashboard.gs",
+        "src/server/maintenance/rollback-and-self-test.gs"
+      ]
+    },
+    {
+      "output": "ReviewApp.html",
+      "parts": [
+        "src/ui/shell/document-start.html",
+        "src/ui/styles/review-app.css",
+        "src/ui/shell/application-body.html",
+        "src/ui/client/review-app.js",
+        "src/ui/shell/document-end.html"
+      ]
+    },
+    {
+      "output": "DailyTaskPrompt.html",
+      "parts": [
+        "prompts/daily-task.txt"
+      ]
+    },
+    {
+      "output": "appsscript.json",
+      "parts": [
+        "src/appsscript.json"
+      ]
+    }
+  ]
+}

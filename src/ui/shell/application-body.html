@@ -1,0 +1,228 @@
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark" aria-hidden="true">E</div>
+        <div>
+          <h1>英语搭配复习</h1>
+          <p>逐题即时标准答案 · 按实际完成数统一批改</p>
+        </div>
+      </div>
+      <nav class="app-nav" aria-label="主要导航">
+        <button class="nav-link" type="button" data-view="today">今日学习</button>
+        <button class="nav-link" type="button" data-view="intake">语料箱</button>
+        <button class="nav-link" type="button" data-view="analytics">学习分析</button>
+        <button class="nav-link" type="button" data-view="phrases">我的搭配</button>
+        <button class="nav-link" type="button" data-view="settings">系统状态</button>
+      </nav>
+      <div id="saveState" class="save-state" aria-live="polite"></div>
+    </header>
+
+    <section id="todayView" class="view">
+      <div id="todayStrip" class="today-strip hidden" aria-live="polite"></div>
+      <section id="progressWrap" class="progress-wrap" aria-label="答题进度">
+        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+        <div id="progressLabel" class="progress-label">0 / —</div>
+      </section>
+
+      <section id="quizLayout" class="quiz-layout hidden">
+        <aside class="navigator" aria-label="题号导航">
+          <div class="navigator-title"><span>题目</span><span id="answeredCount">0 / —</span></div>
+          <div id="desktopNumbers" class="number-grid"></div>
+        </aside>
+
+        <div>
+          <nav id="mobileNumbers" class="mobile-navigator" aria-label="题号导航"></nav>
+          <article class="question-card">
+            <div class="question-meta">
+              <span id="questionEyebrow" class="eyebrow">第 1 题</span>
+              <span id="questionType" class="type-pill">回忆作答</span>
+            </div>
+            <h2 id="promptZh" class="prompt-zh"></h2>
+            <p id="promptEn" class="prompt-en"></p>
+            <label class="answer-label" for="answerBox">你的答案</label>
+            <textarea
+              id="answerBox"
+              class="answer-box"
+              maxlength="2000"
+              autocomplete="off"
+              autocapitalize="sentences"
+              spellcheck="true"
+              placeholder="用英语写下你的答案…"
+            ></textarea>
+            <section id="answerReveal" class="answer-reveal hidden" aria-live="polite">
+              <span>标准答案</span>
+              <p id="expectedAnswer"></p>
+            </section>
+            <div class="question-actions">
+              <button id="prevBtn" class="btn secondary" type="button" aria-label="上一题">←</button>
+              <div class="action-group">
+                <button id="revealBtn" class="btn primary" type="button">锁定并查看标准答案</button>
+                <button id="correctLockedBtn" class="btn secondary hidden" type="button">纠正我的答案</button>
+                <button id="nextBtn" class="btn secondary hidden" type="button">下一题</button>
+                <button id="submitBtn" class="btn primary hidden" type="button">检查并提交</button>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="stateMount"></section>
+    </section>
+
+    <section id="intakeView" class="view hidden">
+      <div class="page-head">
+        <div><h2>语料箱</h2><p>保存真实阅读中遇到的完整上下文，再把值得学习的表达整理成搭配。</p></div>
+        <div id="intakeFreshness" class="freshness"></div>
+      </div>
+      <div class="intake-grid">
+        <section class="intake-card">
+          <h3>新建语料</h3>
+          <p>粘贴完整句子或自然段。你可以标记多处不懂的内容，也可以不标记，让系统结合整段上下文判断。</p>
+          <label class="intake-field">
+            <span>英文原文（必填）</span>
+            <textarea id="contextRawText" maxlength="12000" placeholder="粘贴完整英文句子或自然段…"></textarea>
+          </label>
+          <div class="intake-actions">
+            <button id="startMarkingBtn" class="btn secondary" type="button">开始标记</button>
+            <button id="addSelectionBtn" class="btn secondary" type="button" disabled>标记为不懂</button>
+            <button id="clearSelectionsBtn" class="btn secondary" type="button" disabled>清除标记</button>
+          </div>
+          <div id="selectionWrap" class="selection-wrap hidden">
+            <div id="selectionSurface" class="selection-surface" tabindex="0" aria-label="选择并标记不懂的原文"></div>
+            <p class="intake-help">在上方原文里选中文字，再点“标记为不懂”。点击黄色标记可以取消；标记阶段原文会锁定，修改时请重新开始标记。</p>
+          </div>
+          <label class="intake-field">
+            <span>来源链接（可选）</span>
+            <input id="contextSourceUrl" type="url" maxlength="2048" placeholder="https://…">
+          </label>
+          <label class="intake-field">
+            <span>来源标题（可选）</span>
+            <input id="contextSourceTitle" type="text" maxlength="300" placeholder="文章或页面标题">
+          </label>
+          <label class="intake-field">
+            <span>我的疑问或备注（可选）</span>
+            <textarea id="contextUserNote" class="compact" maxlength="2000" placeholder="例如：单词都认识，但整句看不懂。"></textarea>
+          </label>
+          <div class="intake-actions">
+            <button id="saveContextBtn" class="btn primary" type="button">保存到语料箱</button>
+            <button id="resetContextBtn" class="btn secondary" type="button">清空</button>
+          </div>
+          <p id="intakeFormStatus" class="intake-help" aria-live="polite">原文保存后不会被 AI 改写覆盖。</p>
+        </section>
+        <section class="intake-card">
+          <h3>整理语料</h3>
+          <p>点击按钮会复制完整的一次性整理指令并打开关联 Work 对话。到新页面粘贴并发送；不再依赖每日定时任务，也不要只发送“整理语料”。</p>
+          <div id="intakeSummary" class="intake-summary"></div>
+          <div class="intake-actions" style="margin-bottom:14px">
+            <button id="copyContextCommandBtn" class="btn primary" type="button">准备整理并打开对话</button>
+            <button id="refreshContextBtn" class="btn secondary" type="button">刷新结果</button>
+          </div>
+          <div class="context-tabs" role="tablist" aria-label="语料整理状态">
+            <button id="unprocessedContextTab" class="context-tab" type="button" role="tab" aria-selected="true" aria-controls="unprocessedContextPanel">待整理 <span id="unprocessedContextCount">0</span></button>
+            <button id="reviewContextTab" class="context-tab" type="button" role="tab" aria-selected="false" aria-controls="reviewContextPanel">待确认 <span id="reviewContextCount">0</span></button>
+            <button id="archivedContextTab" class="context-tab" type="button" role="tab" aria-selected="false" aria-controls="archivedContextPanel">已归档 <span id="archivedContextCount">0</span></button>
+          </div>
+          <div id="unprocessedContextPanel" role="tabpanel" aria-labelledby="unprocessedContextTab">
+            <div id="contextList" class="context-list"></div>
+          </div>
+          <div id="reviewContextPanel" class="hidden" role="tabpanel" aria-labelledby="reviewContextTab">
+            <div id="reviewContextList" class="context-list"></div>
+          </div>
+          <div id="archivedContextPanel" class="hidden" role="tabpanel" aria-labelledby="archivedContextTab">
+            <div id="archivedContextList" class="context-list"></div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="analyticsView" class="view hidden">
+      <div class="page-head">
+        <div><h2>学习分析</h2><p>查看答题正确率、复习安排和常见错误。</p></div>
+        <div id="analyticsFreshness" class="freshness"></div>
+      </div>
+      <div id="analyticsMount"></div>
+    </section>
+
+    <section id="phrasesView" class="view hidden">
+      <div class="page-head">
+        <div><h2>我的搭配</h2><p>搜索搭配库，查看每个搭配的复习进度和学习记录。</p></div>
+        <div><button class="btn secondary" type="button" data-view="intake">＋ 收集语料</button><div id="phraseCount" class="freshness"></div></div>
+      </div>
+      <div class="filter-row">
+        <input id="phraseSearch" class="filter-input" type="search" placeholder="搜索英文搭配、中文提示或主题…">
+        <select id="phraseFilter" class="filter-select" aria-label="搭配筛选">
+          <option value="all">全部搭配</option>
+          <option value="due">今日到期 / 逾期</option>
+          <option value="hard">困难项</option>
+          <option value="mastered">已掌握</option>
+          <option value="learning">学习中</option>
+          <option value="paused">已暂停</option>
+        </select>
+      </div>
+      <div id="phrasesMount" class="phrase-list"></div>
+    </section>
+
+    <section id="settingsView" class="view hidden">
+      <div class="page-head">
+        <div><h2>系统状态</h2><p>查看今日题目、批改和学习记录的保存情况。</p></div>
+        <div id="settingsFreshness" class="freshness"></div>
+      </div>
+      <div id="settingsMount"></div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="主要导航">
+    <button class="nav-link" type="button" data-view="today">今日学习</button>
+    <button class="nav-link" type="button" data-view="intake">语料箱</button>
+    <button class="nav-link" type="button" data-view="analytics">学习分析</button>
+    <button class="nav-link" type="button" data-view="phrases">我的搭配</button>
+    <button class="nav-link" type="button" data-view="settings">系统状态</button>
+  </nav>
+
+  <div id="phraseDetailModal" class="detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="phraseDetailTitle">
+    <article id="phraseDetailSheet" class="detail-sheet"></article>
+  </div>
+
+  <div id="promptCopyModal" class="detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="promptCopyTitle">
+    <article class="detail-sheet">
+      <button id="closePromptCopy" class="btn secondary detail-close" type="button" aria-label="关闭">×</button>
+      <h2 id="promptCopyTitle">复制完整提示词</h2>
+      <p id="promptCopyHelp">浏览器没有允许自动复制。你可以再次复制，或在下方全选后按 ⌘C。</p>
+      <textarea id="promptCopyArea" class="prompt-copy-area" readonly spellcheck="false"></textarea>
+      <div class="prompt-copy-actions">
+        <button id="retryPromptCopy" class="btn primary" type="button">复制并打开 ChatGPT</button>
+        <a id="openPromptTarget" class="btn secondary" href="https://chatgpt.com/" target="_blank" rel="noopener">只打开 ChatGPT</a>
+      </div>
+    </article>
+  </div>
+
+  <div id="draftConflictModal" class="detail-modal hidden" role="dialog" aria-modal="true" aria-labelledby="draftConflictTitle">
+    <article class="detail-sheet">
+      <button id="closeDraftConflict" class="btn secondary detail-close" type="button" aria-label="暂不处理">×</button>
+      <h2 id="draftConflictTitle">发现两个不同的答案</h2>
+      <p id="draftConflictHelp">系统不会自动覆盖或锁定任何一个答案。请先对照，再明确选择。</p>
+      <div id="draftConflictMeta" class="conflict-meta"></div>
+      <div class="conflict-grid">
+        <label class="conflict-copy">
+          <span>当前页面的答案（可修改）</span>
+          <textarea id="draftConflictLocal" maxlength="2000" spellcheck="true"></textarea>
+        </label>
+        <label class="conflict-copy">
+          <span>云端草稿（只读）</span>
+          <textarea id="draftConflictCloud" readonly spellcheck="false"></textarea>
+        </label>
+      </div>
+      <div class="conflict-actions">
+        <button id="keepLocalDraft" class="btn primary" type="button">保留当前答案并更新云端</button>
+        <button id="useCloudDraft" class="btn secondary" type="button">使用云端草稿</button>
+        <button id="dismissDraftConflict" class="btn secondary" type="button">暂不处理</button>
+      </div>
+    </article>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>

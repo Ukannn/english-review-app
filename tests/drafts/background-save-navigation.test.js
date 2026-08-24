@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'ReviewApp.html'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '..', '..', 'dist', 'ReviewApp.html'), 'utf8');
 const revealStart = source.indexOf('function revealCurrentAnswer()');
 const revealEnd = source.indexOf('function reviewBeforeSubmit()', revealStart);
 

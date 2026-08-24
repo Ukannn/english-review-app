@@ -36,13 +36,21 @@ The repository source is split by responsibility, but `scripts/apps-script-bundl
 
 Draft writes use revision checks, Answer Hash, append-only history, a short `tryLock(1000)` path and machine-readable `BUSY_RETRY`. Draft/history writes are flushed and read back together before success is returned.
 
-## Grading, SRS and extra practice
+## Grading, SRS and transfer practice
 
 - All formal questions must be cloud-locked before batch submission.
 - ChatGPT grading is staged separately; Apps Script validates identity, coverage and frozen commit plans before writing formal tables.
 - Review Log, Error Log, Phrase Bank and Session Log are the formal analytics sources. Queue, Questions, Grade Inbox and Commit Journal describe planning and pipeline state.
 - Commit Journal and exact readback make submission idempotent and recoverable.
-- Error reinforcement and full-sentence challenges are additional practice. Their saves use the same serialized queue and busy retry contract but do not advance SRS a second time.
+- Error reinforcement is retired for new grading batches. Historical reinforcement rows remain intact but are no longer shown in the result UI.
+- Full-sentence challenges remain additional practice. Their saves use the same serialized queue and busy retry contract and do not advance SRS a second time.
+
+## Performance contract
+
+- The HTML shell performs no Sheet migration or formula repair; setup owns schema changes.
+- Analytics, phrase-library and system-status payloads load independently and use short-lived, disposable caches.
+- Context inbox reads are lock-free and read-only; status repair occurs only in explicit write workflows.
+- Answer input is backed up locally immediately. Cloud drafts are coalesced into bounded batches, while reveal locking and final submission retain exact revision/readback gates.
 
 ## Context intake
 

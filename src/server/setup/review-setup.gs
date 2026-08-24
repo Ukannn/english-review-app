@@ -1,8 +1,5 @@
 
 function doGet(e) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  assertContractV4_(ss);
-  ensureAdaptiveQuestionEngineSchemaV4_(ss);
   var output = HtmlService.createTemplateFromFile('ReviewApp');
   output.demoMode = Boolean(e && e.parameter && e.parameter.demo === '1');
   var requestedView = e && e.parameter ? stringValue_(e.parameter.view).toLowerCase() : '';
@@ -507,7 +504,7 @@ function updateConfigV4_(ss) {
     ['answer_draft_history_sheet', ER4.draftHistorySheet, 'Append-only before/after evidence for autosave, reveal lock, locked-answer correction, and submission freeze.'],
     ['answer_reveal_flow', 'lock one answer → reveal its stored expected answer → continue', 'A session may be submitted once locked answers reach its Adjusted Target; extra locked answers are all graded and recorded.'],
     ['grade_inbox_sheet', ER4.gradeSheet, 'ChatGPT grading staging only; no formal SRS writes.'],
-    ['error_reinforcement_policy', 'one per formal error; unlimited; non-recursive; Affects SRS?=no', 'Every forgotten/difficult formal attempt receives one separate reinforcement question.'],
+    ['error_reinforcement_policy', 'retired', 'New grading batches do not generate error-reinforcement questions; historical rows remain unchanged.'],
     ['sentence_challenge_policy', 'mastered at Review Stage 6+; outside formal set; Affects SRS?=no', 'Full-sentence transfer is recorded separately and never changes the formal result.'],
     ['context_inbox_sheet', ER4.contextSheet, 'Immutable user-captured source text and validated UTF-16 selection spans.'],
     ['context_candidate_inbox_sheet', ER4.contextCandidateSheet, 'ChatGPT context-processing staging only; Candidate Bank remains Apps Script-only.'],
@@ -567,7 +564,7 @@ function updateReadmeV4_(ss) {
     ['English Review System', 'Contract', 'v4.0 — responsive Web App with ChatGPT question/grading staging and deterministic Apps Script commits.'],
     ['Workflow', 'Candidate Bank → Daily Queue → Session Questions → per-question answer lock/reveal → batch submit → Grade Inbox → verified logs/state → Session Log', 'Google Sheet remains the single source of truth.'],
     ['Phrase Bank', 'Canonical phrase master and current SRS state', 'Formula columns I/K/L remain protected from ordinary writes.'],
-    ['Review Log', 'Append-only primary/reinforcement attempts', 'Every primary question uses one stable Attempt ID.'],
+    ['Review Log', 'Append-only primary/sentence-transfer attempts plus retained historical reinforcement', 'Every primary question uses one stable Attempt ID.'],
     ['Error Log', 'Append-only linked error occurrences', 'References Phrase ID + Session ID + Attempt ID.'],
     ['Candidate Bank', 'Durable master inventory for all candidate chunks', 'Personal sources are selected first; AI fallback is allowed only after personal inventory and intake backlog are exhausted.'],
     ['Context Inbox', 'Immutable real-world source material', 'Raw Text and UTF-16 selection offsets are Apps Script-validated and never overwritten by AI.'],

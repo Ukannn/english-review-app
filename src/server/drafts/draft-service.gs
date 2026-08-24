@@ -54,19 +54,26 @@ function draftHistoryIdV4_(entry) {
 }
 
 function stageDraftHistoriesV4_(ss, entries) {
-  var sheet = ensureDraftHistorySheetV4_(ss);
-  var values = sheet.getDataRange().getValues();
-  var headers = headerMap_(values[0]);
-  var existing = {};
-  for (var i = 1; i < values.length; i++) {
-    existing[stringValue_(values[i][headers['History ID']])] = i + 1;
-  }
+  var sheet = requireSheet_(ss, ER4.draftHistorySheet);
+  var headers = headerMap_(
+    sheet.getRange(1, 1, 1, ER4_DRAFT_HISTORY_HEADERS.length).getValues()[0]
+  );
+  requireHeaders_(headers, ER4_DRAFT_HISTORY_HEADERS, ER4.draftHistorySheet);
   var newRows = [];
   var results = [];
   entries.forEach(function(entry) {
     var historyId = draftHistoryIdV4_(entry);
-    if (existing[historyId]) {
-      results.push({ historyId: historyId, rowNumber: existing[historyId], duplicate: true });
+    var existingRow = 0;
+    if (sheet.getLastRow() > 1) {
+      var found = sheet
+        .getRange(2, headers['History ID'] + 1, sheet.getLastRow() - 1, 1)
+        .createTextFinder(historyId)
+        .matchEntireCell(true)
+        .findNext();
+      existingRow = found ? found.getRow() : 0;
+    }
+    if (existingRow) {
+      results.push({ historyId: historyId, rowNumber: existingRow, duplicate: true });
       return;
     }
     var client = normalizeDraftClientInfoV4_(entry.clientInfo);
@@ -92,7 +99,6 @@ function stageDraftHistoriesV4_(ss, entries) {
         ER4.contractVersion
       ]
     });
-    existing[historyId] = -1;
   });
   if (!newRows.length) {
     return {
@@ -217,6 +223,42 @@ function isDraftRevealedV4_(draft, sessionId) {
   );
 }
 
+function saveDraftBatchV4(sessionId, drafts, clientInfo) {
+  drafts = Array.isArray(drafts) ? drafts : [];
+  if (!drafts.length || drafts.length > 20) {
+    throw new Error('Draft batch must contain 1–20 items.');
+  }
+  var seen = {};
+  drafts.forEach(function(item) {
+    var position = Number(item && item.position);
+    if (!Number.isInteger(position) || seen[position]) {
+      throw new Error('Draft batch positions must be unique valid integers.');
+    }
+    seen[position] = true;
+  });
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return draftBusyResponseV4_();
+  try {
+    var items = [];
+    for (var i = 0; i < drafts.length; i++) {
+      var draft = drafts[i] || {};
+      var result = saveDraftV4(
+        sessionId,
+        Number(draft.position),
+        draft.answer,
+        Number(draft.expectedRevision) || 0,
+        clientInfo,
+        true
+      );
+      result.clientVersion = Number(draft.clientVersion) || 0;
+      items.push(result);
+    }
+    return { ok: true, items: items };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function expectedAnswerForQuestionRowV4_(row, headers, position) {
   return parseJsonArrayV4_(
     row[headers['Expected Answers JSON']],
@@ -225,11 +267,14 @@ function expectedAnswerForQuestionRowV4_(row, headers, position) {
   )[0];
 }
 
-function saveDraftV4(sessionId, position, answer, expectedRevision, clientInfo) {
+function saveDraftV4(sessionId, position, answer, expectedRevision, clientInfo, lockHeld) {
   assertV4Enabled_();
   assertAuthorizedV4_();
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(1000)) return draftBusyResponseV4_();
+  var lock = null;
+  if (!lockHeld) {
+    lock = LockService.getScriptLock();
+    if (!lock.tryLock(1000)) return draftBusyResponseV4_();
+  }
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     assertContractV4_(ss);
@@ -377,7 +422,7 @@ function saveDraftV4(sessionId, position, answer, expectedRevision, clientInfo) 
       historyId: history.historyId
     };
   } finally {
-    lock.releaseLock();
+    if (lock) lock.releaseLock();
   }
 }
 

@@ -4,7 +4,7 @@
 
 English Review is a single-user Google Apps Script application backed by Google Sheets. The Web App, review page, Dashboard, context inbox and system status are views in one `ReviewApp.html`, not separate deployments.
 
-Google Sheets is the formal fact source. Browser state, caches and generated indexes are disposable helpers and must never silently replace Sheet state.
+Google Sheets is the formal fact source. Browser recovery is a deliberate same-device buffer for an unfinished answer tail; it never becomes formal SRS state and is deleted after successful submission. Caches and generated indexes remain disposable helpers.
 
 ## Runtime layers
 
@@ -26,21 +26,23 @@ The repository source is split by responsibility, but `scripts/apps-script-bundl
 
 ## Answer and draft state
 
-`revealed`, `syncing` and `locked` are separate states:
+`revealed`, `syncing` and `locked` remain separate states:
 
-- revealing displays the preloaded standard answer immediately;
-- the write is serialized through the page-level draft queue;
-- `locked` becomes true only after the atomic server operation succeeds;
-- a revealed but unlocked answer blocks final submission and remains retryable;
-- conflicts preserve the complete page answer by default and require an explicit user choice before loading cloud content.
+- `revealed` freezes the answer in persistent local storage and displays the preloaded standard answer immediately, with no cloud request for one question;
+- every five revealed-but-unlocked answers share one serialized `checkpointAnswersV4` request;
+- `syncing` covers the five-answer batch and `locked` becomes true only after every checkpoint row and history row is read back;
+- a tail shorter than five stays recoverable on the same device and is included atomically in final submission;
+- completed checkpoints are recoverable on another device; conflicts preserve the complete local answer and require an explicit choice.
 
-Draft writes use revision checks, Answer Hash, append-only history, a short `tryLock(1000)` path and machine-readable `BUSY_RETRY`. Draft/history writes are flushed and read back together before success is returned.
+Checkpoint writes validate the whole batch before mutation, use revision checks, per-answer reveal hashes, append-only history, a short `tryLock(1000)` path and machine-readable `BUSY_RETRY`. Draft/history writes are flushed and read back together before success is returned. Legacy single-answer APIs remain available for v32 rollback compatibility and explicit conflict correction.
 
 ## Grading, SRS and transfer practice
 
-- All formal questions must be cloud-locked before batch submission.
-- ChatGPT grading is staged separately; Apps Script validates identity, coverage and frozen commit plans before writing formal tables.
-- Review Log, Error Log, Phrase Bank and Session Log are the formal analytics sources. Queue, Questions, Grade Inbox and Commit Journal describe planning and pipeline state.
+- All formal questions must be revealed locally before batch submission; the final call writes any unchecked tail and freezes one complete batch hash.
+- Apps Script materializes one immutable `Grade Requests` row per submitted answer. It contains the exact observed answer, question, expected/accepted answers, semantic boundary, rubric and pre-grade Review Stage under snapshot contract 1.0.
+- ChatGPT reads only `Grade Requests` for grading and stages an exact `Observed Answer` echo in Grade Inbox. Apps Script, not ChatGPT, fills the authoritative Answer Hash.
+- Exact accepted answers cannot receive `forgotten` or `difficult`; positive grades for non-exact answers require user confirmation.
+- Review Log, Error Log, Phrase Bank and Session Log are the formal analytics sources. Queue, Questions, Grade Requests, Grade Inbox and Commit Journal describe planning and pipeline state.
 - Commit Journal and exact readback make submission idempotent and recoverable.
 - Error reinforcement is retired for new grading batches. Historical reinforcement rows remain intact but are no longer shown in the result UI.
 - Full-sentence challenges remain additional practice. Their saves use the same serialized queue and busy retry contract and do not advance SRS a second time.
@@ -50,7 +52,7 @@ Draft writes use revision checks, Answer Hash, append-only history, a short `try
 - The HTML shell performs no Sheet migration or formula repair; setup owns schema changes.
 - Analytics, phrase-library and system-status payloads load independently and use short-lived, disposable caches.
 - Context inbox reads are lock-free and read-only; status repair occurs only in explicit write workflows.
-- Answer input is backed up locally immediately. Cloud drafts are coalesced into bounded batches, while reveal locking and final submission retain exact revision/readback gates.
+- Answer input and reveal state are persisted locally immediately. Cloud traffic is one request per five completed questions, while final submission retains exact hash, idempotency and readback gates.
 
 ## Context intake
 

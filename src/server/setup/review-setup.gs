@@ -61,6 +61,7 @@ function verifyReviewWebAppV4Setup_() {
     [ER4.questionSheet, ER4_QUESTION_HEADERS],
     [ER4.draftSheet, ER4_DRAFT_HEADERS],
     [ER4.draftHistorySheet, ER4_DRAFT_HISTORY_HEADERS],
+    [ER4.gradeRequestSheet, ER4_GRADE_REQUEST_HEADERS],
     [ER4.gradeSheet, ER4_GRADE_HEADERS],
     [ER4.journalSheet, ER4_JOURNAL_HEADERS],
     [ER4.contextSheet, ER4_CONTEXT_HEADERS],
@@ -122,9 +123,15 @@ function ensureV4DataSurfaces_(ss) {
   );
   ensureV4Sheet_(
     ss,
+    ER4.gradeRequestSheet,
+    ER4_GRADE_REQUEST_HEADERS,
+    [190, 150, 240, 70, 95, 105, 420, 300, 300, 300, 300, 280, 320, 100, 130, 155, 135, 105]
+  );
+  ensureV4Sheet_(
+    ss,
     ER4.gradeSheet,
     ER4_GRADE_HEADERS,
-    [190, 150, 240, 70, 95, 105, 100, 340, 150, 90, 320, 240, 180, 120, 115, 155, 420, 105, 520]
+    [190, 150, 240, 70, 95, 105, 100, 340, 150, 90, 320, 240, 180, 120, 115, 155, 420, 105, 520, 420]
   );
   ensureV4Sheet_(
     ss,
@@ -157,13 +164,16 @@ function ensureV4DataSurfaces_(ss) {
   gradeSheet.hideColumns(11, 2);
   gradeSheet.hideColumns(17, 1);
   gradeSheet.hideColumns(19, 1);
+  var gradeRequestSheet = requireSheet_(ss, ER4.gradeRequestSheet);
+  gradeRequestSheet.hideColumns(10, 4);
 
   applyListValidationV4_(questionSheet, 6, ER4_QUESTION_TYPES);
   applyListValidationV4_(questionSheet, 17, ['staged', 'ready', 'bound', 'deferred', 'rejected']);
   applyListValidationV4_(ER4Sheet_(ss, ER4.draftSheet), 9, ['draft', 'submitted', 'deferred']);
   applyListValidationV4_(ER4Sheet_(ss, ER4.draftHistorySheet), 11, [
-    'autosave', 'reveal_lock', 'replace_locked', 'submission_freeze'
+    'autosave', 'reveal_lock', 'checkpoint_lock', 'replace_locked', 'submission_freeze'
   ]);
+  applyListValidationV4_(gradeRequestSheet, 15, ['ready']);
   applyListValidationV4_(gradeSheet, 7, ER4_RESULTS);
   applyListValidationV4_(gradeSheet, 15, ['staged', 'needs_confirmation', 'accepted', 'rejected', 'committed']);
   applyListValidationV4_(ER4Sheet_(ss, ER4.contextSheet), 7, [
@@ -209,6 +219,7 @@ function contractVersionSurfacesV4_() {
     ER4.questionSheet,
     ER4.draftSheet,
     ER4.draftHistorySheet,
+    ER4.gradeRequestSheet,
     ER4.gradeSheet,
     ER4.journalSheet,
     ER4.contextSheet,
@@ -281,7 +292,12 @@ function ensureV4Sheet_(ss, name, headers, widths) {
   widths.forEach(function(width, index) {
     sheet.setColumnWidth(index + 1, width);
   });
-  if (!sheet.getFilter()) {
+  var filter = sheet.getFilter();
+  if (filter && filter.getRange().getNumColumns() !== headers.length) {
+    filter.remove();
+    filter = null;
+  }
+  if (!filter) {
     sheet.getRange(1, 1, sheet.getMaxRows(), headers.length).createFilter();
   }
   return sheet;
@@ -500,9 +516,12 @@ function updateConfigV4_(ss) {
     ['grading_trigger_command', '批改 in the question conversation; standalone grading prompt only as fallback', 'ChatGPT resolves exactly one awaiting_chatgpt submission; the user never types a Session ID.'],
     ['question_staging_sheet', ER4.questionSheet, 'AI-authored question batch; this single-user app preloads answers into browser memory but does not render them before reveal.'],
     ['adaptive_question_policy', 'stage + latest error + context rotation', 'Formal prompts declare component-or-chunk answer scope, never require a full sentence, and reject exact historical prompt reuse.'],
-    ['answer_draft_sheet', ER4.draftSheet, 'Versioned server drafts, per-question reveal locks, and frozen batch snapshots.'],
-    ['answer_draft_history_sheet', ER4.draftHistorySheet, 'Append-only before/after evidence for autosave, reveal lock, locked-answer correction, and submission freeze.'],
-    ['answer_reveal_flow', 'lock one answer → reveal its stored expected answer → continue', 'A session may be submitted once locked answers reach its Adjusted Target; extra locked answers are all graded and recorded.'],
+    ['answer_draft_sheet', ER4.draftSheet, 'Five-answer server checkpoints and final frozen batch snapshots.'],
+    ['answer_draft_history_sheet', ER4.draftHistorySheet, 'Append-only evidence for checkpoint locks, explicit corrections, and submission freeze.'],
+    ['answer_reveal_flow', 'freeze locally → reveal immediately → checkpoint each 5 → submit tail', 'One question creates no cloud write; final submit includes every locally frozen answer.'],
+    ['answer_local_recovery', 'persistent same-device browser storage until successful submission; stale backups expire after 7 days', 'Completed checkpoints are cross-device; an incomplete local tail is same-device only.'],
+    ['grade_request_sheet', ER4.gradeRequestSheet, 'Apps Script-owned immutable grading snapshot; ChatGPT reads this surface only.'],
+    ['grading_snapshot_contract', ER4.gradingSnapshotVersion, 'Independent trusted-grading snapshot contract; core data contract remains 4.0.'],
     ['grade_inbox_sheet', ER4.gradeSheet, 'ChatGPT grading staging only; no formal SRS writes.'],
     ['error_reinforcement_policy', 'retired', 'New grading batches do not generate error-reinforcement questions; historical rows remain unchanged.'],
     ['sentence_challenge_policy', 'mastered at Review Stage 6+; outside formal set; Affects SRS?=no', 'Full-sentence transfer is recorded separately and never changes the formal result.'],
@@ -562,7 +581,7 @@ function updateReadmeV4_(ss) {
   var migrationDate = new Date();
   sheet.getRange('A1:C18').setValues([
     ['English Review System', 'Contract', 'v4.0 — responsive Web App with ChatGPT question/grading staging and deterministic Apps Script commits.'],
-    ['Workflow', 'Candidate Bank → Daily Queue → Session Questions → per-question answer lock/reveal → batch submit → Grade Inbox → verified logs/state → Session Log', 'Google Sheet remains the single source of truth.'],
+    ['Workflow', 'Candidate Bank → Daily Queue → Session Questions → local reveal → five-answer checkpoints → batch submit → Grade Requests → Grade Inbox → verified logs/state → Session Log', 'Google Sheet remains the formal source of truth; local recovery only buffers unfinished answers.'],
     ['Phrase Bank', 'Canonical phrase master and current SRS state', 'Formula columns I/K/L remain protected from ordinary writes.'],
     ['Review Log', 'Append-only primary/sentence-transfer attempts plus retained historical reinforcement', 'Every primary question uses one stable Attempt ID.'],
     ['Error Log', 'Append-only linked error occurrences', 'References Phrase ID + Session ID + Attempt ID.'],

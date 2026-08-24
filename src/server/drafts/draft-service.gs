@@ -37,7 +37,7 @@ function ensureDraftHistorySheetV4_(ss) {
     [210, 150, 150, 70, 95, 105, 420, 90, 420, 90, 145, 180, 170, 155, 240, 105]
   );
   applyListValidationV4_(sheet, 11, [
-    'autosave', 'reveal_lock', 'replace_locked', 'submission_freeze'
+    'autosave', 'reveal_lock', 'checkpoint_lock', 'replace_locked', 'submission_freeze'
   ]);
   return sheet;
 }
@@ -265,6 +265,207 @@ function expectedAnswerForQuestionRowV4_(row, headers, position) {
     'Expected Answers JSON',
     position
   )[0];
+}
+
+/**
+ * Freezes a small local-first checkpoint in one server round trip.
+ *
+ * The browser calls this only after five answers have been revealed locally.
+ * All conflicts are validated before any row is changed, so a checkpoint is
+ * accepted as one snapshot or not accepted at all.
+ */
+function checkpointAnswersV4(sessionId, answers, clientInfo) {
+  assertV4Enabled_();
+  assertAuthorizedV4_();
+  answers = Array.isArray(answers) ? answers : [];
+  if (!answers.length || answers.length > ER4.checkpointSize) {
+    throw new Error('Checkpoint must contain 1–' + ER4.checkpointSize + ' answers.');
+  }
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return draftBusyResponseV4_();
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    assertContractV4_(ss);
+    sessionId = stringValue_(sessionId);
+    clientInfo = normalizeDraftClientInfoV4_(clientInfo);
+    if (findJournalBySessionV4_(ss, sessionId)) {
+      throw new Error('This answer batch is already frozen.');
+    }
+    var queue = findQueueBySessionV4_(ss, sessionId);
+    if (!queue || queue.status !== 'presented') {
+      throw new Error('Session is not open for answer checkpoints.');
+    }
+    var normalized = normalizeAnswerBatchV4_(answers, queue.plannedCount).map(function(item) {
+      var source = answers.filter(function(candidate) {
+        return Number(candidate && candidate.position) === item.position;
+      })[0] || {};
+      item.expectedRevision = Number(source.expectedRevision) || 0;
+      return item;
+    });
+    var questionBatch = validatePreparedQuestionBatchV4_(ss, queue);
+    if (!questionBatch) throw new Error('The prepared question batch is unavailable.');
+
+    var draftSheet = requireSheet_(ss, ER4.draftSheet);
+    var values = draftSheet.getDataRange().getValues();
+    var headers = headerMap_(values[0]);
+    requireHeaders_(headers, ER4_DRAFT_HEADERS, ER4.draftSheet);
+    var existingByPosition = {};
+    for (var i = 1; i < values.length; i++) {
+      if (stringValue_(values[i][headers['Session ID']]) !== sessionId) continue;
+      var existingPosition = Number(values[i][headers.Position]);
+      if (existingByPosition[existingPosition]) {
+        throw new Error('Answer Drafts contains a duplicate position for this Session.');
+      }
+      existingByPosition[existingPosition] = { rowNumber: i + 1, values: values[i] };
+    }
+
+    var prepared = [];
+    var conflicts = [];
+    normalized.forEach(function(item) {
+      var existing = existingByPosition[item.position] || null;
+      var current = existing ? {
+        answer: stringValue_(existing.values[headers.Answer]),
+        revision: Number(existing.values[headers.Revision]) || 0,
+        submitStatus: stringValue_(existing.values[headers['Submit Status']]).toLowerCase(),
+        submissionId: stringValue_(existing.values[headers['Submission ID']]),
+        answerHash: stringValue_(existing.values[headers['Answer Hash']]),
+        updatedAt: existing.values[headers['Updated At']]
+      } : {
+        answer: '', revision: 0, submitStatus: '', submissionId: '', answerHash: '', updatedAt: ''
+      };
+      var questionRow = questionBatch.rows.filter(function(candidate) {
+        return Number(candidate.values[questionBatch.headers.Position]) === item.position;
+      })[0];
+      if (!questionRow) throw new Error('Prepared question is missing at position ' + item.position + '.');
+      var expectedAnswer = expectedAnswerForQuestionRowV4_(
+        questionRow.values,
+        questionBatch.headers,
+        item.position
+      );
+      if (existing && isDraftRevealedV4_({
+        position: item.position,
+        answer: current.answer,
+        submitStatus: current.submitStatus,
+        submissionId: current.submissionId,
+        answerHash: current.answerHash
+      }, sessionId)) {
+        if (current.answer !== item.answer) {
+          var lockedConflict = draftConflictResponseV4_(
+            ss, sessionId, item.position, current.revision, current.answer, current.updatedAt
+          );
+          lockedConflict.locked = true;
+          conflicts.push(lockedConflict);
+          return;
+        }
+        prepared.push({
+          unchanged: true,
+          position: item.position,
+          answer: item.answer,
+          revision: current.revision,
+          expectedAnswer: expectedAnswer,
+          rowNumber: existing.rowNumber
+        });
+        return;
+      }
+      if (existing && (current.answerHash || current.submitStatus !== 'draft' || current.submissionId)) {
+        throw new Error('Draft ' + item.position + ' cannot enter a checkpoint from its current state.');
+      }
+      if (
+        (!existing && item.expectedRevision !== 0) ||
+        (existing && current.revision < item.expectedRevision) ||
+        (existing && current.revision > item.expectedRevision && current.answer !== item.answer)
+      ) {
+        conflicts.push(draftConflictResponseV4_(
+          ss, sessionId, item.position, current.revision, current.answer, current.updatedAt
+        ));
+        return;
+      }
+      var identity = identityForQueuePositionV4_(queue, item.position);
+      var nextRevision = current.revision + 1;
+      var revealHash = revealedDraftHashV4_(sessionId, item.position, item.answer);
+      prepared.push({
+        unchanged: false,
+        position: item.position,
+        answer: item.answer,
+        revision: nextRevision,
+        previousAnswer: current.answer,
+        previousRevision: current.revision,
+        expectedAnswer: expectedAnswer,
+        phraseId: identity.phraseId,
+        candidateId: identity.candidateId,
+        rowNumber: existing ? existing.rowNumber : 0,
+        revealHash: revealHash,
+        values: [
+          sessionId, queue.queueId, item.position, identity.phraseId, identity.candidateId,
+          item.answer, nextRevision, new Date(), 'draft', '', revealHash, ER4.contractVersion
+        ]
+      });
+    });
+    if (conflicts.length) {
+      return { ok: false, conflict: true, items: conflicts };
+    }
+
+    var newItems = prepared.filter(function(item) { return !item.unchanged && !item.rowNumber; });
+    var updatedItems = prepared.filter(function(item) { return !item.unchanged && item.rowNumber; });
+    updatedItems.forEach(function(item) {
+      draftSheet.getRange(item.rowNumber, 1, 1, ER4_DRAFT_HEADERS.length).setValues([item.values]);
+    });
+    if (newItems.length) {
+      var firstNewRow = draftSheet.getLastRow() + 1;
+      draftSheet.getRange(firstNewRow, 1, newItems.length, ER4_DRAFT_HEADERS.length)
+        .setValues(newItems.map(function(item) { return item.values; }));
+      newItems.forEach(function(item, index) { item.rowNumber = firstNewRow + index; });
+    }
+    var changed = prepared.filter(function(item) { return !item.unchanged; });
+    var stagedHistory = stageDraftHistoriesV4_(ss, changed.map(function(item) {
+      return {
+        sessionId: sessionId,
+        queueId: queue.queueId,
+        position: item.position,
+        phraseId: item.phraseId,
+        candidateId: item.candidateId,
+        previousAnswer: item.previousAnswer,
+        previousRevision: item.previousRevision,
+        nextAnswer: item.answer,
+        nextRevision: item.revision,
+        eventType: 'checkpoint_lock',
+        clientInfo: clientInfo,
+        answerHash: item.revealHash
+      };
+    }));
+    SpreadsheetApp.flush();
+    changed.forEach(function(item) {
+      var verified = draftSheet.getRange(item.rowNumber, 1, 1, ER4_DRAFT_HEADERS.length).getValues()[0];
+      if (
+        stringValue_(verified[headers['Session ID']]) !== sessionId ||
+        Number(verified[headers.Position]) !== item.position ||
+        Number(verified[headers.Revision]) !== item.revision ||
+        stringValue_(verified[headers.Answer]) !== item.answer ||
+        stringValue_(verified[headers['Answer Hash']]) !== item.revealHash
+      ) {
+        throw new Error('Checkpoint readback failed at position ' + item.position + '.');
+      }
+    });
+    verifyStagedDraftHistoriesV4_(stagedHistory);
+    return {
+      ok: true,
+      checkpointSize: prepared.length,
+      items: prepared.map(function(item) {
+        return {
+          ok: true,
+          position: item.position,
+          revision: item.revision,
+          answer: item.answer,
+          revealed: true,
+          locked: true,
+          expectedAnswer: item.expectedAnswer,
+          unchanged: item.unchanged
+        };
+      })
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function saveDraftV4(sessionId, position, answer, expectedRevision, clientInfo, lockHeld) {
@@ -806,6 +1007,7 @@ function submitSessionV4(sessionId, answers, clientInfo) {
       if (existingJournal.answerHash !== answerHash) {
         throw new Error('A different answer snapshot is already frozen for this Session.');
       }
+      ensureGradeRequestsForJournalV4_(ss, existingJournal);
       return responseForJournalV4_(existingJournal);
     }
 
@@ -826,16 +1028,18 @@ function submitSessionV4(sessionId, answers, clientInfo) {
     }
     normalized.forEach(function(item) {
       var stored = draftByPosition[item.position];
-      if (
-        !stored ||
+      if (stored && (
         stringValue_(stored[draftHeaders.Answer]) !== item.answer ||
         stringValue_(stored[draftHeaders['Submit Status']]).toLowerCase() !== 'draft' ||
         stringValue_(stored[draftHeaders['Submission ID']]) ||
-        stringValue_(stored[draftHeaders['Answer Hash']]) !==
-          revealedDraftHashV4_(sessionId, item.position, item.answer)
-      ) {
+        (
+          stringValue_(stored[draftHeaders['Answer Hash']]) &&
+          stringValue_(stored[draftHeaders['Answer Hash']]) !==
+            revealedDraftHashV4_(sessionId, item.position, item.answer)
+        )
+      )) {
         throw new Error(
-          'Answer ' + item.position + ' must match its server-locked reveal snapshot.'
+          'Answer ' + item.position + ' conflicts with its latest server checkpoint.'
         );
       }
     });
@@ -873,7 +1077,7 @@ function submitSessionV4(sessionId, answers, clientInfo) {
     });
     appendDraftHistoriesV4_(ss, normalized.map(function(item) {
       var identity = identityForQueuePositionV4_(queue, item.position);
-      var previous = draftByPosition[item.position];
+      var previous = draftByPosition[item.position] || [];
       var previousRevision = Number(previous[draftHeaders.Revision]) || 0;
       return {
         sessionId: sessionId,
@@ -928,6 +1132,7 @@ function submitSessionV4(sessionId, answers, clientInfo) {
     if (!journal || journal.answerHash !== answerHash || journal.status !== 'awaiting_chatgpt') {
       throw new Error('Commit Journal registration readback failed.');
     }
+    ensureGradeRequestsForJournalV4_(ss, journal);
     return responseForJournalV4_(journal);
   } finally {
     lock.releaseLock();

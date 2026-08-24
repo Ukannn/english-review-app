@@ -1,8 +1,8 @@
 # English Review App
 
-A Google Apps Script collocation-review system with deterministic Daily Queue selection, review sessions, draft locking, batch grading, SRS, context intake, extra practice, and a same-page learning dashboard.
+A Google Apps Script collocation-review system with deterministic Daily Queue selection, local-first five-answer checkpoints, trusted batch grading, SRS, context intake, extra practice, and a same-page learning dashboard.
 
-The repository contains modular source files. A deterministic build reconstructs the five flat files expected by Apps Script without changing the `v0.9.3` runtime behavior.
+The repository contains modular source files. A deterministic build reconstructs the five flat files expected by Apps Script for the `v0.11.0` runtime.
 
 ## Build and test
 

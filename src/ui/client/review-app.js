@@ -13,7 +13,8 @@
       var demoConflictMode = query.get("draft_conflict") === "1";
       var demoLockFailureMode = query.get("lock_failure") === "1";
       var demoBusyRetriesRemaining = Math.max(0, Number(query.get("busy_retries") || 0));
-      var DRAFT_AUTOSAVE_DELAY_MS = 750;
+      var ANSWER_CHECKPOINT_SIZE = 5;
+      var LOCAL_BACKUP_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
       var DRAFT_BUSY_MAX_RETRIES = 3;
       var RESULT_LABELS = {
         forgotten: "没想起来",
@@ -151,6 +152,7 @@
         localVersions: {},
         savedAnswers: {},
         savePromises: {},
+        checkpointPromise: null,
         draftWriteTail: Promise.resolve(),
         pendingDraftBatch: {},
         draftBatchTimer: null,
@@ -385,6 +387,7 @@
             "saveDraftV4",
             "saveDraftBatchV4",
             "revealAnswerV4",
+            "checkpointAnswersV4",
             "replaceLockedDraftV4",
             "submitExtraPracticeV4"
           ]
@@ -476,6 +479,26 @@
                 };
               });
               resolve({ ok: true, items: batchItems });
+              return;
+            }
+            if (name === "checkpointAnswersV4") {
+              var checkpointItems = (args[1] || []).map(function (draft) {
+                var storedCheckpoint = demoCloudDraftForPosition(draft.position);
+                storedCheckpoint.exists = true;
+                storedCheckpoint.answer = draft.answer;
+                storedCheckpoint.revision += 1;
+                storedCheckpoint.locked = true;
+                return {
+                  ok: true,
+                  position: draft.position,
+                  revision: storedCheckpoint.revision,
+                  answer: storedCheckpoint.answer,
+                  revealed: true,
+                  locked: true,
+                  expectedAnswer: demoExpectedAnswer(draft.position)
+                };
+              });
+              resolve({ ok: true, checkpointSize: checkpointItems.length, items: checkpointItems });
               return;
             }
             if (name === "revealAnswerV4") {
@@ -2437,7 +2460,7 @@
           var questionSource = app.questions.length ? app.questions : (payload.questions || []);
           var completedInBatch = payload.queueMeta.completedInBatch == null
             ? questionSource.filter(function (question) {
-            return question.locked == null ? question.revealed : question.locked;
+            return question.revealed;
             }).length
             : Number(payload.queueMeta.completedInBatch);
           if (payload.result && payload.result.actualCount != null) {
@@ -2482,6 +2505,7 @@
       }
 
       function startAnswering(payload) {
+        cleanupDraftBackups();
         var backup = loadDraftBackup(payload.sessionId);
         var restoredLocalCount = 0;
         app.questions = (payload.questions || []).slice().sort(function (a, b) {
@@ -2493,6 +2517,7 @@
         app.localVersions = {};
         app.savedAnswers = {};
         app.savePromises = {};
+        app.checkpointPromise = null;
         app.conflicts = {};
         app.pendingConflict = null;
         app.draftBackup = backup || {
@@ -2514,14 +2539,22 @@
           app.localVersions[question.position] = 0;
           app.savedAnswers[question.position] = serverAnswer;
           if (localBackup) {
-            var recoverable = localBackup.recoveryAnswer != null
+            var localAnswer = String(localBackup.answer || "");
+            var recoverable = localBackup.recoveryAnswer
               ? String(localBackup.recoveryAnswer)
-              : String(localBackup.answer || "");
+              : localAnswer;
             if (question.locked) {
               if (recoverable && recoverable !== serverAnswer) question.recoveryAnswer = recoverable;
-            } else if (String(localBackup.answer || "") !== serverAnswer) {
-              app.answers[question.position] = String(localBackup.answer || "");
+            } else if (localAnswer !== serverAnswer) {
+              app.answers[question.position] = localAnswer;
               app.dirty[question.position] = true;
+            }
+            if (!question.locked && localBackup.revealed && localAnswer) {
+              app.answers[question.position] = localAnswer;
+              question.revealed = true;
+              app.dirty[question.position] = true;
+              restoredLocalCount += 1;
+            } else if (!question.locked && localAnswer !== serverAnswer) {
               restoredLocalCount += 1;
             }
             if (
@@ -2544,7 +2577,7 @@
           demoConflictSeeded = true;
         }
         app.current = Math.max(0, app.questions.findIndex(function (question) {
-          return !question.locked;
+          return !question.revealed;
         }));
         if (app.current < 0) app.current = 0;
         el.stateMount.innerHTML = "";
@@ -2596,20 +2629,16 @@
         el.expectedAnswer.textContent = question.revealed ? (question.expectedAnswer || "") : "";
         el.answerReveal.classList.toggle("hidden", !question.revealed);
         el.prevBtn.disabled = app.current === 0;
-        var lockedCount = app.questions.filter(function (item) { return item.locked; }).length;
+        var revealedCount = app.questions.filter(function (item) { return item.revealed; }).length;
         var target = currentBatchSubmissionTarget();
-        var revealPending = app.questions.some(function (item) {
-          return item.revealed && !item.locked;
-        });
-        el.revealBtn.classList.toggle("hidden", Boolean(question.locked));
-        el.revealBtn.textContent = question.revealed ?
-          (question.syncing ? "正在保存本题…" : "重试保存本题") : "锁定并查看标准答案";
-        el.revealBtn.disabled = Boolean(app.busy || question.syncing);
-        el.correctLockedBtn.classList.toggle("hidden", !question.locked && !question.recoveryAnswer);
+        el.revealBtn.classList.toggle("hidden", Boolean(question.revealed));
+        el.revealBtn.textContent = "锁定并查看标准答案";
+        el.revealBtn.disabled = Boolean(app.busy);
+        el.correctLockedBtn.classList.toggle("hidden", !question.revealed && !question.recoveryAnswer);
         el.correctLockedBtn.disabled = Boolean(app.busy || question.syncing);
         el.correctLockedBtn.textContent = question.recoveryAnswer
           ? "还原本地答案"
-          : "纠正我的答案";
+          : (question.locked ? "纠正我的答案" : "修改本机答案");
         el.nextBtn.classList.toggle(
           "hidden",
           !question.revealed || app.current === app.questions.length - 1
@@ -2617,12 +2646,12 @@
         el.nextBtn.disabled = app.busy;
         el.submitBtn.classList.toggle(
           "hidden",
-          lockedCount === 0 || lockedCount < target
+          revealedCount === 0 || revealedCount < target
         );
-        el.submitBtn.disabled = Boolean(app.busy || revealPending || !lockedCount || lockedCount < target);
-        el.submitBtn.textContent = lockedCount > target
-          ? "提交已完成的 " + lockedCount + " 题"
-          : "检查并提交 " + lockedCount + " 题";
+        el.submitBtn.disabled = Boolean(app.busy || !revealedCount || revealedCount < target);
+        el.submitBtn.textContent = revealedCount > target
+          ? "提交已完成的 " + revealedCount + " 题"
+          : "检查并提交 " + revealedCount + " 题";
         updateProgress();
         updateNumberNavigation();
         if (!question.revealed && !app.busy) {
@@ -2635,7 +2664,7 @@
           app.payload && app.payload.queueMeta && app.payload.queueMeta.completedBeforeBatch || 0
         );
         var completed = completedBefore + app.questions.filter(function (question) {
-          return question.locked;
+          return question.revealed;
         }).length;
         var total = dailyVisibleQuestionTotal();
         el.progressBar.style.width = (completed / total * 100) + "%";
@@ -2667,12 +2696,28 @@
       }
 
       function draftBackupKey(sessionId) {
-        return "english-review-answer-backup-v4:" + String(sessionId || "");
+        return "english-review-answer-backup-v5:" + String(sessionId || "");
+      }
+
+      function cleanupDraftBackups() {
+        var prefix = "english-review-answer-backup-v5:";
+        var now = Date.now();
+        try {
+          for (var index = localStorage.length - 1; index >= 0; index -= 1) {
+            var key = localStorage.key(index);
+            if (!key || key.indexOf(prefix) !== 0) continue;
+            var parsed = JSON.parse(localStorage.getItem(key) || "null");
+            var updatedAt = parsed && Date.parse(parsed.updatedAt || "");
+            if (!updatedAt || now - updatedAt > LOCAL_BACKUP_MAX_AGE_MS) {
+              localStorage.removeItem(key);
+            }
+          }
+        } catch (error) {}
       }
 
       function loadDraftBackup(sessionId) {
         try {
-          var parsed = JSON.parse(sessionStorage.getItem(draftBackupKey(sessionId)) || "null");
+          var parsed = JSON.parse(localStorage.getItem(draftBackupKey(sessionId)) || "null");
           if (!parsed || parsed.sessionId !== sessionId || typeof parsed.positions !== "object") return null;
           return parsed;
         } catch (error) {
@@ -2695,8 +2740,9 @@
         current.updatedAt = new Date().toISOString();
         Object.keys(extra || {}).forEach(function (key) { current[key] = extra[key]; });
         app.draftBackup.positions[position] = current;
+        app.draftBackup.updatedAt = current.updatedAt;
         try {
-          sessionStorage.setItem(draftBackupKey(app.payload.sessionId), JSON.stringify(app.draftBackup));
+          localStorage.setItem(draftBackupKey(app.payload.sessionId), JSON.stringify(app.draftBackup));
         } catch (error) {
           showToast("浏览器本地备份暂时不可用，请不要关闭本页。");
         }
@@ -2704,7 +2750,7 @@
 
       function clearDraftBackup(sessionId) {
         if (!sessionId) return;
-        try { sessionStorage.removeItem(draftBackupKey(sessionId)); } catch (error) {}
+        try { localStorage.removeItem(draftBackupKey(sessionId)); } catch (error) {}
         if (app.draftBackup && app.draftBackup.sessionId === sessionId) app.draftBackup = null;
       }
 
@@ -2824,10 +2870,6 @@
         setSaveState("已保存在本机", "good");
         updateProgress();
         updateNumberNavigation();
-        window.clearTimeout(app.timers[question.position]);
-        app.timers[question.position] = window.setTimeout(function () {
-          savePosition(question.position);
-        }, DRAFT_AUTOSAVE_DELAY_MS);
       }
 
       function savePosition(position) {
@@ -3018,6 +3060,21 @@
           showToast("已还原本浏览器保留的当前页面答案；尚未更新云端。");
           return;
         }
+        if (question.revealed && !question.locked) {
+          question.revealed = false;
+          question.syncError = false;
+          app.dirty[question.position] = true;
+          persistDraftBackup(question.position, {
+            revealed: false,
+            checkpointed: false,
+            recoveryAnswer: "",
+            adoptedCloud: false
+          });
+          refreshSaveState();
+          renderQuestion();
+          showToast("已解除本机冻结，可以修改；再次查看标准答案后才会计入提交。");
+          return;
+        }
         if (!question.locked) return;
         var current = {
           answer: app.savedAnswers[question.position] == null
@@ -3048,7 +3105,7 @@
           return;
         }
         if (app.questions.some(function (question) { return question.syncing; })) {
-          setSaveState("正在保存本题…", "warn");
+          setSaveState("正在同步 5 题检查点…", "warn");
           return;
         }
         if (app.questions.some(function (question) { return question.syncError && !question.locked; })) {
@@ -3063,16 +3120,14 @@
           setSaveState("已保存在本机", "good");
           return;
         }
-        setSaveState("云端已同步", "good");
+        setSaveState("最近检查点已同步", "good");
       }
 
       function saveCurrent(silent) {
         var question = app.questions[app.current];
         if (!question) return Promise.resolve();
-        window.clearTimeout(app.timers[question.position]);
-        var promise = savePosition(question.position);
-        if (silent) promise.catch(function () {});
-        return promise;
+        persistDraftBackup(question.position, { revealed: Boolean(question.revealed) });
+        return Promise.resolve();
       }
 
       function saveAllDirty() {
@@ -3104,111 +3159,93 @@
       function revealCurrentAnswer() {
         if (app.busy) return;
         var question = app.questions[app.current];
-        if (!question || question.locked || question.syncing) return;
+        if (!question || question.revealed) return;
         var answer = String(app.answers[question.position] || "").trim();
         if (!answer) {
           showToast("请先写下你的答案，再查看标准答案。");
           el.answerBox.focus();
           return;
         }
-        window.clearTimeout(app.timers[question.position]);
-        if (app.pendingDraftBatch[question.position]) flushDraftBatch();
-        var pendingSave = app.savePromises[question.position] || Promise.resolve();
-        // Reveal is a local feedback state. Cloud locking continues in the
-        // background and remains the only per-question submission gate.
+        app.answers[question.position] = answer;
         question.revealed = true;
-        question.syncing = true;
+        question.syncing = false;
         question.syncError = false;
+        app.dirty[question.position] = true;
+        persistDraftBackup(question.position, { revealed: true, recoveryAnswer: "", adoptedCloud: false });
         renderQuestion();
-        setSaveState("标准答案已显示，正在保存本题…", "warn");
-        var answerToLock = answer;
-        // A normal reveal is one atomic cloud request. If an older autosave is
-        // already in flight, let it finish, then lock the latest local answer
-        // with the revision it returned. Do not enqueue another autosave.
-        var lockPromise = pendingSave.catch(function () {
-          // An ambiguous autosave failure is safe to follow with reveal: the
-          // backend accepts a newer same-answer revision and conflicts on any
-          // different answer instead of overwriting it.
-          return null;
-        }).then(function (saveResult) {
-          var liveQuestion = app.questions.filter(function (item) {
-            return item.position === question.position;
-          })[0];
-          if (saveResult && saveResult.abortReveal) {
-            return { abortReveal: true, conflictResolved: saveResult.conflictResolved };
-          }
-          if ((saveResult && saveResult.locked) || (liveQuestion && liveQuestion.locked)) {
-            return { alreadyLocked: true };
-          }
-          answerToLock = String(app.answers[question.position] || "").trim();
-          if (!answerToLock) throw new Error("本题答案为空，无法锁定");
-          return enqueueDraftWrite("revealAnswerV4", [
-            app.payload.sessionId,
-            question.position,
-            answerToLock,
-            app.revisions[question.position] || 0,
-            draftClientInfo()
-          ]);
+        setSaveState("答案已冻结并保存在本机", "good");
+        maybeCheckpointAnswers();
+      }
+
+      function maybeCheckpointAnswers() {
+        if (app.busy || app.checkpointPromise || !app.payload || !app.payload.sessionId) {
+          return app.checkpointPromise || Promise.resolve();
+        }
+        var pending = app.questions.filter(function (question) {
+          return question.revealed && !question.locked && !question.syncing && !app.conflicts[question.position];
+        }).slice(0, ANSWER_CHECKPOINT_SIZE);
+        if (pending.length < ANSWER_CHECKPOINT_SIZE) return Promise.resolve();
+        pending.forEach(function (question) {
+          question.syncing = true;
+          question.syncError = false;
         });
-        question.lockPromise = lockPromise;
-        lockPromise.then(function (result) {
-          if (result && result.abortReveal) {
+        setSaveState("正在同步 5 题检查点…", "warn");
+        renderQuestion();
+        var request = enqueueDraftWrite("checkpointAnswersV4", [
+          app.payload.sessionId,
+          pending.map(function (question) {
+            return {
+              position: question.position,
+              answer: app.answers[question.position],
+              expectedRevision: app.revisions[question.position] || 0
+            };
+          }),
+          draftClientInfo()
+        ]).then(function (payload) {
+          if (!payload || payload.ok === false) {
+            if (payload && payload.conflict) {
+              (payload.items || []).forEach(function (conflict) {
+                app.conflicts[Number(conflict.position)] = {
+                  result: conflict,
+                  mode: conflict.locked ? "locked" : "draft"
+                };
+              });
+            }
+            throw new Error("这 5 题的云端检查点没有完成");
+          }
+          var byPosition = {};
+          (payload.items || []).forEach(function (item) { byPosition[Number(item.position)] = item; });
+          pending.forEach(function (question) {
+            var result = byPosition[question.position];
+            if (!result || !result.locked) throw new Error("检查点缺少第 " + question.position + " 题回读");
+            question.locked = true;
             question.syncing = false;
             question.syncError = false;
-            refreshSaveState();
-            renderQuestion();
-            showToast(result.conflictResolved
-              ? "冲突已按你的选择处理；标准答案已显示，但本题尚未锁定，请确认后重试。"
-              : "标准答案已显示，但本题尚未锁定。处理冲突后请重试。");
-            return;
-          }
-          if (result && result.alreadyLocked) {
-            question.syncing = false;
-            refreshSaveState();
-            renderQuestion();
-            return;
-          }
-          if (!result || result.ok === false && !result.conflict) {
-            throw new Error("本题锁定没有完成。");
-          }
-          if (result.conflict) {
-            return openDraftConflict(question.position, result, "draft").then(function (decision) {
-              var outcome = applyDraftConflictDecision(
-                question.position,
-                result,
-                decision,
-                "draft"
-              );
-              var followup = outcome.retrySave ? savePosition(question.position) : Promise.resolve(outcome);
-              return followup.then(function () {
-                question.syncing = false;
-                question.syncError = false;
-                refreshSaveState();
-                renderQuestion();
-                showToast("冲突处理已结束；标准答案已显示，但本题尚未锁定，请确认后重试。");
-              });
-            });
-          }
-          question.locked = true;
-          question.syncing = false;
-          question.syncError = false;
-          app.answers[question.position] = result.answer == null ? answerToLock : result.answer;
-          app.savedAnswers[question.position] = app.answers[question.position];
-          app.revisions[question.position] = Number(result.revision || 0);
-          app.dirty[question.position] = false;
-          question.recoveryAnswer = "";
-          persistDraftBackup(question.position, { recoveryAnswer: "", adoptedCloud: false });
-          refreshSaveState();
+            app.answers[question.position] = String(result.answer || app.answers[question.position]);
+            app.savedAnswers[question.position] = app.answers[question.position];
+            app.revisions[question.position] = Number(result.revision || 0);
+            app.dirty[question.position] = false;
+            persistDraftBackup(question.position, { revealed: true, checkpointed: true });
+          });
+          setSaveState("最近 5 题已同步；本机备份仍保留", "good");
           renderQuestion();
         }).catch(function (error) {
-          question.syncing = false;
-          question.syncError = true;
-          setSaveState("标准答案已显示，但本题尚未锁定", "bad");
+          pending.forEach(function (question) {
+            question.syncing = false;
+            question.syncError = true;
+          });
+          setSaveState("检查点未同步；答案仍安全保存在本机", "bad");
           renderQuestion();
-          showToast((error && error.message ? error.message : "本题没有锁定") + "。标准答案已显示，请稍后重试保存本题。");
+          showToast((error && error.message ? error.message : "检查点失败") + "。答题可以继续，提交时会再次保存。", 4200);
         }).then(function () {
-          if (question.lockPromise === lockPromise) question.lockPromise = null;
+          app.checkpointPromise = null;
+          var waiting = app.questions.filter(function (question) {
+            return question.revealed && !question.locked && !app.conflicts[question.position];
+          });
+          if (!app.busy && waiting.length >= ANSWER_CHECKPOINT_SIZE) maybeCheckpointAnswers();
         });
+        app.checkpointPromise = request;
+        return request;
       }
 
       function reviewBeforeSubmit() {
@@ -3237,22 +3274,13 @@
         }
         var target = currentBatchSubmissionTarget();
         var locked = app.questions.filter(function (question) {
-          return question.locked;
+          return question.revealed;
         });
         if (locked.length < target || !locked.length) {
-          var firstUnlocked = app.questions.filter(function (question) { return !question.locked; })[0];
+          var firstUnlocked = app.questions.filter(function (question) { return !question.revealed; })[0];
           if (firstUnlocked) app.current = app.questions.indexOf(firstUnlocked);
           renderQuestion();
-          showToast("这次至少需要完成 " + target + " 题，目前已锁定 " + locked.length + " 题。");
-          return;
-        }
-        var pendingLocks = app.questions.filter(function (question) {
-          return question.revealed && !question.locked;
-        });
-        if (pendingLocks.length) {
-          app.current = app.questions.indexOf(pendingLocks[0]);
-          renderQuestion();
-          showToast("还有 " + pendingLocks.length + " 道已查看答案的题尚未完成云端锁定，请等待同步或重试。");
+          showToast("这次至少需要完成 " + target + " 题，目前已冻结 " + locked.length + " 题。");
           return;
         }
         hideQuiz();
@@ -3268,7 +3296,7 @@
         }).join("");
         var completionNote = locked.length > target
           ? "你原本准备做到 " + target + " 题，现在已完成 " + locked.length + " 题；多做的 " + (locked.length - target) + " 题也会正常计入。"
-          : "本次已完成并锁定 " + locked.length + " 题。";
+          : "本次已完成并冻结 " + locked.length + " 题。";
         el.stateMount.innerHTML =
           '<section class="state-card" style="max-width:820px">' +
             '<div class="state-icon">✓</div>' +
@@ -3292,19 +3320,19 @@
       function submitAnswers() {
         if (app.busy) return;
         var target = currentBatchSubmissionTarget();
-        var locked = app.questions.filter(function (question) { return question.locked; });
+        var locked = app.questions.filter(function (question) { return question.revealed; });
         if (locked.length < target || !locked.length) {
-          var firstUnlocked = app.questions.filter(function (question) { return !question.locked; })[0];
+          var firstUnlocked = app.questions.filter(function (question) { return !question.revealed; })[0];
           if (firstUnlocked) app.current = app.questions.indexOf(firstUnlocked);
           renderQuestion();
-          showToast("本次至少需要完成 " + target + " 题，目前已锁定 " + locked.length + " 题。");
+          showToast("本次至少需要完成 " + target + " 题，目前已冻结 " + locked.length + " 题。");
           return;
         }
         app.busy = true;
         setSaveState("正在提交…", "warn");
         var button = document.getElementById("confirmSubmit");
         if (button) button.disabled = true;
-        saveAllDirty().then(function () {
+        (app.checkpointPromise || Promise.resolve()).then(function () {
           return callServer("submitSessionV4", [
             app.payload.sessionId,
             locked.map(function (question) {

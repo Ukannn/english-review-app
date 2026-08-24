@@ -19,6 +19,7 @@
         "src/server/queue/review-queue-v4.gs",
         "src/server/session/review-session.gs",
         "src/server/drafts/draft-service.gs",
+        "src/server/grading/grade-request-service.gs",
         "src/server/grading/submission-service.gs",
         "src/server/context/context-intake.gs",
         "src/server/dashboard/learning-dashboard.gs",

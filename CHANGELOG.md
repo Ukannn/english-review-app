@@ -2,6 +2,14 @@
 
 Project semantic versions and Google Apps Script immutable versions are separate identifiers.
 
+## v0.11.0 — Apps Script version 33
+
+- Make answer entry local-first: one question performs no cloud write, the standard answer appears immediately, and each five revealed answers share one background checkpoint.
+- Keep unfinished answers in persistent same-device recovery storage until successful submission, with seven-day stale cleanup; the final submit includes any tail shorter than five.
+- Add the Apps Script-owned immutable `Grade Requests` snapshot contract 1.0 and require ChatGPT grading to echo the exact observed answer from that surface.
+- Make Apps Script fill the authoritative batch hash, reject identity/answer mismatches, reject negative grades for exact accepted answers, and route positive non-exact grades to confirmation.
+- Upgrade grading prompts to `english-review-v4-grade-7` while preserving core Sheet contract 4.0 and the v32 rollback APIs.
+
 ## v0.10.0 — Apps Script version 32
 
 - Reorganize the repository into modular server/UI sources with a deterministic five-file Apps Script build.

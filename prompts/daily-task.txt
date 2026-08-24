@@ -157,12 +157,15 @@ grading：按实际提交的答案集合批改
 
 1. 读取 Commit Journal，只筛选 Status=awaiting_chatgpt、Contract Version=4.0。若存在 EXPECTED_SUBMISSION_ID，只筛选该 Submission ID 并要求恰好一行；若不存在，则全局必须恰好命中一个 Submission ID。0 个则回复“当前没有等待批改的提交”，多于 1 个则报告全部 Submission ID 并停止。
 
-2. 回读并联结冻结数据：
-- Answer Drafts：该 Submission ID + Session ID、Submit Status=submitted、Answer Hash 与 Journal 一致的实际提交集合，共 A 行；
-- Session Questions：该 Session ID 中与上述 Position 对应、Question Status=bound 的 A 行；
-- Daily Queue：该 Session ID + Queue ID 中与上述 Position 对应、Queue Status=presented、Contract Version=4.0 的 A 行。
+2. 只从 Apps Script 生成的 Grade Requests 读取本次不可变批改快照。不要读取、联结或推断 Answer Drafts、Session Questions、Daily Queue；不要自行计算、复制或写入 Answer Hash。筛选该 Submission ID + Session ID，必须满足：
+- A 为 1–150，Position 唯一；
+- Submission ID / Session ID 与 Journal 精确一致；
+- 每行 Answer Hash 相同且非空，但它只用于核对快照内部一致性，不得复制到 Grade Inbox；
+- Observed Answer 非空；Phrase ID/Candidate ID 至少一个非空；
+- Expected Answers JSON、Accepted Variants JSON 均可解析为非空字符串数组；
+- Request Status=ready；Snapshot Contract Version=文本 1.0；Contract Version=文本 4.0。
 
-A 必须是 1–150。实际 Position 可以是不连续集合；三处的 Position 集合必须精确相同且无重复，Phrase ID/Candidate ID 逐题一致，Answer 非空，Answer Hash 一致。Daily Queue 中其余未提交 Position 不参与批改，不判错、不改 SRS。
+任一项不满足就停止。Grade Requests 是本次唯一可信的题目、用户答案、参考答案、语义边界、rubric 和批改前 Review Stage 来源。
 
 3. 逐题批改，Result 只能：
 - forgotten：没有回忆出目标表达或实质错误；
@@ -172,23 +175,28 @@ A 必须是 1–150。实际 Position 可以是不连续集合；三处的 Posit
 
 每题还要提供 Feedback ZH、Error Category（无错可空）、0–1 Confidence、Evidence、Expected Answer。Confidence<0.75 仍给最可能结果，Apps Script 只让用户确认这些低信心题。
 
-同时读取 Phrase Bank 中对应 Phrase ID 的 Review Stage，并仅生成“正式题组之外”的完整句迁移挑战：
+确定性保护：
+- Observed Answer 与 Expected Answers JSON 或 Accepted Variants JSON 中任一项在去首尾空格、统一大小写、合并连续空格和统一英文撇号后精确相同，Result 不得为 forgotten 或 difficult；
+- 若不精确匹配却判断为 normal 或 mastered，照实输出，Apps Script 会强制进入 needs_confirmation，不得规避；
+- Grade Inbox 的 Observed Answer 必须逐字符复制 Grade Requests 的 Observed Answer。不得改写、纠错、补全或从对话记忆替换。
+
+使用 Grade Requests 中冻结的 Review Stage，并仅生成“正式题组之外”的完整句迁移挑战：
 - Result=mastered 且批改前 Review Stage>=6 时，生成1道 sentence_challenge，要求用户用目标词块写一个完整英文句子；其他正式结果不生成挑战；
 - 不得为 forgotten 或 difficult 生成 reinforcement；错误强化模块已停用；
 - 完整句挑战不改变正式 Result，不计入正式题数，不影响 SRS。
 
 Extra Practice JSON 必须是 JSON 数组，无挑战时写 []。每个对象严格包含：sourcePosition、practiceType（只能是 sentence_challenge）、promptZh、expectedAnswers（非空字符串数组）、acceptedVariants（字符串数组，可空）、referenceAnswer（非空）、contextSignature（非空且能说明新场景）。referenceAnswer 放一条自然完整例句。
 
-4. 读取 Grade Inbox 中该 Submission ID / Session ID / Answer Hash 的 active staged 行。允许多个 Grading Batch ID 作为内部暂存段，但所有 active Position 合并后必须无重复、身份与冻结答案一致且只能属于实际提交集合。若已完整覆盖全部 A 个 Position，固定范围回读后复用；否则计算 MISSING。重复或冲突时停止。本模式不生成候选素材：如果现有 active staged 行中尚未出现 Candidate Suggestions JSON，本次新段第一行必须精确写文本 []、其余行留空；如果已经出现一次，本次所有行都留空。Extra Practice JSON 必须在整个提交的 active 行中恰好出现一次：首次暂存段第一行写入覆盖全部 A 题的完整加练数组（允许 []），其余行全部留空；若 active 行已经出现一次，本次所有行留空。
+4. 读取 Grade Inbox 中该 Submission ID / Session ID 的 active staged 行。允许多个 Grading Batch ID 作为内部暂存段，但所有 active Position 合并后必须无重复、Observed Answer 与 Grade Requests 逐字符一致、身份一致且只能属于实际提交集合。Answer Hash 可为空或由 Apps Script 填写；你不得把它作为身份来源，也不得填写它。若已完整覆盖全部 A 个 Position，固定范围回读后复用；否则计算 MISSING。重复或冲突时停止。本模式不生成候选素材：如果现有 active staged 行中尚未出现 Candidate Suggestions JSON，本次新段第一行必须精确写文本 []、其余行留空；如果已经出现一次，本次所有行都留空。Extra Practice JSON 必须在整个提交的 active 行中恰好出现一次：首次暂存段第一行写入覆盖全部 A 题的完整加练数组（允许 []），其余行全部留空；若 active 行已经出现一次，本次所有行留空。
 
-5. 本次只批改 MISSING 中最靠前的 G 个 Position，G=min(30, MISSING 数量)。使用新的唯一 Grading Batch ID，例如 GRD-<Submission ID>-<yyyyMMddHHmmss>。向 Grade Inbox 一次性追加 G 行，每行严格 19 个 CellData，顺序为：
-Submission ID | Session ID | Answer Hash | Position | Phrase ID | Candidate ID | Result | Feedback ZH | Error Category | Confidence | Evidence | Expected Answer | Grading Batch ID | Prompt Version | Grade Status | Created At | Candidate Suggestions JSON | Contract Version | Extra Practice JSON
+5. 本次只批改 MISSING 中最靠前的 G 个 Position，G=min(30, MISSING 数量)。使用新的唯一 Grading Batch ID，例如 GRD-<Submission ID>-<yyyyMMddHHmmss>。向 Grade Inbox 一次性追加 G 行，每行严格 20 个 CellData，顺序为：
+Submission ID | Session ID | Answer Hash | Position | Phrase ID | Candidate ID | Result | Feedback ZH | Error Category | Confidence | Evidence | Expected Answer | Grading Batch ID | Prompt Version | Grade Status | Created At | Candidate Suggestions JSON | Contract Version | Extra Practice JSON | Observed Answer
 
-写入规则：沿用同一 Submission ID、Session ID、Answer Hash；本段共享新的 Grading Batch ID；Position 使用本段实际缺失集合；Prompt Version=english-review-v4-grade-6；Grade Status=staged；Created At 写真实 Asia/Shanghai 时间；Contract Version 写文本 4.0。
+写入规则：沿用同一 Submission ID、Session ID；Answer Hash 必须留空，由 Apps Script 在验证 Observed Answer 后填写权威值；本段共享新的 Grading Batch ID；Position 使用本段实际缺失集合；Prompt Version=english-review-v4-grade-7；Grade Status=staged；Created At 写真实 Asia/Shanghai 时间；Contract Version 写文本 4.0；Observed Answer 从 Grade Requests 逐字符复制。
 
 rejected 旧行不算 active，可修正后使用新 Grading Batch ID。不得覆盖先前合法 staged 段。
 
-6. 固定范围回读确认：本次恰好 G 行、Position 精确等于本段缺失集合、一个新的 Grading Batch ID、身份/hash 一致、Result/Confidence 合法、状态全为 staged、Contract Version 全为文本 4.0；再回读该提交的全部 active staged 行，确认无重复、覆盖数增加 G，Candidate Suggestions JSON 只出现一次并精确为 []，Extra Practice JSON 只出现一次、可解析，且只包含合法的 sentence_challenge。
+6. 固定范围回读确认：本次恰好 G 行、Position 精确等于本段缺失集合、一个新的 Grading Batch ID、身份与 Observed Answer 一致、Answer Hash 为空、Result/Confidence 合法、Prompt Version 全为 english-review-v4-grade-7、状态全为 staged、Contract Version 全为文本 4.0；再回读该提交的全部 active staged 行，确认无重复、覆盖数增加 G，Candidate Suggestions JSON 只出现一次并精确为 []，Extra Practice JSON 只出现一次、可解析，且只包含合法的 sentence_challenge。
 
 7. 成功后回复：
 “批改暂存段已完成。请返回答题页面；全部已提交题目覆盖后，系统才会统一核验、写入并显示结果。若仍有缺失，网页会继续提供下一段完整提示词：YOUR_WEB_APP_URL”

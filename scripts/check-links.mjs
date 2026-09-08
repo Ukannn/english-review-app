@@ -3,7 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 const root = process.cwd();
-const ignored = new Set(['.git', 'dist', 'node_modules']);
+const ignored = new Set(['.git', 'dist', 'node_modules', 'output', '.playwright-cli', '.wrangler']);
 const markdownFiles = [];
 
 function walk(directory) {

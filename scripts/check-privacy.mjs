@@ -7,9 +7,14 @@ const profileFlag = process.argv.indexOf('--profile');
 const profile = profileFlag === -1 ? 'private' : process.argv[profileFlag + 1];
 if (!['private', 'public'].includes(profile)) throw new Error('Profile must be private or public');
 const root = process.cwd();
-const forbiddenEntries = ['.clasprc.json', 'rollback', 'archive', '.playwright-cli', 'output'];
+const forbiddenEntries = ['.clasprc.json', 'rollback', 'archive'];
 for (const entry of forbiddenEntries) {
   if (fs.existsSync(path.join(root, entry))) throw new Error(`Forbidden repository entry: ${entry}`);
+}
+for (const entry of ['.playwright-cli', 'output']) {
+  if (!fs.existsSync(path.join(root, entry))) continue;
+  if (profile === 'public') throw new Error(`Forbidden repository entry: ${entry}`);
+  execFileSync('git', ['check-ignore', '-q', entry], { cwd: root });
 }
 
 if (profile === 'private' && fs.existsSync(path.join(root, '.clasp.json'))) {
@@ -38,7 +43,10 @@ if (profile === 'public') {
         const content = fs.readFileSync(fullPath);
         if (content.includes(0)) continue;
         const text = content.toString('utf8');
-        if (patterns.some((pattern) => pattern.test(text))) failures.push(path.relative(root, fullPath));
+        // npm lockfiles may contain public package-author emails; still scan them
+        // for machine paths and live application URLs.
+        const applicablePatterns = entry.name === 'package-lock.json' ? patterns.slice(0, 3) : patterns;
+        if (applicablePatterns.some((pattern) => pattern.test(text))) failures.push(path.relative(root, fullPath));
       }
     }
   }

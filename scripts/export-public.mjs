@@ -17,7 +17,23 @@ const copyEntries = [
   'prompts',
   'tests',
   'scripts',
+  'pwa/src',
+  'pwa/public',
+  'pwa/.env.example',
+  'pwa/index.html',
+  'pwa/package.json',
+  'pwa/package-lock.json',
+  'pwa/tsconfig.app.json',
+  'pwa/tsconfig.json',
+  'pwa/tsconfig.node.json',
+  'pwa/vite.config.ts',
+  'supabase/config.toml',
+  'supabase/migrations',
+  'supabase/tests',
+  'supabase/seed.sql',
   'docs/architecture.md',
+  'docs/legacy-architecture.md',
+  'docs/learning-policy.md',
   'CHANGELOG.md',
   'package.json',
   'package-lock.json',
@@ -29,7 +45,7 @@ for (const relativePath of copyEntries) {
   const source = path.join(root, relativePath);
   const destination = path.join(target, relativePath);
   fs.mkdirSync(path.dirname(destination), { recursive: true });
-  fs.cpSync(source, destination, { recursive: true });
+  fs.cpSync(source, destination, { recursive: true, filter: entry => !entry.split(path.sep).some(part => part === '__pycache__') && !entry.endsWith('.pyc') });
 }
 fs.copyFileSync(path.join(root, 'scripts/public/README.md'), path.join(target, 'README.md'));
 fs.mkdirSync(path.join(target, '.github/workflows'), { recursive: true });
@@ -145,6 +161,12 @@ replaceExact(
   /“语料整理暂存已完成。请返回语料箱确认要加入候选池的表达：[^”]+”/g,
   '“语料整理暂存已完成。请返回语料箱确认要加入候选池的表达：YOUR_WEB_APP_URL”',
   'context completion URL'
+);
+replaceExact(
+  'pwa/.env.example',
+  /^VITE_SUPABASE_URL=.+$/gm,
+  'VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co',
+  'PWA Supabase project URL'
 );
 
 console.log(`Public export created at ${target}`);

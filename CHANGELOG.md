@@ -2,6 +2,16 @@
 
 Project semantic versions and Google Apps Script immutable versions are separate identifiers.
 
+## v0.12.0 — Independent English Learning Lab
+
+- Introduce an independent React PWA, Supabase private schema/API, owner authentication and Cloudflare Pages release chain.
+- Add material intake, candidate confirmation, manual ChatGPT JSON handoff, adaptive practice, hints, checkpoint recovery and separate target/expression feedback.
+- Support daily question counts from 1 to 150, three setting scopes, password recovery/change and 14-day learning analysis.
+- Add transparent English-specific scheduling, a daily queue, immutable submitted evidence and same-day progression protection.
+- Migrate legacy workbook history using bounded, resumable staging, atomic promotion and strict raw/formula/ID/progress reconciliation; preserve JSON numeric representations during cloud readback.
+- Retire the legacy write entry points with a generated read-only Apps Script release (version 35); retain version-33 source as the historical build baseline.
+- Require a clean working tree at the merged private GitHub main commit for subsequent Production deployments. Local backups and backup schedules are not enabled.
+
 ## v0.11.0 — Apps Script version 33
 
 - Make answer entry local-first: one question performs no cloud write, the standard answer appears immediately, and each five revealed answers share one background checkpoint.

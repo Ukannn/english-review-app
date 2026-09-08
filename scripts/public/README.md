@@ -1,8 +1,8 @@
 # English Review App
 
-A Google Apps Script collocation-review system with deterministic Daily Queue selection, local-first five-answer checkpoints, trusted batch grading, SRS, context intake, extra practice, and a same-page learning dashboard.
+A standalone English collocation-learning system built with React PWA, Supabase and Cloudflare Pages. It supports material intake, candidate confirmation, manual ChatGPT JSON handoff, hints, five-answer checkpoints, transparent spaced review and learning analysis.
 
-The repository contains modular source files. A deterministic build reconstructs the five flat files expected by Apps Script for the `v0.11.0` runtime.
+Version `v0.12.0` introduces the independent application and migration tools. The legacy Apps Script source and its deterministic five-file `v0.11.0` build remain available as a historical baseline; active learning uses the PWA.
 
 ## Build and test
 
@@ -10,6 +10,7 @@ Node.js 24 is required.
 
 ```bash
 npm ci
+npm --prefix pwa ci
 npm run build
 npm test
 npm run check:public
@@ -37,3 +38,13 @@ Generated files are written to ignored `dist/`:
 The public source uses placeholders such as `YOUR_SPREADSHEET_ID`, `YOUR_BASELINE_SPREADSHEET_ID` and `YOUR_WEB_APP_URL`. Replace them only in your private deployment configuration/source. Keep `.clasp.json`, OAuth credentials and live resource IDs out of Git.
 
 This repository is a sanitized source distribution. It does not contain the private deployment, learning data, operational history or rollback material.
+
+## React PWA
+
+The `pwa/` directory contains the standalone React, TypeScript and Vite client for the Supabase-backed version. It talks only to the `english_api` RPC schema and does not contain database deployment credentials. Copy `pwa/.env.example` to a local `.env`, provide your own Supabase URL and publishable key, then run:
+
+```bash
+npm --prefix pwa ci
+VITE_DEMO_MODE=true npm --prefix pwa run dev
+npm --prefix pwa run check
+```

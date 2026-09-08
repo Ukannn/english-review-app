@@ -12,7 +12,7 @@ The client fails clearly when production configuration is missing. Demo mode is 
 
 Context intake → proposed candidates → user confirmation → daily queue → prepared questions → answer and reveal → frozen submission → AI grade proposal → user correction and confirmation → review events and schedule → analytics.
 
-The four AI jobs are `context_extract`, `candidate_generate`, `question_prepare` and `grade_submission`. The app generates the complete prompt and typed output contract; the user submits it to ChatGPT and pastes JSON back. Server validation binds the output to the job and snapshot. Invalid, stale or mismatched JSON cannot silently update learning history.
+The four AI jobs are `context_extract`, `candidate_generate`, `question_prepare` and `grade_submission`. The app prepares a frozen job. The user sends one short command to ChatGPT connected to Supabase; ChatGPT reads the pending jobs and complete typed contract, generates the output, calls the existing import RPC and reads back completion. The app checks every ten seconds and on window focus, then refreshes the relevant learning view. There is no manual JSON entry. Server validation binds the output to the job and snapshot. Invalid, stale or mismatched JSON cannot silently update learning history.
 
 ## Daily planning and practice
 

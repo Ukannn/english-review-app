@@ -1,0 +1,1 @@
+-- Production has no synthetic user or learning records. Test fixtures are transactional.

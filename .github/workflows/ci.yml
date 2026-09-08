@@ -18,4 +18,23 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - run: npm --prefix pwa ci
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r scripts/migration/requirements.txt
+      - run: npm run check:migration
       - run: npm run check:public
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.116.0
+      - run: supabase start
+      - run: bash scripts/test-english-db.sh
+      - run: supabase db lint --local --level warning --fail-on warning
+      - if: always()
+        run: supabase stop --no-backup

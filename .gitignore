@@ -12,9 +12,18 @@ node_modules/
 # rollback snapshots are versioned, but OAuth credentials must never be added.
 .env
 .env.*
+!.env.example
+!pwa/.env.example
 .clasp.json
 .clasprc.json
 *credentials*.json
 *service-account*.json
 *.pem
 *.key
+__pycache__/
+*.pyc
+supabase/.temp/
+supabase/.branches/
+.wrangler/
+.dev.vars*
+*.encrypted

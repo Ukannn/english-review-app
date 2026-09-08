@@ -41,3 +41,10 @@ The local English stack can rebuild from an empty database without Korean migrat
 The replacement must pass Preview before old English writers are stopped. Then capture the final frozen snapshot, import transactionally, reconcile, publish Production and activate queue cron. Before the first new formal write, rollback may reopen the old system. Afterward, preserve and reconcile new events before repair or rollback to prevent dual writes.
 
 Local English backups and weekly backup automation are disabled by the owner's 2026-09-08 update. Temporary migration snapshots and reconciliation evidence remain necessary for cutover. The optional encryption utility and completed restore drill are retained as development artifacts; neither is a production release requirement.
+
+
+## Frontend hierarchy and identity
+
+`AppShell` owns the desktop sidebar, mobile header and five-item bottom navigation. Hash routes are `today`, `intake`, `analytics`, `library` and `status`. Today owns review and grading; its active question remains mounted during navigation so unrevealed local text survives a visit to another page. A new queue resets that workspace. Library owns expression details and candidate confirmation; Settings owns count preferences and material generation. Analytics uses existing English evidence and leaves unattempted dates empty.
+
+The visual language follows the Korean app: warm paper surfaces, serif display headings, navy/red/ochre accents, rounded cards and system dark mode. English branding uses the generated E/book master at `pwa/public/logo.png`; `logo-128.png` appears in the sidebar, mobile header and authentication screen. The 32 px favicon, 180 px Apple touch icon and 192/512 px manifest icons derive from that same master. PNG files are precached with the PWA shell.

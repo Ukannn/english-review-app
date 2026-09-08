@@ -1,5 +1,7 @@
 # English Review App
 
+界面沿用韩语项目的五页结构：今日学习、语料、学习报告、学习资料库、同步与设置。桌面侧栏与手机底栏共享导航，答题与批改留在今日学习，候选确认位于资料库，素材生成位于设置。统一使用暖纸色、衬线标题与深蓝强调色，并提供深色模式；E / 书页 Logo 同步用于网页、登录页与安装图标。
+
 A standalone English collocation-learning system built with React PWA, Supabase and Cloudflare Pages. It supports material intake, candidate confirmation, connected ChatGPT processing with a short command and automatic refresh, hints, five-answer checkpoints, transparent spaced review and learning analysis.
 
 Version `v0.12.1` removes manual JSON entry. Version `v0.12.0` introduces the independent application and migration tools. The legacy Apps Script source and its deterministic five-file `v0.11.0` build remain available as a historical baseline; active learning uses the PWA.

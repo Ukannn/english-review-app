@@ -1,8 +1,8 @@
 # English Review App
 
-A standalone English collocation-learning system built with React PWA, Supabase and Cloudflare Pages. It supports material intake, candidate confirmation, manual ChatGPT JSON handoff, hints, five-answer checkpoints, transparent spaced review and learning analysis.
+A standalone English collocation-learning system built with React PWA, Supabase and Cloudflare Pages. It supports material intake, candidate confirmation, connected ChatGPT processing with a short command and automatic refresh, hints, five-answer checkpoints, transparent spaced review and learning analysis.
 
-Version `v0.12.0` introduces the independent application and migration tools. The legacy Apps Script source and its deterministic five-file `v0.11.0` build remain available as a historical baseline; active learning uses the PWA.
+Version `v0.12.1` removes manual JSON entry. Version `v0.12.0` introduces the independent application and migration tools. The legacy Apps Script source and its deterministic five-file `v0.11.0` build remain available as a historical baseline; active learning uses the PWA.
 
 ## Build and test
 

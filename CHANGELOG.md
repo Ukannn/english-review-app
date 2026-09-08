@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.12.1 — 2026-09-08
+
+- Match the Korean short-command AI workflow for English: connected ChatGPT reads, generates, saves and verifies tasks; the app refreshes on completion.
+- Remove manual JSON and full-prompt handoff controls from the PWA.
+
 Project semantic versions and Google Apps Script immutable versions are separate identifiers.
 
 ## v0.12.0 — Independent English Learning Lab

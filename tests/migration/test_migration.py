@@ -28,9 +28,7 @@ OWNER = "22222222-2222-4222-8222-222222222222"
 
 class MigrationTest(unittest.TestCase):
     def setUp(self):
-        artifact_dir = ROOT / "output" / "tests" / "migration"
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-        self.temp = tempfile.TemporaryDirectory(dir=artifact_dir)
+        self.temp = tempfile.TemporaryDirectory(prefix="english-migration-test-")
         self.base = Path(self.temp.name)
 
     def tearDown(self):

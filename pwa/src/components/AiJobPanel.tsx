@@ -119,7 +119,7 @@ function AiJobPanelContent({ api, kind, subjectId = null, requestedCount = null,
   }
 
   const canPrepare = !job || ["cancelled", "expired"].includes(job.status);
-  return <section className="glass-card handoff-card">
+  return <section className="prompt-box card">
     <h2>{jobLabels[kind]}</h2>
     {canPrepare ? <><p>准备好后，发一句指令给 ChatGPT 即可处理。</p><button className="primary-button" disabled={busy} onClick={() => void prepare()}>{busy ? "正在读取…" : "准备 AI 处理"}</button></> : <>
       <p>{job.status === "consumed" ? "处理完成，内容已保存。" : "把下面一句话发给已连接 Supabase 的 ChatGPT，它会生成并保存结果，此页会自动更新。"}</p>

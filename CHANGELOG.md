@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.13.0 — 2026-09-08
+
+- Align English with the Korean frontend hierarchy: Today, Context, Analytics, Library and Sync/Settings share desktop and mobile navigation.
+- Keep active answers mounted while navigating; place candidate confirmation inside Library and material generation inside Settings.
+- Adopt the warm paper palette, serif headings, restrained accent colors, rounded cards and dark theme.
+- Add the English E/book logo across desktop, mobile, authentication, favicon and installed PWA icons.
+
 ## v0.12.1 — 2026-09-08
 
 - Match the Korean short-command AI workflow for English: connected ChatGPT reads, generates, saves and verifies tasks; the app refreshes on completion.

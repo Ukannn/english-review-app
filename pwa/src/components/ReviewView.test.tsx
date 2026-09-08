@@ -14,7 +14,7 @@ async function setup(count=5,modify?:(data:ReviewBootstrap)=>void){
  data.questions=data.questions.slice(0,count);data.session!.maxQuestions=count;modify?.(data);
  const api:ApiClient={...demoApi,checkpointAnswers:vi.fn(async request=>({ok:true,sessionId:request.sessionId,revision:request.sessionRevision+1,checkpointed:request.answers.length,frozenHash:request.frozenHash})),submitSession:vi.fn(async()=>({ok:true,submissionId:"submission",status:"submitted",answerHash:"hash",gradeRequestCount:count}))};
  const submitted=vi.fn();render(<ReviewView api={api} bootstrap={data} onClose={()=>undefined} onSubmitted={submitted}/>);
- await screen.findByRole("button",{name:"返回首页"});return{api,data,user:userEvent.setup(),submitted};
+ await screen.findByRole("button",{name:"查看学习资料库"});return{api,data,user:userEvent.setup(),submitted};
 }
 async function answer(user:ReturnType<typeof userEvent.setup>,text="make steady progress"){
  await user.type(screen.getByLabelText("你的答案"),text);await user.click(screen.getByRole("button",{name:"查看答案"}));await screen.findByTestId("answer-reveal");

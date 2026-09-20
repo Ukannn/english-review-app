@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## v0.13.1 — 2026-09-20
+
+- Refresh the active review session after question-count changes without losing local answers or unfinished input; preserve conflict handling and ignore stale responses during checkpoints.
+- Add “再生成一批” for completed candidate generation, using a new request key for each batch and preserving the key for retries.
+- Add regression coverage for count changes, cloud reconciliation, checkpoint races, and repeat candidate generation.
 
 - Remove local database backup and restore tooling, the npm entrypoint, codec test, and operational runbooks at the owner's request. Browser answer recovery remains part of learning synchronization.
 

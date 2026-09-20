@@ -25,7 +25,10 @@ export function ReviewView({api,bootstrap,onClose,onSubmitted,headerAction}:Prop
   const [error,setError]=useState<string|null>(null);const [input,setInput]=useState("");
   const pageStartedAt=useRef(new Date().toISOString());const clientInstanceId=useRef(crypto.randomUUID());const questionStartedAt=useRef(new Date().toISOString());const syncingRef=useRef(false);
   const pendingRequest=useRef<{signature:string;key:string}|null>(null);const submitKey=useRef(makeIdempotencyKey(`submit:${session.id}`));
-  const question=questions[index];
+  const lastBootstrap=useRef(bootstrap);
+  const visibleIndex=Math.min(index,questions.length-1);
+  const question=questions[visibleIndex];
+  const inputQuestionId=useRef(question.id);
   const isRevealed=answers.has(question.position);
   const studyQuestion=questions.find(q=>q.isNew&&q.learningCard&&!learned.has(q.position)&&!answers.has(q.position));
   const answeredCount=answers.size;const allRevealed=answeredCount===questions.length;
@@ -52,7 +55,31 @@ export function ReviewView({api,bootstrap,onClose,onSubmitted,headerAction}:Prop
     }).catch(()=>{if(active)setError("本机恢复记录暂时无法读取，请重试后继续。");}).finally(()=>{if(active)setRestoring(false);});
     return()=>{active=false;};
   },[session.id]);
-  useEffect(()=>{setInput(answers.get(question.position)?.answer??"");},[answers,question.position]);
+  useEffect(()=>{
+    // A count change keeps the session mounted. Rebase only after local writes finish,
+    // and never let a response fetched before a checkpoint roll its revision back.
+    if(lastBootstrap.current===bootstrap||restoring||syncing||submitting||revealing)return;
+    lastBootstrap.current=bootstrap;
+    if(session.revision<sessionRevision)return;
+    const next=cloudAnswers(bootstrap);const collisions=new Map<number,CheckpointAnswer>();
+    for(const local of [...answers.values(),...conflicts]){
+      const target=questions.find(q=>q.position===local.position);
+      const cloud=next.get(local.position);
+      if(!target||(cloud&&cloud.answer!==local.answer)){collisions.set(local.position,local);continue;}
+      if(!cloud)next.set(local.position,local);
+    }
+    setAnswers(next);setConflicts([...collisions.values()]);
+    setCheckpointed(new Set(bootstrap.questions.filter(q=>q.draft).map(q=>q.position)));
+    setSessionRevision(session.revision);pendingRequest.current=null;
+    setHintCounts(current=>Object.fromEntries(questions.map(q=>[q.position,Math.max(current[q.position]??0,q.draft?.hintCount??q.hintCount??0)])));
+    setLearned(current=>new Set([...current,...questions.filter(q=>q.draft?.learningCardViewed||q.learningCardViewed).map(q=>q.position)]));
+    setError(null);
+  },[bootstrap,session.revision,sessionRevision,questions,answers,conflicts,restoring,syncing,submitting,revealing]);
+  useEffect(()=>{setIndex(visibleIndex);},[visibleIndex]);
+  useEffect(()=>{
+    if(inputQuestionId.current!==question.id||answers.has(question.position))setInput(answers.get(question.position)?.answer??"");
+    inputQuestionId.current=question.id;
+  },[answers,question.id,question.position]);
   useEffect(()=>{questionStartedAt.current=new Date().toISOString();},[question.position,Boolean(studyQuestion)]);
   useEffect(()=>{const sync=()=>{void syncPendingActivities(api).catch(()=>undefined);};window.addEventListener("online",sync);sync();return()=>window.removeEventListener("online",sync);},[api]);
   const orderedAnswers=useMemo(()=>Array.from(answers.values()).sort((a,b)=>a.position-b.position),[answers]);
@@ -109,7 +136,7 @@ export function ReviewView({api,bootstrap,onClose,onSubmitted,headerAction}:Prop
     {conflicts.length ? <section className="card conflict-card"><h2>发现两个设备的答案不同</h2><p>请先保留下面的本机答案，再选择继续使用云端记录。</p>{conflicts.map(answer=><article key={answer.position}><h3>第 {answer.position} 题</h3><p>本机：{answer.answer}</p><p>云端：{answers.get(answer.position)?.answer??"该位置已调整"}</p><textarea aria-label={`第 ${answer.position} 题本机答案`} value={answer.answer} readOnly/></article>)}<button className="primary-button" onClick={()=>void useCloud()}>使用云端记录继续</button></section>
     : studyQuestion ? <article className="question-card card"><header className="question-meta"><span className="type-chip">先熟悉这个表达</span><span className="question-number">新表达</span></header><section className="question-body learning-card"><h2 className="expression-display">{studyQuestion.learningCard?.expression??studyQuestion.expectedAnswers[0]}</h2><p>{studyQuestion.learningCard!.meaningZh}</p><blockquote>{studyQuestion.learningCard!.example}</blockquote><p>{studyQuestion.learningCard!.usageNote}</p><button className="primary-button reveal-button" onClick={()=>void study()}>我已看过，隐藏学习卡</button><p className="muted">接下来会隐藏内容，试着自己回忆。</p></section></article>
     : <article className="question-card card">
-      <header className="question-meta"><div><span className="type-chip">{typeLabel}</span><span className="capability-chip">{question.isNew ? "新表达" : "复习"}</span></div><span className="question-number">第 {index+1} / {questions.length} 题</span></header>
+      <header className="question-meta"><div><span className="type-chip">{typeLabel}</span><span className="capability-chip">{question.isNew ? "新表达" : "复习"}</span></div><span className="question-number">第 {visibleIndex+1} / {questions.length} 题</span></header>
       <section className="question-body">
         <h2 className="question-prompt">{question.promptZh||question.promptEn}</h2>
         {question.promptZh&&question.promptEn&&<p className="question-english" lang="en">{question.promptEn}</p>}

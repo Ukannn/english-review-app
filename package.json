@@ -14,7 +14,6 @@
     "check:migration": "python3 -m unittest discover -s tests/migration -p 'test_*.py'",
     "deploy:preview": "node scripts/operations/release-pages.mjs --environment preview",
     "deploy:production": "node scripts/operations/release-pages.mjs --environment production",
-    "backup:english": "node scripts/operations/english-backup.mjs",
     "check": "npm test && npm run check:pwa && node scripts/verify-baseline.mjs --profile private && node scripts/check-links.mjs && node scripts/check-privacy.mjs --profile private",
     "check:public": "npm test && npm run check:pwa && node scripts/verify-baseline.mjs --profile public && node scripts/check-links.mjs && node scripts/check-privacy.mjs --profile public",
     "export:public": "node scripts/export-public.mjs"

@@ -33,6 +33,7 @@ function AiJobPanelContent({ api, kind, subjectId = null, requestedCount = null,
       await onComplete.current?.();
       if (!active.current) return;
       completed.current = next.jobId;
+      requestKey.current = makeIdempotencyKey(kind);
       setMessage("已保存，学习内容已更新。");
     } else if (next.status === "cancelled" || next.status === "expired") {
       requestKey.current = makeIdempotencyKey(kind);
@@ -123,6 +124,7 @@ function AiJobPanelContent({ api, kind, subjectId = null, requestedCount = null,
     <h2>{jobLabels[kind]}</h2>
     {canPrepare ? <><p>准备好后，发一句指令给 ChatGPT 即可处理。</p><button className="primary-button" disabled={busy} onClick={() => void prepare()}>{busy ? "正在读取…" : "准备 AI 处理"}</button></> : <>
       <p>{job.status === "consumed" ? "处理完成，内容已保存。" : "把下面一句话发给已连接 Supabase 的 ChatGPT，它会生成并保存结果，此页会自动更新。"}</p>
+      {job.status === "consumed" && kind === "candidate_generate" && <button className="primary-button" disabled={busy} onClick={() => void prepare()}>再生成一批</button>}
       {job.status !== "consumed" && <><label className="answer-field"><span>发给 ChatGPT 的指令</span><textarea readOnly rows={2} value={CHATGPT_COMMAND} /></label><div className="button-row"><button className="primary-button" onClick={() => void copy()}>复制给 ChatGPT</button><button className="secondary-button" disabled={busy} onClick={() => void check()}>检查进度</button><button className="quiet-button" disabled={busy} onClick={() => void cancel()}>取消处理</button></div></>}
     </>}
     {message && <p role="status" className="status-message">{message}</p>}

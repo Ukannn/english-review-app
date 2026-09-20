@@ -9,6 +9,24 @@ beforeEach(() => localStorage.clear());
 const pending: AiJobPrompt = { ok:true,jobId:"pending",kind:"question_prepare",subjectId:"session",snapshotHash:"hash",batchId:"batch",expectedCount:4,status:"prepared",snapshot:[],prompt:"private frozen contract" };
 const clientFor = () => ({...demoApi, getPendingAiJobs:vi.fn(async()=>({ok:true,items:[pending]})), getAiJobPrompt:vi.fn(async()=>pending), importAiResult:vi.fn(demoApi.importAiResult)});
 describe("Connected ChatGPT handoff", () => {
+  it("starts another candidate batch with a fresh key and the latest count, retaining its key on retry", async () => {
+    const job={...pending,jobId:"first",kind:"candidate_generate" as const,subjectId:null};
+    const api={...demoApi,getPendingAiJobs:vi.fn(async()=>({ok:true,items:[]})),createAiJob:vi.fn(demoApi.createAiJob).mockResolvedValue(job),getAiJobPrompt:vi.fn(async()=>job)};
+    const user=userEvent.setup();const view=render(<AiJobPanel api={api} kind="candidate_generate" requestedCount={2}/>);
+    await waitFor(()=>expect((screen.getByRole("button",{name:"准备 AI 处理"}) as HTMLButtonElement).disabled).toBe(false));
+    await user.click(screen.getByRole("button",{name:"准备 AI 处理"}));await screen.findByRole("button",{name:"检查进度"});
+    const firstKey=api.createAiJob.mock.calls[0]![3];
+    api.getAiJobPrompt.mockResolvedValue({...job,status:"consumed"});await user.click(screen.getByRole("button",{name:"检查进度"}));
+    view.rerender(<AiJobPanel api={api} kind="candidate_generate" requestedCount={4}/>);
+    api.createAiJob.mockRejectedValueOnce(new Error("network unavailable"));
+    await user.click(screen.getByRole("button",{name:"再生成一批"}));await screen.findByText("network unavailable");
+    const secondKey=api.createAiJob.mock.calls[1]![3];expect(secondKey).not.toBe(firstKey);
+    const next={...job,jobId:"second",expectedCount:4};api.createAiJob.mockResolvedValue(next);api.getAiJobPrompt.mockResolvedValue(next);
+    await user.click(screen.getByRole("button",{name:"再生成一批"}));await screen.findByRole("button",{name:"复制给 ChatGPT"});
+    expect(api.createAiJob).toHaveBeenNthCalledWith(2,"candidate_generate",4,null,secondKey);
+    expect(api.createAiJob).toHaveBeenNthCalledWith(3,"candidate_generate",4,null,secondKey);
+    expect(localStorage.getItem("english-review:ai-job:candidate_generate:default")).toBe("second");
+  });
   it("prepares each job and copies only the short command, without a manual import", async () => {
     for (const kind of ["context_extract","candidate_generate","question_prepare","grade_submission"] as const) {
       const api={...demoApi,getPendingAiJobs:vi.fn(async()=>({ok:true,items:[]})),createAiJob:vi.fn(demoApi.createAiJob),importAiResult:vi.fn(demoApi.importAiResult)};
@@ -34,6 +52,7 @@ describe("Connected ChatGPT handoff", () => {
     api.getAiJobPrompt.mockResolvedValue({...pending,status:"consumed"});
     await act(async()=>{await vi.advanceTimersByTimeAsync(10000);});
     expect(done).toHaveBeenCalledTimes(1); expect(screen.queryByRole("button",{name:"复制给 ChatGPT"})).toBeNull();
+    expect(screen.queryByRole("button",{name:"再生成一批"})).toBeNull();
     await act(async()=>{await vi.advanceTimersByTimeAsync(30000);});
     expect(done).toHaveBeenCalledTimes(1); expect(localStorage.getItem("english-review:ai-job:question_prepare:session")).toBeNull();
   });

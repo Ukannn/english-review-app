@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Remove local database backup and restore tooling, the npm entrypoint, codec test, and operational runbooks at the owner's request. Browser answer recovery remains part of learning synchronization.
+
 ## v0.13.0 — 2026-09-08
 
 - Align English with the Korean frontend hierarchy: Today, Context, Analytics, Library and Sync/Settings share desktop and mobile navigation.

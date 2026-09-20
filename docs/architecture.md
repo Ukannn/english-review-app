@@ -40,7 +40,7 @@ The local English stack can rebuild from an empty database without Korean migrat
 
 The replacement must pass Preview before old English writers are stopped. Then capture the final frozen snapshot, import transactionally, reconcile, publish Production and activate queue cron. Before the first new formal write, rollback may reopen the old system. Afterward, preserve and reconcile new events before repair or rollback to prevent dual writes.
 
-Local English backups and weekly backup automation are disabled by the owner's 2026-09-08 update. Temporary migration snapshots and reconciliation evidence remain necessary for cutover. The optional encryption utility and completed restore drill are retained as development artifacts; neither is a production release requirement.
+Local database backups, their tools, restore drills and scheduling workflows were removed at the owner's request on 2026-09-20. Migration reconciliation receipts remain cutover evidence. Browser recovery drafts remain part of answer synchronization, not a database backup.
 
 
 ## Frontend hierarchy and identity

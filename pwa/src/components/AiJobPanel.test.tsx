@@ -58,7 +58,7 @@ describe("Connected ChatGPT handoff", () => {
   });
   it("refreshes on return from ChatGPT and preserves pending work after a failed check", async () => {
     const api=clientFor(); const done=vi.fn(); render(<AiJobPanel api={api} kind="question_prepare" subjectId="session" onImported={done}/>);
-    await screen.findByRole("button",{name:"复制给 ChatGPT"});
+    await waitFor(()=>expect((screen.getByRole("button",{name:"检查进度"}) as HTMLButtonElement).disabled).toBe(false));
     api.getAiJobPrompt.mockRejectedValueOnce(new Error("offline"));
     fireEvent.focus(window); await screen.findByText("状态检查失败：offline");
     expect(done).not.toHaveBeenCalled(); expect(localStorage.getItem("english-review:ai-job:question_prepare:session")).toBe("pending");
@@ -68,9 +68,10 @@ describe("Connected ChatGPT handoff", () => {
   it("does not deliver a late completion to a different subject", async () => {
     let resolve!:(value:AiJobPrompt)=>void;
     const api=clientFor();const done=vi.fn();const view=render(<AiJobPanel api={api} kind="question_prepare" subjectId="session" onImported={done}/>);
-    await screen.findByRole("button",{name:"复制给 ChatGPT"});
+    await waitFor(()=>expect((screen.getByRole("button",{name:"检查进度"}) as HTMLButtonElement).disabled).toBe(false));
     api.getAiJobPrompt.mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
     fireEvent.focus(window);
+    await waitFor(()=>expect(api.getAiJobPrompt).toHaveBeenCalledTimes(2));
     view.rerender(<AiJobPanel api={api} kind="question_prepare" subjectId="other" onImported={done}/>);
     await act(async()=>{resolve({...pending,status:"consumed"});});
     expect(done).not.toHaveBeenCalled(); expect(screen.queryByText("处理完成，内容已保存。")).toBeNull();

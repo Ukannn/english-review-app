@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.0 — 2026-09-21
+
+- Prepare all pending contexts with one action and one ChatGPT command instead of opening each context separately.
+- Reuse pending extraction jobs, retain successful work when individual requests fail, and reuse request keys on retry.
+- Refresh context processing progress automatically and add batch preparation regression tests.
+
 ## v0.13.1 — 2026-09-20
 
 - Refresh the active review session after question-count changes without losing local answers or unfinished input; preserve conflict handling and ignore stale responses during checkpoints.

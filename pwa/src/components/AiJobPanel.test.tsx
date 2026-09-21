@@ -57,7 +57,8 @@ describe("Connected ChatGPT handoff", () => {
     expect(done).toHaveBeenCalledTimes(1); expect(localStorage.getItem("english-review:ai-job:question_prepare:session")).toBeNull();
   });
   it("refreshes on return from ChatGPT and preserves pending work after a failed check", async () => {
-    const api=clientFor(); const done=vi.fn(); render(<AiJobPanel api={api} kind="question_prepare" subjectId="session" onImported={done}/>);
+    const api=clientFor(); const done=vi.fn();
+    await act(async()=>{render(<AiJobPanel api={api} kind="question_prepare" subjectId="session" onImported={done}/>);});
     await waitFor(()=>expect((screen.getByRole("button",{name:"检查进度"}) as HTMLButtonElement).disabled).toBe(false));
     api.getAiJobPrompt.mockRejectedValueOnce(new Error("offline"));
     fireEvent.focus(window); await screen.findByText("状态检查失败：offline");

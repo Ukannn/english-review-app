@@ -16,7 +16,7 @@ The four AI jobs are `context_extract`, `candidate_generate`, `question_prepare`
 
 ## Daily planning and practice
 
-The default target is 12, configurable from 1–150 for today, future default, or both. Reductions protect answered, revealed and frozen positions. Increases select eligible material; insufficient material is reported instead of filling with non-due phrases. Due phrases precede at most two new candidates per day. At most three short-response questions count toward the formal target.
+Versioned `english_v3` packages contain up to eight independent review tasks (future preference 4–12), a 120–180 word reading and exactly two expression tasks. Both active and mastered due items are eligible; at most one confirmed new expression is added. Material is a separate object, not a question. `lessons` freezes material, sequence, theme and target associations; `lesson_exposures` records actual exposure. The original v2 setting remains historical and in-flight v2 sessions/jobs use retained implementations. See [learning policy](learning-policy.md).
 
 Daily planning is idempotent, with a 04:00 Asia/Shanghai database schedule and an app-open fallback. Cron is installed inactive until formal cutover. Queue construction never calls a paid AI service or sends messages to ChatGPT.
 
@@ -24,11 +24,11 @@ The learning unit is a meaning-specific chunk or construction with a clear conte
 
 ## Answers, grading and history
 
-Reveal persists the answer locally immediately. Every five revealed answers form a serialized checkpoint; final submission atomically includes the tail. Revision conflicts preserve local work and present an explicit resolution. The server freezes question, observed answer, hints and rubric in the submitted snapshot.
+Reveal persists the answer locally immediately. V3 saves unsent text locally and checkpoints each revealed answer. V2 retains its five-answer checkpoints. Stage activity is persisted by RPC, and completed checkpoints resume across devices. Revision conflicts preserve local work and present an explicit resolution. The server freezes question, observed answer, hints and rubric in the submitted snapshot.
 
 Grading distinguishes target retrieval, communicated meaning, naturalness and hint use. A reasonable alternative can communicate successfully while leaving the target unmeasured. Non-target errors do not erase correct target retrieval. User corrections are preserved in the final confirmation record.
 
-New-rule review intervals are `1, 2, 4, 7, 14, 30, 60, 120` days. Unaided correct retrieval advances one stage; hinted success preserves stage and returns within three days; substantive partial errors lower one stage and return within three days; failure resets to the first stage for tomorrow. An unmeasured target preserves stage and receives an explicit recall task tomorrow. An item can advance only once per Shanghai date; same-day retries are separate practice events. Initial learning is due tomorrow.
+New-rule review intervals are `1, 2, 4, 7, 14, 30, 60, 120` days. Unaided full retrieval before exposure advances one stage; local gap success holds the stage and returns within three days; hinted success preserves stage and returns within three days; substantive partial errors lower one stage and return within three days; failure resets to the first stage for tomorrow. An unmeasured target preserves stage and receives an explicit recall task tomorrow. An item can advance only once per Shanghai date; same-day retries are separate practice events. Initial learning is due tomorrow.
 
 Counts, time budget, stage thresholds and intervals are product defaults, not claims of a proven optimal SLA algorithm. The evidence and limitations are documented in [learning policy](learning-policy.md).
 
@@ -48,3 +48,7 @@ Local database backups, their tools, restore drills and scheduling workflows wer
 `AppShell` owns the desktop sidebar, mobile header and five-item bottom navigation. Hash routes are `today`, `intake`, `analytics`, `library` and `status`. Today owns review and grading; its active question remains mounted during navigation so unrevealed local text survives a visit to another page. A new queue resets that workspace. Library owns expression details and candidate confirmation; Settings owns count preferences and material generation. Analytics uses existing English evidence and leaves unattempted dates empty.
 
 The visual language follows the Korean app: warm paper surfaces, serif display headings, navy/red/ochre accents, rounded cards and system dark mode. English branding uses the generated E/book master at `pwa/public/logo.png`; `logo-128.png` appears in the sidebar, mobile header and authentication screen. The 32 px favicon, 180 px Apple touch icon and 192/512 px manifest icons derive from that same master. PNG files are precached with the PWA shell.
+
+## V3 deployment and rollback boundary
+
+Apply the additive migration before deploying compatible frontend code. Existing owners receive disabled v3 generation; enable `v3_learning_settings.enabled` after the frontend is verified. Turning it off stops new v3 generation while existing prepared jobs and sessions remain resumable. Do not revert schema or delete learning evidence. Existing scores and due dates are unchanged by the migration. Docker is supported for isolated tests only; there is no database backup pipeline.

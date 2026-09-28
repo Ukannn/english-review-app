@@ -43,6 +43,8 @@ async function rpc<T>(name: string, params: Record<string, unknown> = {}): Promi
 }
 
 export const api: ApiClient = {
+  recordLessonActivity: (sessionId, action, seconds, burden, idempotencyKey) => rpc("record_lesson_activity", {p_session_id: sessionId, p_action: action, p_seconds: seconds, p_burden: burden, p_idempotency_key: idempotencyKey}),
+  setLearningSettings: (count, revision, idempotencyKey) => rpc("set_learning_settings", {p_count: count, p_revision: revision, p_idempotency_key: idempotencyKey}),
   recordQuestionActivity: (sessionId, position, action, idempotencyKey) => rpc("record_question_activity", {p_session_id: sessionId, p_position: position, p_action: action, p_idempotency_key: idempotencyKey}),
   getPendingAiJobs: () => rpc("get_pending_ai_jobs"),
   getCandidateBootstrap: () => rpc("get_candidate_bootstrap"),

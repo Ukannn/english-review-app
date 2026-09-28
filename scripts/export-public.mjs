@@ -34,6 +34,7 @@ const copyEntries = [
   'docs/architecture.md',
   'docs/legacy-architecture.md',
   'docs/learning-policy.md',
+  'docs/v0.15-content-review.md',
   'CHANGELOG.md',
   'package.json',
   'package-lock.json',

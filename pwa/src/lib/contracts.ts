@@ -7,6 +7,8 @@ export interface ReviewQuestion {
   phraseId: string | null;
   candidateId: string | null;
   questionType: string | null;
+  phase?: "review" | "expression";
+  answerForm?: "gap" | "chunk" | "response";
   promptZh: string | null;
   promptEn: string | null;
   expectedAnswers: string[];
@@ -25,6 +27,8 @@ export interface ReviewQuestion {
     revision: number;
     answerHash: string;
     status: string;
+    attemptState?: "answered" | "dont_know" | "skipped";
+    activeSeconds?: number;
     hintUsed?: boolean;
     hintCount?: number;
     learningCardViewed?: boolean;
@@ -33,6 +37,8 @@ export interface ReviewQuestion {
 
 export interface ReviewBootstrap {
   ok: boolean;
+  ruleVersion?: string;
+  lesson?: Lesson | null;
   state: "empty" | "questions_required" | "open" | "submitted" | "grading" | "needs_confirmation" | string;
   learningDate: string;
   queueId?: string;
@@ -45,7 +51,7 @@ export interface ReviewBootstrap {
     submissionId?: string | null;
   } | null;
   questions: ReviewQuestion[];
-  settings?: { defaultQuestionCount: number; todayQuestionCount: number; minimumTodayCount: number; revision: number };
+  settings?: { defaultQuestionCount: number; todayQuestionCount: number; minimumTodayCount: number; revision: number; ruleVersion?: string };
 }
 
 export interface CheckpointAnswer {
@@ -55,6 +61,8 @@ export interface CheckpointAnswer {
   revealHash: string;
   clientInstanceId: string;
   pageStartedAt: string;
+  attemptState?: "answered" | "dont_know" | "skipped";
+  activeSeconds?: number;
   practiceStartedAt?: string;
   practiceEndedAt?: string;
   hintUsed?: boolean;
@@ -79,6 +87,8 @@ export interface CheckpointResult {
 }
 
 export interface SubmissionStatus {
+  ruleVersion?: string;
+  lessonSummary?: {expressions?: string[]; title: string; burden: string | null; readingCompleted: boolean; skipped: number; nextFocus: string};
   ok: boolean;
   submissionId: string;
   sessionId: string;
@@ -157,6 +167,7 @@ export interface DashboardData {
     waitingForGrading: number;
   };
   analytics?: LearningAnalytics;
+  v3?: LessonAnalytics;
   totals: {
     phrases: number;
     reviews: number;
@@ -261,7 +272,19 @@ export interface CandidateBootstrap { ok: boolean; items: CandidateItem[]; ready
 export interface CandidateDecision { id: string; source: "generated" | "context"; action: "accept" | "edit" | "reject"; editedCandidate?: string }
 export interface LegacyRecovery { ok: boolean; items: Array<{id: string; source: string; status: string; createdAt: string; content: unknown}> }
 
+export interface Lesson {
+  id: string; theme: "life" | "work"; sequence: number;
+  material: { title: string; kind: "dialogue" | "passage"; body: string; explanationZh: string; targetPhraseIds: string[]; notes: Array<{phraseId: string; explanationZh: string}> } | null;
+  readingStarted: boolean; readingCompleted: boolean; readingSeconds: number; burden: "light" | "right" | "heavy" | null;
+}
+export interface LessonAnalytics {
+  completedLessons: number; dueCount: number;
+  days: Array<{date: string; independentAttempts: number; independentSuccess: number; hinted: number; attempts: number; gapAttempts: number; gapSuccess: number; expressionAttempts: number; expressionSuccess: number; unmeasured: number; delayedAttempts: number; delayedSuccess: number; durationMinutes: number | null}>;
+  burden: Array<{date: string; value: string}>;
+}
 export interface ApiClient {
+  recordLessonActivity?(sessionId: string, action: "reading_start" | "reading_complete" | "reading_time" | "burden", seconds: number, burden: string | null, idempotencyKey: string): Promise<{ok: boolean}>;
+  setLearningSettings?(count: number, revision: number, idempotencyKey: string): Promise<{ok: boolean; defaultCount: number; revision: number}>;
   recordQuestionActivity(sessionId: string, position: number, action: "hint" | "study" | "reveal", idempotencyKey: string): Promise<{ok: boolean}>;
   getPendingAiJobs(): Promise<{ok: boolean; items: AiJob[]}>;
   getCandidateBootstrap(): Promise<CandidateBootstrap>;

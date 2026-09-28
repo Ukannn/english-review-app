@@ -9,6 +9,7 @@ end $$;
 
 insert into auth.users(id,email,aud,role) values('a1111111-1111-4111-8111-111111111111','english-test@example.invalid','authenticated','authenticated'),('b2222222-2222-4222-8222-222222222222','stranger@example.invalid','authenticated','authenticated');
 insert into english_private.app_owner(owner_id) values('a1111111-1111-4111-8111-111111111111');
+insert into english_private.settings(owner_id,key,value) values('a1111111-1111-4111-8111-111111111111','v3_learning_settings','{"enabled":false,"reviewCount":8}');
 select set_config('request.jwt.claim.sub','a1111111-1111-4111-8111-111111111111',true);
 select set_config('request.jwt.claim.role','authenticated',true);
 select pg_temp.assert_true(english_private.learning_date('2026-09-07 15:59:59+00')='2026-09-07','Shanghai before midnight');

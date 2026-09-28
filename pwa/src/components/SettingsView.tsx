@@ -39,6 +39,7 @@ export function QuestionCountSettings({client,demo,onChanged}: {client:ApiClient
     }catch(caught){setMessage(caught instanceof Error?caught.message:"设置未更新，请刷新后重试。");if(String(caught).includes("REVISION")){key.current=makeIdempotencyKey("question-count");await refresh();}}
     finally{setBusy(false);}
   }
+  if(bootstrap?.ruleVersion==="english_v3") return <LessonSettings client={client} bootstrap={bootstrap} onChanged={async()=>{await refresh();await onChanged();}}/>;
   return <section className="card settings-card"><h2>每日题量</h2><p>当前默认 {bootstrap?.settings?.defaultQuestionCount??"…"} 题 · 今日可调整下限 {minimum} 题</p><form onSubmit={save}><label>题量<input type="number" min={mode==="default"?1:minimum} max={150} step={1} required value={count} onChange={event=>{setCount(Number(event.target.value));key.current=makeIdempotencyKey("question-count");}} /></label><fieldset><legend>生效范围</legend>{([["today","仅今天"],["default","以后默认"],["both","今天和以后"]] as const).map(([value,label])=><label className="radio-label" key={value}><input type="radio" name="question-mode" checked={mode===value} value={value} onChange={()=>{setMode(value);key.current=makeIdempotencyKey("question-count");}} disabled={frozen&&value!=="default"}/>{label}</label>)}</fieldset>{frozen&&<p>今天的批次已提交，仍可修改以后默认题量。</p>}<button className="primary-button" disabled={busy||!bootstrap||(frozen&&mode!=="default")}>{busy?"正在保存…":"保存题量"}</button></form>{message&&<p role="status" className="job-message">{message}</p>}</section>;
 }
 
@@ -75,4 +76,11 @@ function StatusCard({icon,title,value,note,ok}: {icon:ReactNode;title:string;val
 function MaterialGenerator({client}: {client:ApiClient}) {
   const [count,setCount]=useState(2);
   return <article className="card settings-card material-generator"><div className="section-title"><div><span>补充学习素材</span><p>生成后到学习资料库确认，不会改变今天的题量。</p></div><Sparkles size={21}/></div><label className="material-count">希望补充的候选数<input type="number" min={1} max={20} step={1} value={count} onChange={event=>setCount(Math.max(1,Math.min(20,Math.round(Number(event.target.value)))))}/></label><AiJobPanel api={client} kind="candidate_generate" requestedCount={count}/></article>;
+}
+
+function LessonSettings({client,bootstrap,onChanged}: {client:ApiClient;bootstrap:ReviewBootstrap;onChanged():Promise<void>}) {
+ const [count,setCount]=useState(bootstrap.settings?.defaultQuestionCount??8),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
+ const key=useRef(makeIdempotencyKey("learning-settings"));
+ async function save(event:FormEvent){event.preventDefault();setBusy(true);try{if(!Number.isInteger(count)||count<4||count>12)throw new Error("独立复习量应为 4–12 项。");await client.setLearningSettings!(count,bootstrap.settings?.revision??0,key.current);key.current=makeIdempotencyKey("learning-settings");await onChanged();setMessage("已保存，下一个尚未生成的学习包生效。当前学习内容保持不变。");}catch(e){setMessage(e instanceof Error?e.message:"保存失败");}finally{setBusy(false);}}
+ return <section className="card settings-card"><h2>每日学习量</h2><p>v0.15 默认 8 项独立复习、一段阅读、两次表达，约 15–20 分钟。旧题量设置作为历史保留。</p><form onSubmit={save}><label>以后的独立复习项数<input type="number" min={4} max={12} value={count} onChange={e=>{setCount(Number(e.target.value));key.current=makeIdempotencyKey("learning-settings");}}/></label><button className="primary-button" disabled={busy}>保存以后的学习量</button></form>{message&&<p role="status">{message}</p>}</section>;
 }

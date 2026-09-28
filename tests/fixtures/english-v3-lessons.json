@@ -1,0 +1,628 @@
+[
+  {
+    "ruleVersion": "english_v3",
+    "sequence": 1,
+    "theme": "life",
+    "material": {
+      "title": "A quieter Saturday",
+      "kind": "dialogue",
+      "body": "Maya: Are we still meeting for a long walk tomorrow?\nLeo: I’m feeling a little under the weather. I don’t think I feel up to walking for two hours, but I would like to get out of the house.\nMaya: We could meet at the small café near your building instead. You wouldn’t have to travel far.\nLeo: That sounds good. Could we make it eleven rather than nine? I’d like to sleep a little longer.\nMaya: Of course. And if you wake up feeling worse, just send me a message. We can leave it for another day.\nLeo: Thanks. I was worried about changing the plan at the last minute.\nMaya: There’s no need to worry. I mainly wanted to spend some time with you. A short coffee together would be lovely, and the walking trail will still be there next week.",
+      "explanationZh": "理解人物的选择和沟通目的，不要求全文翻译。",
+      "targetPhraseIds": [
+        "fixture-1",
+        "fixture-2"
+      ],
+      "notes": [
+        {
+          "phraseId": "fixture-1",
+          "explanationZh": "有点不舒服，未指明严重疾病"
+        },
+        {
+          "phraseId": "fixture-2",
+          "explanationZh": "后接名词或动名词"
+        }
+      ]
+    },
+    "items": [
+      {
+        "position": 1,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第1次独立回忆：写出表示“身体有点不舒服”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "feel under the weather"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "有点不舒服，未指明严重疾病",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 2,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第1次独立回忆：写出表示“有精神或体力做某事”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "feel up to"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "后接名词或动名词",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 3,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第1次独立回忆：写出表示“弄清楚或想出解决方法”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "figure something out"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "具体语境允许 figure it out",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 4,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第1次独立回忆：写出表示“选择某个选项”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "go with"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "此处指选择，非陪同",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 5,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第1次独立回忆：写出表示“取决于有没有空位或库存”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "be subject to availability"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "说明供应条件",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 6,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第1次独立回忆：写出表示“未达到预期”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "fall short of expectations"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "表达结果低于预期",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 7,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第1次独立回忆：写出表示“愿意帮忙满足请求”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "be willing to oblige"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "较正式，不能说成有义务",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 8,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第1次独立回忆：写出表示“让某人愿意接受”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "be palatable to someone"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "此处用于提议，非食物味道",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 9,
+        "phase": "expression",
+        "questionType": "post_reading_expression",
+        "answerForm": "response",
+        "promptZh": "替 Leo 回复 Maya：接受附近喝咖啡的提议，并说明为什么不去长距离散步。写一两句即可。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "Coffee nearby sounds great. I’m feeling under the weather and don’t feel up to a long walk."
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "达到沟通目的即可，不要求复述参考句或包含指定词块。",
+        "gradingRubric": "自然替代可沟通成功且目标未测到；已阅读，不当独立提取。",
+        "hints": [
+          "先回应对方的请求，再补充原因或限制。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 10,
+        "phase": "expression",
+        "questionType": "post_reading_expression",
+        "answerForm": "response",
+        "promptZh": "朋友约你今晚去健身。你今天没精神，但希望周末再约。给朋友写一两句回复。写一两句即可。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "I’m not feeling well enough for the gym tonight. Could we go this weekend instead?"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "达到沟通目的即可，不要求复述参考句或包含指定词块。",
+        "gradingRubric": "自然替代可沟通成功且目标未测到；已阅读，不当独立提取。",
+        "hints": [
+          "先回应对方的请求，再补充原因或限制。"
+        ],
+        "learningCard": null
+      }
+    ]
+  },
+  {
+    "ruleVersion": "english_v3",
+    "sequence": 2,
+    "theme": "life",
+    "material": {
+      "title": "Choosing a place for lunch",
+      "kind": "passage",
+      "body": "Nina was arranging a Sunday lunch for three friends. The restaurant she first called had a sunny terrace, but outdoor tables were subject to availability. The staff could reserve a table inside, yet they could not promise that the group would sit outside. Nina sent her friends a short message explaining the choice. One friend suggested arriving early and waiting. Another pointed out that the weather forecast mentioned rain. After checking the bus route and the menu, they decided to go with the indoor table. It was easy to reach, and everyone could find something they liked to eat. Nina booked for twelve thirty and asked the restaurant whether a friend could bring a small birthday cake. The staff said yes. With the booking settled, she stopped comparing other places and went back to enjoying her Saturday afternoon.",
+      "explanationZh": "理解人物的选择和沟通目的，不要求全文翻译。",
+      "targetPhraseIds": [
+        "fixture-4",
+        "fixture-5"
+      ],
+      "notes": [
+        {
+          "phraseId": "fixture-4",
+          "explanationZh": "此处指选择，非陪同"
+        },
+        {
+          "phraseId": "fixture-5",
+          "explanationZh": "说明供应条件"
+        }
+      ]
+    },
+    "items": [
+      {
+        "position": 1,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第2次独立回忆：写出表示“身体有点不舒服”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "feel under the weather"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "有点不舒服，未指明严重疾病",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 2,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第2次独立回忆：写出表示“有精神或体力做某事”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "feel up to"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "后接名词或动名词",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 3,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第2次独立回忆：写出表示“弄清楚或想出解决方法”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "figure something out"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "具体语境允许 figure it out",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 4,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第2次独立回忆：写出表示“选择某个选项”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "go with"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "此处指选择，非陪同",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 5,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第2次独立回忆：写出表示“取决于有没有空位或库存”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "be subject to availability"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "说明供应条件",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 6,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第2次独立回忆：写出表示“未达到预期”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "fall short of expectations"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "表达结果低于预期",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 7,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第2次独立回忆：写出表示“愿意帮忙满足请求”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "be willing to oblige"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "较正式，不能说成有义务",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 8,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第2次独立回忆：写出表示“让某人愿意接受”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "be palatable to someone"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "此处用于提议，非食物味道",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 9,
+        "phase": "expression",
+        "questionType": "post_reading_expression",
+        "answerForm": "response",
+        "promptZh": "你是 Nina 的朋友。回复她：支持订室内座位，并解释一个理由。写一两句即可。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "Let’s go with the indoor table. We won’t need to worry about the rain."
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "达到沟通目的即可，不要求复述参考句或包含指定词块。",
+        "gradingRubric": "自然替代可沟通成功且目标未测到；已阅读，不当独立提取。",
+        "hints": [
+          "先回应对方的请求，再补充原因或限制。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 10,
+        "phase": "expression",
+        "questionType": "post_reading_expression",
+        "answerForm": "response",
+        "promptZh": "你和朋友要选择周末聚餐地点。写一两句提出你的选择和理由；可自由决定地点。写一两句即可。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "I’d choose the café near the station because it’s easy for everyone to get to."
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "达到沟通目的即可，不要求复述参考句或包含指定词块。",
+        "gradingRubric": "自然替代可沟通成功且目标未测到；已阅读，不当独立提取。",
+        "hints": [
+          "先回应对方的请求，再补充原因或限制。"
+        ],
+        "learningCard": null
+      }
+    ]
+  },
+  {
+    "ruleVersion": "english_v3",
+    "sequence": 3,
+    "theme": "work",
+    "material": {
+      "title": "A smaller first step",
+      "kind": "dialogue",
+      "body": "Sam: The client liked the idea, but our proposed schedule fell short of their expectations. They wanted the first version a month earlier.\nRuth: Can we deliver the whole thing by then without rushing the testing?\nSam: I don’t think so. A smaller first release might be more palatable to them if it includes the feature their team needs most.\nRuth: That makes sense. We should explain what they would receive first and what would come later.\nSam: They also asked for a short demonstration on Friday. Would you be willing to oblige? You know the feature better than I do.\nRuth: Yes, provided we keep it to twenty minutes. I can show the main workflow and leave time for questions.\nSam: Great. I’ll send a revised proposal today and make it clear that the later delivery date still applies to the remaining features.",
+      "explanationZh": "理解人物的选择和沟通目的，不要求全文翻译。",
+      "targetPhraseIds": [
+        "fixture-6",
+        "fixture-8",
+        "fixture-7"
+      ],
+      "notes": [
+        {
+          "phraseId": "fixture-6",
+          "explanationZh": "表达结果低于预期"
+        },
+        {
+          "phraseId": "fixture-8",
+          "explanationZh": "此处用于提议，非食物味道"
+        },
+        {
+          "phraseId": "fixture-7",
+          "explanationZh": "较正式，不能说成有义务"
+        }
+      ]
+    },
+    "items": [
+      {
+        "position": 1,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第3次独立回忆：写出表示“身体有点不舒服”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "feel under the weather"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "有点不舒服，未指明严重疾病",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 2,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第3次独立回忆：写出表示“有精神或体力做某事”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "feel up to"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "后接名词或动名词",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 3,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第3次独立回忆：写出表示“弄清楚或想出解决方法”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "figure something out"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "具体语境允许 figure it out",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 4,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第3次独立回忆：写出表示“选择某个选项”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "go with"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "此处指选择，非陪同",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 5,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第3次独立回忆：写出表示“取决于有没有空位或库存”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "be subject to availability"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "说明供应条件",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 6,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第3次独立回忆：写出表示“未达到预期”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "fall short of expectations"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "表达结果低于预期",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 7,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第3次独立回忆：写出表示“愿意帮忙满足请求”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "be willing to oblige"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "较正式，不能说成有义务",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 8,
+        "phase": "review",
+        "questionType": "whole_recall",
+        "answerForm": "chunk",
+        "promptZh": "第3次独立回忆：写出表示“让某人愿意接受”的完整常用词块；不必造句。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "be palatable to someone"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "此处用于提议，非食物味道",
+        "gradingRubric": "按词块而非完整句评分；意思成立的自然替代记为沟通成功、目标未测到。",
+        "hints": [
+          "先想表达的意思，再回忆搭配。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 9,
+        "phase": "expression",
+        "questionType": "post_reading_expression",
+        "answerForm": "response",
+        "promptZh": "你是 Sam。给客户写一两句，提出先交付核心功能、其他功能稍后交付，并说明这样安排的好处。写一两句即可。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "We could deliver the core feature earlier and add the remaining features later. Would that approach work for your team?"
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "达到沟通目的即可，不要求复述参考句或包含指定词块。",
+        "gradingRubric": "自然替代可沟通成功且目标未测到；已阅读，不当独立提取。",
+        "hints": [
+          "先回应对方的请求，再补充原因或限制。"
+        ],
+        "learningCard": null
+      },
+      {
+        "position": 10,
+        "phase": "expression",
+        "questionType": "post_reading_expression",
+        "answerForm": "response",
+        "promptZh": "同事请你周五帮忙演示一个功能。写一两句接受请求，并提出一个合理的时间限制。写一两句即可。",
+        "promptEn": "",
+        "expectedAnswers": [
+          "I’d be happy to help with the demonstration on Friday, as long as we keep it to twenty minutes."
+        ],
+        "acceptedVariants": [],
+        "semanticBoundary": "达到沟通目的即可，不要求复述参考句或包含指定词块。",
+        "gradingRubric": "自然替代可沟通成功且目标未测到；已阅读，不当独立提取。",
+        "hints": [
+          "先回应对方的请求，再补充原因或限制。"
+        ],
+        "learningCard": null
+      }
+    ]
+  }
+]

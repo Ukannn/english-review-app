@@ -9,6 +9,7 @@ export interface RecoveryState {
   updatedAt: string;
   hintCounts?: Record<number, number>;
   learnedPositions?: number[];
+  lessonWork?: { inputs: Record<number,string>; seconds: Record<string,number>; skipped?: number[] };
 }
 const key = (sessionId: string) => `english-review:v1:${sessionId}`;
 export async function loadRecovery(sessionId: string): Promise<RecoveryState | null> {

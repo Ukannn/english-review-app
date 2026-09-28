@@ -3,6 +3,7 @@ begin;
 create function pg_temp.assert_true(v boolean,label text) returns void language plpgsql as $$ begin if v is not true then raise exception 'ASSERTION FAILED: %',label;end if;end $$;
 insert into auth.users(id,email,aud,role) values('c3333333-3333-4333-8333-333333333333','schedule-test@example.invalid','authenticated','authenticated');
 insert into english_private.app_owner(owner_id) values('c3333333-3333-4333-8333-333333333333');
+insert into english_private.settings(owner_id,key,value) values('c3333333-3333-4333-8333-333333333333','v3_learning_settings','{"enabled":false,"reviewCount":8}');
 select set_config('request.jwt.claim.sub','c3333333-3333-4333-8333-333333333333',true);
 
 -- Deliberately construct frozen sessions on specified practice dates to test delayed grading and same-day retry invariants.

@@ -31,7 +31,7 @@ const built=spawnSync('npm',['--prefix','pwa','run','build'],{cwd:root,env,stdio
 if(built.status!==0)throw new Error('Build failed.');
 const dist=path.join(root,'pwa/dist');
 if(fs.existsSync(path.join(dist,'_worker.js'))||fs.existsSync(path.join(root,'functions')))throw new Error('This release must contain static assets only.');
-const receipt={project:'english-learning-lab',projectRef,environment,builtAt:new Date().toISOString(),
+const receipt={version:JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version,project:'english-learning-lab',projectRef,environment,builtAt:new Date().toISOString(),
   commit:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),
   workingTreeModified:Boolean(execFileSync('git',['status','--porcelain'],{cwd:root,encoding:'utf8'}).trim())};
 fs.writeFileSync(path.join(dist,'build-info.json'),JSON.stringify(receipt));

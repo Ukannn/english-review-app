@@ -32,7 +32,6 @@ export function ReviewView({api,bootstrap,onClose,onSubmitted,headerAction}:Prop
   const isRevealed=answers.has(question.position);
   const studyQuestion=questions.find(q=>q.isNew&&q.learningCard&&!learned.has(q.position)&&!answers.has(q.position));
   const answeredCount=answers.size;const allRevealed=answeredCount===questions.length;
-  const safeBoundary=question.semanticBoundary&&!question.expectedAnswers.concat(question.acceptedVariants).some(answer=>answer.trim().length>2&&question.semanticBoundary!.toLowerCase().includes(answer.trim().toLowerCase()))?question.semanticBoundary:null;
 
   useEffect(()=>{
     let active=true;
@@ -140,7 +139,6 @@ export function ReviewView({api,bootstrap,onClose,onSubmitted,headerAction}:Prop
       <section className="question-body">
         <h2 className="question-prompt">{question.promptZh||question.promptEn}</h2>
         {question.promptZh&&question.promptEn&&<p className="question-english" lang="en">{question.promptEn}</p>}
-        {safeBoundary&&<p className="semantic-boundary">{safeBoundary}</p>}
         {!isRevealed&&(question.hints?.length??0)>0&&<div className="hint-box">{question.hints!.slice(0,hintCounts[question.position]??0).map((text,i)=><p key={i}>{text}</p>)}{(hintCounts[question.position]??0)<question.hints!.length&&<button className="text-button" onClick={()=>void hint()}>需要提示</button>}</div>}
         <label className="answer-field"><span>你的答案</span><textarea value={input} onChange={event=>setInput(event.target.value)} disabled={isRevealed||revealing} placeholder={["short_expression","transfer_expression"].includes(question.questionType??"")?"写一两句回应…":"在这里写下完整搭配…"}/></label>
         {!isRevealed ? <button className="primary-button reveal-button" onClick={()=>void reveal()} disabled={!input.trim()||revealing||syncing}>{revealing?"保存中…":"查看答案"}</button> : <div className="answer-reveal" data-testid="answer-reveal"><div className="answer-reveal__header">参考表达</div><strong className="expression-display" lang="en">{question.expectedAnswers[0]}</strong>{question.acceptedVariants.length>0&&<p>也接受：{question.acceptedVariants.join(" · ")}</p>}</div>}

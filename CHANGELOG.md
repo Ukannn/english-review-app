@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.15.0] - 2026-09-28
+
+- Add frozen review → reading → expression lessons with life/life/work themes, eight default reviews and two short responses.
+- Preserve v2 jobs, settings and history; include due mastered phrases and distinguish skipped, unknown, hinted, exposed and full-retrieval evidence.
+- Remove private scoring boundaries from answer screens, enforce explicit answer forms, and keep gaps/post-reading practice from advancing mastery.
+- Restore local text and cloud stage progress; show separate v3 report denominators, engaged time and a ten-lesson reflection.
+- Add isolated database regressions and three sanitized content-review packages. Docker remains test-only; no database backup workflow is introduced.
+
+
 ## v0.14.0 — 2026-09-21
 
 - Prepare all pending contexts with one action and one ChatGPT command instead of opening each context separately.

@@ -50,3 +50,7 @@ npm --prefix pwa ci
 VITE_DEMO_MODE=true npm --prefix pwa run dev
 npm --prefix pwa run check
 ```
+
+## Version 0.15
+
+Frozen `english_v3` lessons combine independent review, coherent reading and two short responses. The default review count is 8 (future preference 4–12). Post-reading expression and independent retrieval remain distinct. See [learning policy](docs/learning-policy.md). Docker is available for isolated tests, not database backups.

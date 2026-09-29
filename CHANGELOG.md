@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.15.1] - 2026-09-29
+
+- Restore selecting multiple unknown passages in the context intake form and save exact source spans for AI extraction.
+- Show saved selections in the context inbox; clear stale marks when the source text changes.
+- Add an owner-scoped way to discard an unprocessed, unmarked context while preserving it for recovery.
+
 ## [0.15.0] - 2026-09-28
 
 - Add frozen review → reading → expression lessons with life/life/work themes, eight default reviews and two short responses.

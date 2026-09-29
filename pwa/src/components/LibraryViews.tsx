@@ -1,5 +1,5 @@
 import { BookOpen, Check, ChevronRight, Edit3, ExternalLink, Inbox, Search, Sparkles, X } from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { ApiClient, CandidateBootstrap, CandidateItem, ContextInbox, PhraseDetail, PhraseLibrary } from "../lib/contracts";
 import { makeIdempotencyKey } from "../lib/hash";
 import { ContextBatchPanel } from "./ContextBatchPanel";
@@ -41,21 +41,46 @@ function PhraseDetailSheet({detail,onClose}: {detail:PhraseDetail;onClose():void
 }
 
 const pendingDecision=(status:string)=>["staged","pending","proposed","ready","generated","unreviewed"].includes(status);
+type ContextSpan = {text:string;start:number;end:number};
+function validContextSpans(rawText:string, values:unknown[]):ContextSpan[] {
+  if (!Array.isArray(values)) return [];
+  return values.filter((value):value is ContextSpan=>{
+    if (!value || typeof value!=="object") return false;
+    const span=value as Partial<ContextSpan>;
+    return typeof span.start==="number" && Number.isInteger(span.start) && span.start>=0 && typeof span.end==="number" && Number.isInteger(span.end) && span.end>span.start && span.end<=rawText.length && typeof span.text==="string" && rawText.slice(span.start,span.end)===span.text;
+  }).sort((a,b)=>a.start-b.start);
+}
+function MarkedContext({text,spans}: {text:string;spans:ContextSpan[]}) {
+  let cursor=0;
+  const parts:ReactNode[]=[];
+  for(const span of spans){if(span.start<cursor)continue;parts.push(text.slice(cursor,span.start));parts.push(<mark key={`${span.start}:${span.end}`}>{span.text}</mark>);cursor=span.end;}
+  parts.push(text.slice(cursor));
+  return <>{parts}</>;
+}
 export function ContextView({client}: {client:ApiClient}) {
-  const [data,setData]=useState<ContextInbox|null>(null);const [rawText,setRawText]=useState("");const [note,setNote]=useState("");const [sourceUrl,setSourceUrl]=useState("");const [busy,setBusy]=useState(false);const [message,setMessage]=useState<string|null>(null);const [tab,setTab]=useState<"pending"|"review"|"archived">("pending");
+  const [data,setData]=useState<ContextInbox|null>(null);const [rawText,setRawText]=useState("");const [spans,setSpans]=useState<ContextSpan[]>([]);const [selectionMessage,setSelectionMessage]=useState<string|null>(null);const textArea=useRef<HTMLTextAreaElement>(null);const [note,setNote]=useState("");const [sourceUrl,setSourceUrl]=useState("");const [busy,setBusy]=useState(false);const [message,setMessage]=useState<string|null>(null);const [tab,setTab]=useState<"pending"|"review"|"archived">("pending");
   const refresh=useCallback(async()=>{try{setData(await client.getContextInbox());}catch(caught){setMessage(caught instanceof Error?caught.message:"语料读取失败。");}},[client]);
   useEffect(()=>{void refresh();},[refresh]);
-  async function submit(event:FormEvent){event.preventDefault();setBusy(true);setMessage(null);try{await client.saveContext({rawText:rawText.trim(),userNote:note.trim(),sourceUrl:sourceUrl.trim()||null,selectedSpans:[]},null,makeIdempotencyKey("context"));setRawText("");setNote("");setSourceUrl("");setTab("pending");await refresh();setMessage("语料已保存，可以交给 ChatGPT 整理。");}catch(caught){setMessage(caught instanceof Error?caught.message:"保存失败。");}finally{setBusy(false);}}
+  function addSelection(){
+    const field=textArea.current;
+    if(!field || field.selectionStart===field.selectionEnd){setSelectionMessage("请先在原文中选中不懂的部分。");return;}
+    const start=field.selectionStart,end=field.selectionEnd;
+    if(spans.some(span=>start<span.end&&end>span.start)){setSelectionMessage("这段与已有标记重叠，请先移除旧标记。");return;}
+    setSpans(current=>[...current,{text:rawText.slice(start,end),start,end}].sort((a,b)=>a.start-b.start));
+    setSelectionMessage(null);
+    field.setSelectionRange(end,end);
+  }
+  async function submit(event:FormEvent){event.preventDefault();setBusy(true);setMessage(null);try{await client.saveContext({rawText,userNote:note.trim(),sourceUrl:sourceUrl.trim()||null,selectedSpans:spans},null,makeIdempotencyKey("context"));setRawText("");setSpans([]);setSelectionMessage(null);setNote("");setSourceUrl("");setTab("pending");await refresh();setMessage("语料已保存，可以交给 ChatGPT 整理。");}catch(caught){setMessage(caught instanceof Error?caught.message:"保存失败。");}finally{setBusy(false);}}
   async function decide(id:string,action:"accept"|"edit"|"reject",edited:string|null){setBusy(true);try{await client.decideContextCandidate(id,action,edited,makeIdempotencyKey(`context-candidate:${id}`));await refresh();}catch(caught){setMessage(caught instanceof Error?caught.message:"处理失败。");}finally{setBusy(false);}}
   const category=(context:ContextInbox["contexts"][number])=>context.candidates.some(candidate=>pendingDecision(candidate.decisionStatus))?"review":["pending","processing"].includes(context.status)?"pending":"archived";
   const contexts=data?.contexts??[];
   return <section className="page-stack view-enter">
     <PageHeading eyebrow="从真实语境开始" title="语料" description="留下阅读、工作与对话中，你真正想用的英语。" action={<div className="heading-icon heading-icon--red"><Inbox/></div>}/>
-    <form className="context-form card" onSubmit={submit}><div className="section-title"><div><span>添加一段原文</span><p>原文和使用场景会一起保留，供后续整理与复习。</p></div></div><label>原文<textarea value={rawText} onChange={event=>setRawText(event.target.value)} required placeholder="粘贴遇到的英语句子、对话或段落…" rows={5}/></label><div className="form-grid"><label>来源链接（可选）<input type="url" value={sourceUrl} onChange={event=>setSourceUrl(event.target.value)} placeholder="https://"/></label><label>想表达什么（可选）<input value={note} onChange={event=>setNote(event.target.value)} placeholder="记录场景或想学会它的原因"/></label></div><div className="form-footer"><span>{rawText.length.toLocaleString()} 个字符</span><button className="primary-button" disabled={busy||!rawText.trim()}><Check size={17}/>保存语料</button></div></form>
+    <form className="context-form card" onSubmit={submit}><div className="section-title"><div><span>添加一段原文</span><p>粘贴完整原文，选中不懂的部分后点击标记；可以标记多处，也可以直接保存整段。</p></div></div><label>原文<textarea ref={textArea} value={rawText} onChange={event=>{setRawText(event.target.value);if(spans.length){setSpans([]);setSelectionMessage("原文已修改，旧标记已清除，请重新选中标记。");}}} required placeholder="粘贴遇到的英语句子、对话或段落…" rows={5}/></label><div className="context-marking-actions"><button type="button" className="secondary-button" disabled={busy||!rawText.trim()} onClick={addSelection}>标记选中的不懂部分</button>{spans.length>0&&<button type="button" className="text-button" onClick={()=>{setSpans([]);setSelectionMessage(null);}}>清除全部标记</button>}</div>{selectionMessage&&<p className="context-selection-message" role="status">{selectionMessage}</p>}{spans.length>0&&<div className="context-marking-preview"><span>已标记 {spans.length} 处</span><p lang="en"><MarkedContext text={rawText} spans={spans}/></p><div className="span-list">{spans.map(span=><button type="button" key={`${span.start}:${span.end}`} aria-label={`移除标记 ${span.text}`} onClick={()=>setSpans(current=>current.filter(item=>item!==span))}>{span.text}<X size={14}/></button>)}</div></div>}<div className="form-grid"><label>来源链接（可选）<input type="url" value={sourceUrl} onChange={event=>setSourceUrl(event.target.value)} placeholder="https://"/></label><label>想表达什么（可选）<input value={note} onChange={event=>setNote(event.target.value)} placeholder="记录场景或想学会它的原因"/></label></div><div className="form-footer"><span>{rawText.length.toLocaleString()} 个字符</span><button className="primary-button" disabled={busy||!rawText.trim()}><Check size={17}/>保存语料</button></div></form>
     {message&&<p role="status" className="job-message">{message}</p>}
     <div className="inbox-toolbar"><div className="segmented-control" aria-label="语料状态">{([["pending","待整理"],["review","待确认"],["archived","已归档"]] as const).map(([value,label])=><button key={value} className={tab===value?"is-active":""} aria-pressed={tab===value} onClick={()=>setTab(value)}>{label}<span>{contexts.filter(context=>category(context)===value).length}</span></button>)}</div></div>
     {data&&<ContextBatchPanel api={client} contextIds={contexts.filter(context=>category(context)==="pending").map(context=>context.id)} onRefresh={refresh}/>}
-    <div className="context-list">{contexts.filter(context=>category(context)===tab).map(context=><article key={context.id} className="context-card card"><header><div><span className={`status-chip status-chip--${context.status}`}>{category(context)==="pending"?"等待整理":category(context)==="review"?"等待确认":"已归档"}</span><time>{new Date(context.createdAt).toLocaleDateString("zh-CN")}</time></div>{context.sourceUrl&&<a href={context.sourceUrl} target="_blank" rel="noreferrer" aria-label="查看原文链接"><ExternalLink size={17}/></a>}</header><p className="context-text" lang="en">{context.rawText}</p>{context.userNote&&<p className="context-note">{context.userNote}</p>}<div className="candidate-list">{context.candidates.map(candidate=><CandidateEditor key={candidate.id} item={{id:candidate.id,source:"context",candidate:candidate.candidate,cueZh:candidate.cueZh,whyUseful:candidate.whyUseful,naturalExample:null,status:candidate.decisionStatus}} busy={busy} decide={(action,edited)=>decide(candidate.id,action,edited??null)}/>)}</div></article>)}{data&&contexts.filter(context=>category(context)===tab).length===0&&<div className="empty-state card"><Inbox size={30}/><h2>{tab==="pending"?"没有待整理的语料":tab==="review"?"没有待确认的表达":"还没有归档语料"}</h2><p>{tab==="pending"?"把遇到的一句话留下来，慢慢积累自己的素材。":"整理与确认后的语料会保留在这里。"}</p></div>}{!data&&<p className="empty-inline">正在读取语料…</p>}</div>
+    <div className="context-list">{contexts.filter(context=>category(context)===tab).map(context=><article key={context.id} className="context-card card"><header><div><span className={`status-chip status-chip--${context.status}`}>{category(context)==="pending"?"等待整理":category(context)==="review"?"等待确认":"已归档"}</span><time>{new Date(context.createdAt).toLocaleDateString("zh-CN")}</time></div>{context.sourceUrl&&<a href={context.sourceUrl} target="_blank" rel="noreferrer" aria-label="查看原文链接"><ExternalLink size={17}/></a>}</header><p className="context-text" lang="en"><MarkedContext text={context.rawText} spans={validContextSpans(context.rawText,context.selectedSpans)}/></p>{context.userNote&&<p className="context-note">{context.userNote}</p>}<div className="candidate-list">{context.candidates.map(candidate=><CandidateEditor key={candidate.id} item={{id:candidate.id,source:"context",candidate:candidate.candidate,cueZh:candidate.cueZh,whyUseful:candidate.whyUseful,naturalExample:null,status:candidate.decisionStatus}} busy={busy} decide={(action,edited)=>decide(candidate.id,action,edited??null)}/>)}</div></article>)}{data&&contexts.filter(context=>category(context)===tab).length===0&&<div className="empty-state card"><Inbox size={30}/><h2>{tab==="pending"?"没有待整理的语料":tab==="review"?"没有待确认的表达":"还没有归档语料"}</h2><p>{tab==="pending"?"把遇到的一句话留下来，慢慢积累自己的素材。":"整理与确认后的语料会保留在这里。"}</p></div>}{!data&&<p className="empty-inline">正在读取语料…</p>}</div>
   </section>;
 }
 export function CandidateView({client}: {client:ApiClient}) {

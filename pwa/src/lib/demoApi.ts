@@ -10,6 +10,7 @@ import type {
   SubmissionStatus,
   SystemStatus,
 } from "./contracts";
+import { learningDateAt } from "./learningDate";
 
 const questions = [
   ["取得稳定进展", "make steady progress", "I want to make steady progress this month."],
@@ -39,7 +40,7 @@ let submissionState: SubmissionStatus["status"] = "submitted";
 const bootstrap: ReviewBootstrap = {
   ok: true,
   state: "open",
-  learningDate: new Date().toISOString().slice(0, 10),
+  learningDate: learningDateAt(),
   session: {
     id: "00000000-0000-0000-0000-000000000001",
     revision,
@@ -154,7 +155,7 @@ export const demoApi: ApiClient = {
   async getContextInbox() { return contexts; },
   async decideContextCandidate() { return { ok: true }; },
   async getDashboard() { return dashboard; },
-  async getPhraseLibrary(search) { return { ...library, items: search ? library.items.filter((item) => `${item.chunk} ${item.cueZh}`.toLowerCase().includes(search.toLowerCase())) : library.items }; },
+  async getPhraseLibrary(search, limit = 100, offset = 0) { const items = search ? library.items.filter((item) => `${item.chunk} ${item.cueZh}`.toLowerCase().includes(search.toLowerCase())) : library.items; return { ...library, items: items.slice(offset, offset + limit) }; },
   async getPhraseDetail(phraseId) {
     const phrase = library.items.find((item) => item.id === phraseId) ?? library.items[0];
     return { ok: true, phrase: { ...phrase, commonMistake: null, notes: null, canonicalPattern: phrase.chunk }, stats: { lastReviewedAt: phrase.lastReviewedAt, timesSeen: phrase.timesSeen, timesCorrect: phrase.timesCorrect }, history: [] };

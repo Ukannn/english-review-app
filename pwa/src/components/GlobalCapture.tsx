@@ -112,6 +112,7 @@ export function GlobalCapture({client, sourceTitle, onSaved}: {
     } finally {saving.current = false; setBusy(false);}
   }
   const count = groups.reduce((total, group) => total + group.selectedSpans.length, 0);
+  if (!selection && !count && !message && !dialog) return null;
   const toolbar = <aside className={`global-capture ${dialog ? "global-capture--dialog" : ""}`} aria-label="随手收录" data-capture-ui>
     <div className="global-capture__top"><div className="global-capture__hint"><BookmarkPlus size={18}/><span>{count ? `已标记 ${count} 处，尚未完成收录` : "随手收录"}<small>划选或长按选中英语，保留原文语境</small></span></div>
       <div className="button-row">

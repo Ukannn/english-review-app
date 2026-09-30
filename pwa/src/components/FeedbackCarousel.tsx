@@ -18,27 +18,14 @@ export function FeedbackCarousel({ grades, active, onOpen }: { grades: GradeStat
   const [playing, setPlaying] = useState(() => !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches && document.visibilityState !== "hidden" && active);
   const [announcement, setAnnouncement] = useState("");
   const id = useId();
-  const card = useRef<HTMLElement>(null);
-  const cards = useRef(new Map<number, HTMLElement>());
+  const contents = useRef(new Map<number, HTMLDivElement>());
   const stage = useRef<HTMLDivElement>(null);
   const touch = useRef<{ id: number; x: number; y: number } | null>(null);
-  const [heights, setHeights] = useState<Record<number, number>>({});
   const signature = items.map(g => `${g.position}:${g.targetOutcome}:${g.feedbackZh}`).join("|");
   const current = items[index % Math.max(1, items.length)];
-  const height = current ? heights[current.position] : undefined;
   const pause = () => setPlaying(false);
   useLayoutEffect(() => {
-    if (!card.current) return;
-    const measure = () => {
-      if (!stage.current?.clientWidth) return;
-      const next = Object.fromEntries([...cards.current].map(([position, node]) => [position, node.offsetHeight]));
-      setHeights(previous => Object.keys(next).length === Object.keys(previous).length && Object.entries(next).every(([position, height]) => previous[Number(position)] === height) ? previous : next);
-    };
-    measure();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    cards.current.forEach(node => observer?.observe(node));
-    window.addEventListener("resize", measure);
-    return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
+    contents.current.forEach(node => { node.scrollTop = 0; });
   }, [current?.position, signature]);
   useEffect(() => { setIndex(0); }, [signature]);
   useEffect(() => { if (!active) setPlaying(false); }, [active]);
@@ -69,12 +56,11 @@ export function FeedbackCarousel({ grades, active, onOpen }: { grades: GradeStat
   const previous = (index + items.length - 1) % items.length, next = (index + 1) % items.length;
   return <section className="feedback-carousel review-carousel" aria-roledescription="轮播" aria-label="本次重点回看" onFocusCapture={event => { if (!(event.target as HTMLElement).closest(".carousel-play")) pause(); }}>
     <div className="carousel-heading"><h2>重点回看</h2><span>{items.length} 条反馈</span></div>
-    <div ref={stage} className="carousel-stage carousel-track" id={id} tabIndex={0} aria-label="反馈卡片，可使用方向键" style={{ height: height ? height + 34 : undefined }} onPointerEnter={pause}
+    <div ref={stage} className="carousel-stage carousel-track" id={id} tabIndex={0} aria-label="反馈卡片，可使用左右方向键切换" onPointerEnter={pause} onScrollCapture={pause}
       onPointerDown={event => {
         pause();
         if (event.pointerType === "touch" && !(event.target as HTMLElement).closest("button")) {
           touch.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
-          event.currentTarget.setPointerCapture?.(event.pointerId);
         }
       }}
       onPointerUp={event => {
@@ -83,14 +69,16 @@ export function FeedbackCarousel({ grades, active, onOpen }: { grades: GradeStat
         const dx = event.clientX - start.x, dy = event.clientY - start.y;
         if (Math.abs(dx) > 35 && Math.abs(dx) > Math.abs(dy) * 1.25) choose(index + (dx < 0 ? 1 : -1));
       }} onPointerCancel={() => { touch.current = null; }}
-      onKeyDown={event => { if (event.target === event.currentTarget && (event.key === "ArrowLeft" || event.key === "ArrowRight")) { event.preventDefault(); choose(index + (event.key === "ArrowLeft" ? -1 : 1)); } }}>
+      onKeyDown={event => { if ((event.target === event.currentTarget || (event.target as HTMLElement).closest(".feedback-card-content")) && (event.key === "ArrowLeft" || event.key === "ArrowRight")) { event.preventDefault(); choose(index + (event.key === "ArrowLeft" ? -1 : 1)); } }}>
       {items.map((grade, position) => {
         const shown = position === index % items.length || position === next || (items.length > 2 && position === previous);
         const slot = position === index % items.length ? "active" : position === next ? "right" : "left";
         // Preserve the card's identity while changing its slot so the sample's CSS transform animates it.
         return <Fragment key={grade.position}>
-          <article ref={node => { if (node) cards.current.set(grade.position, node); else cards.current.delete(grade.position); if (slot === "active") card.current = node; }} className="review-slide carousel-card" data-slot={slot} data-parked={!shown} data-position={grade.position} aria-hidden={slot !== "active"} inert={slot !== "active"} aria-label={`第 ${position + 1} 条，共 ${items.length} 条`}><FeedbackFace grade={grade}/></article>
-          {shown && slot !== "active" && <button className="deck-card-button" data-slot={slot} style={{ height: heights[grade.position] }} aria-label={`选择${slot === "left" ? "上一条" : "下一条"}：${feedbackCategory(grade)}`} onClick={event => choose(position, event.detail === 0)}/>}
+          <article className="review-slide carousel-card" data-slot={slot} data-parked={!shown} data-position={grade.position} aria-hidden={slot !== "active"} inert={slot !== "active"} aria-label={`第 ${position + 1} 条，共 ${items.length} 条`}>
+            <div ref={node => { if (node) contents.current.set(grade.position, node); else contents.current.delete(grade.position); }} className="feedback-card-content" tabIndex={slot === "active" ? 0 : -1} role="group" aria-label="反馈内容，可上下滚动"><FeedbackFace grade={grade}/></div>
+          </article>
+          {shown && slot !== "active" && <button className="deck-card-button" data-slot={slot} aria-label={`选择${slot === "left" ? "上一条" : "下一条"}：${feedbackCategory(grade)}`} onClick={event => choose(position, event.detail === 0)}/>}
         </Fragment>;
       })}
     </div>

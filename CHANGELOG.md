@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.17.1] - 2026-10-01
+
+- Keep feedback cards at a shared responsive height, with complete long content scrollable inside the active card. Keep carousel controls stable when switching between short and long feedback.
+- Reset card reading position on every selection; support mouse, keyboard and native touch scrolling while retaining the existing perspective and carousel animation.
+
 ## [0.17.0] - 2026-09-30
 
 - Separate Today, Learning Report and Learning Records while preserving the existing corpus, library, candidates, settings and answer recovery flows.

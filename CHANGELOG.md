@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.16.0] - 2026-09-30
+
+- Add global text selection capture across reading, questions, references and library detail sheets. Save directly or mark several passages before one batch action.
+- Preserve each source paragraph, exact selected spans and page provenance without interrupting the active answer. Merge overlapping selections in the same paragraph.
+- Verify saved contexts through inbox readback, retain unconfirmed requests with stable retry keys, and retry only remaining paragraphs after partial success.
+
 ## [0.15.1] - 2026-09-29
 
 - Restore selecting multiple unknown passages in the context intake form and save exact source spans for AI extraction.

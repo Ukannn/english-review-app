@@ -9,6 +9,7 @@ import { api, supabase } from "./lib/api";
 import type { ApiClient, DashboardData, ReviewBootstrap } from "./lib/contracts";
 import { demoApi } from "./lib/demoApi";
 import { clearAllRecovery } from "./lib/recovery";
+import { GlobalCapture } from "./components/GlobalCapture";
 
 function routeFromHash(): ViewId {
   const route = location.hash.replace(/^#\/?/, "").split("/")[0];
@@ -27,6 +28,7 @@ export function LearningApp({ client, demo }: { client: ApiClient; demo: boolean
   const [bootstrap, setBootstrap] = useState<ReviewBootstrap | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [captureRevision, setCaptureRevision] = useState(0);
   const refresh = useCallback(async () => {
     setLoading(true); setError(null);
     try {
@@ -51,10 +53,11 @@ export function LearningApp({ client, demo }: { client: ApiClient; demo: boolean
     catch (caught) { setError(caught instanceof Error ? caught.message : "退出失败，请重试。"); }
   }
   return <AppShell activeView={view} onNavigate={navigate} online={online} demo={demo} onSignOut={demo ? undefined : () => void signOut()}>
+    <GlobalCapture client={client} sourceTitle={({today:"今日学习",intake:"语料",analytics:"学习报告",library:"学习资料库",status:"同步与设置"})[view]} onSaved={() => setCaptureRevision(current => current + 1)}/>
     {error && <div className="notice notice--red" role="alert"><span>{error}</span><button className="text-button" onClick={() => void refresh()}>重试</button></div>}
     {/* Keep the active question mounted when visiting another top-level page. */}
     <div hidden={view !== "today"}><TodayView key={bootstrap?.queueId ?? bootstrap?.learningDate ?? "loading"} client={client} bootstrap={bootstrap} dashboard={dashboard} loading={loading} demo={demo} online={online} onRefresh={refresh} onNavigate={navigate}/></div>
-    {view === "intake" && <ContextView client={client}/>}
+    {view === "intake" && <ContextView client={client} refreshToken={captureRevision}/>}
     {view === "analytics" && <AnalyticsView dashboard={dashboard} loading={loading} onRefresh={refresh}/>}
     {view === "library" && <LibraryWorkspace client={client} onGenerate={() => navigate("status")}/>}
     {view === "status" && <SettingsView client={client} demo={demo} onSignOut={signOut} onChanged={refresh}/>}

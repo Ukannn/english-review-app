@@ -205,7 +205,7 @@ export interface PhraseLibrary {
 
 export interface PhraseDetail {
   ok: boolean;
-  phrase: PhraseSummary & {
+  phrase: Omit<PhraseSummary, "timesSeen" | "timesCorrect" | "lastReviewedAt"> & {
     commonMistake: string | null;
     notes: string | null;
     canonicalPattern: string | null;

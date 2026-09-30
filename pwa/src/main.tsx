@@ -3,6 +3,10 @@ import { createRoot } from "react-dom/client";
 import { registerSW } from "virtual:pwa-register";
 import { App } from "./App";
 import "./styles.css";
+import "./sample.css";
+import "./design.css";
+
+document.body.classList.add("editorial-review");
 
 registerSW({ immediate: true });
 

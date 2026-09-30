@@ -6,6 +6,8 @@ import { loadRecovery, syncPendingActivities } from "../lib/recovery";
 import { PasswordForm } from "./PasswordForm";
 import { PageHeading } from "./PageHeading";
 import { AiJobPanel } from "./AiJobPanel";
+import { ThemeControl } from "./ThemeControl";
+import { formatLearningDate, formatLearningTime } from "../lib/learningDate";
 
 export function QuestionCountSettings({client,demo,onChanged}: {client:ApiClient;demo:boolean;onChanged():Promise<void>}) {
   const [bootstrap,setBootstrap] = useState<ReviewBootstrap|null>(null);
@@ -40,6 +42,7 @@ export function QuestionCountSettings({client,demo,onChanged}: {client:ApiClient
     finally{setBusy(false);}
   }
   if(bootstrap?.ruleVersion==="english_v3") return <LessonSettings client={client} bootstrap={bootstrap} onChanged={async()=>{await refresh();await onChanged();}}/>;
+  if(!bootstrap) return <section className="card settings-card"><h2>每日学习量</h2><p role={message?"alert":"status"}>{message||"正在读取现有设置…"}</p>{message&&<button className="secondary-button" onClick={()=>void refresh()}>重试读取设置</button>}</section>;
   return <section className="card settings-card"><h2>每日题量</h2><p>当前默认 {bootstrap?.settings?.defaultQuestionCount??"…"} 题 · 今日可调整下限 {minimum} 题</p><form onSubmit={save}><label>题量<input type="number" min={mode==="default"?1:minimum} max={150} step={1} required value={count} onChange={event=>{setCount(Number(event.target.value));key.current=makeIdempotencyKey("question-count");}} /></label><fieldset><legend>生效范围</legend>{([["today","仅今天"],["default","以后默认"],["both","今天和以后"]] as const).map(([value,label])=><label className="radio-label" key={value}><input type="radio" name="question-mode" checked={mode===value} value={value} onChange={()=>{setMode(value);key.current=makeIdempotencyKey("question-count");}} disabled={frozen&&value!=="default"}/>{label}</label>)}</fieldset>{frozen&&<p>今天的批次已提交，仍可修改以后默认题量。</p>}<button className="primary-button" disabled={busy||!bootstrap||(frozen&&mode!=="default")}>{busy?"正在保存…":"保存题量"}</button></form>{message&&<p role="status" className="job-message">{message}</p>}</section>;
 }
 
@@ -61,12 +64,13 @@ export function SettingsView({client,demo,onSignOut,onChanged}: {client:ApiClien
       <StatusCard icon={<Database/>} title="云端数据" value={status ? (demo?"演示数据":status.ok?"最近连接成功":"连接异常") : "尚未确认"} note="语料、题目与学习记录" ok={Boolean(status?.ok)}/>
       <StatusCard icon={<Cloud/>} title="AI 处理" value={status ? `${status.pendingAiJobs} 项等待处理` : "正在读取"} note="发一句指令给 ChatGPT 即可继续" ok={Boolean(status)}/>
       <StatusCard icon={<Smartphone/>} title="提交状态" value={status?status.failedSubmissions?`${status.failedSubmissions} 项需要重试`:"没有失败的提交":"正在读取"} note="作答中的恢复草稿保存在当前设备" ok={Boolean(status)&&status?.failedSubmissions===0}/>
-      <StatusCard icon={<History/>} title="最近完成学习" value={status?.lastCommittedAt?new Date(status.lastCommittedAt).toLocaleDateString("zh-CN"):"暂无记录"} note="以最终保存的学习结果为准" ok={Boolean(status)}/>
+      <StatusCard icon={<History/>} title="最近结果保存" value={status?.lastCommittedAt?formatLearningTime(status.lastCommittedAt):"暂无记录"} note="上海时间；与会话学习日期分别记录" ok={Boolean(status)}/>
     </div>
     <QuestionCountSettings client={client} demo={demo} onChanged={onChanged}/>
+    <article className="card settings-card"><h2>页面外观</h2><p>选择浅色、深色，或随系统实时切换。</p><ThemeControl/></article>
     <article className="card account-security-card"><div className="section-title"><div><span>账号安全</span><p>在当前登录状态下修改密码。</p></div><LockKeyhole size={21}/></div><button className="secondary-button" onClick={()=>setPasswordPage(true)}>修改密码<ArrowRight size={17}/></button></article>
     <MaterialGenerator client={client}/>
-    <article className="card settings-card"><div className="section-title"><div><span>历史与恢复</span><p>旧草稿和历史记录，可以在需要时查阅。</p></div><button className="secondary-button" onClick={()=>void loadLegacy()} disabled={busy}>查看旧记录</button></div>{legacy&&<div className="legacy-records">{legacy.items.length?legacy.items.map(item=><details key={item.id}><summary>{item.source} · {item.createdAt?new Date(item.createdAt).toLocaleDateString("zh-CN"):"历史记录"}</summary><pre>{JSON.stringify(item.content,null,2)}</pre></details>):<p className="empty-inline">没有待恢复的旧草稿。</p>}</div>}</article>
+    <article className="card settings-card"><div className="section-title"><div><span>历史与恢复</span><p>旧草稿和历史记录，可以在需要时查阅。</p></div><button className="secondary-button" onClick={()=>void loadLegacy()} disabled={busy}>查看旧记录</button></div>{legacy&&<div className="legacy-records">{legacy.items.length?legacy.items.map(item=><details key={item.id}><summary>{item.source} · {item.createdAt?formatLearningDate(item.createdAt):"历史记录"}</summary><pre>{JSON.stringify(item.content,null,2)}</pre></details>):<p className="empty-inline">没有待恢复的旧草稿。</p>}</div>}</article>
     {!demo&&<button className="text-button" onClick={()=>void onSignOut()}>退出登录</button>}
   </section>;
 }

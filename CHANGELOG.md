@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.0] - 2026-09-30
+
+- Separate Today, Learning Report and Learning Records while preserving the existing corpus, library, candidates, settings and answer recovery flows.
+- Reuse the visual study's portrait 3D carousel and motion. Keep each card's identity, natural height, text selection, side-card selection, keyboard controls, touch swipes and explicit playback after interaction pauses.
+- Present evidence-backed spelling errors and corresponding corrections with distinct marks; keep reasonable alternate answers neutral and preserve the original answer and question target.
+- Lead the report with version-separated accuracy, one interactive stacked column and scheduled 7/30-day review counts. Read the full expression inventory and describe stages without claiming permanent mastery.
+- Add expression-history evidence links, preserved filters and reading position, light/dark/system themes and responsive navigation. The existing API, grading, scheduling and permissions remain unchanged; full session browsing is still unavailable.
+
 ## [0.16.0] - 2026-09-30
 
 - Add global text selection capture across reading, questions, references and library detail sheets. Save directly or mark several passages before one batch action.

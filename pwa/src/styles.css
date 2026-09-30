@@ -1001,3 +1001,25 @@ dialog.detail-sheet::backdrop { background: rgba(0,0,0,.22); backdrop-filter: bl
 .lesson-view .card { padding: clamp(20px, 4vw, 36px); }
 .lesson-view details { margin: 20px 0; }
 .lesson-view .button-row { flex-wrap: wrap; }
+
+.global-capture { position: sticky; top: 12px; z-index: 18; margin-bottom: 28px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-sm); max-height: 45vh; overflow: auto; }
+.global-capture__top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.global-capture__hint { display: flex; gap: 10px; align-items: center; min-width: 0; color: var(--accent-blue); font-size: 14px; }
+.global-capture__hint svg { flex: none; }
+.global-capture__hint small { display: block; color: var(--ink-soft); font-size: 12px; margin-top: 3px; }
+.global-capture .button-row { margin: 0; flex-shrink: 0; }
+.global-capture__selection { font-size: 14px; max-height: 72px; overflow: auto; margin: 10px 0 0; overflow-wrap: anywhere; }
+.global-capture__marks { display: flex; flex-wrap: wrap; gap: 8px; max-height: 96px; overflow: auto; margin-top: 12px; }
+.global-capture__mark { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; max-width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 5px 10px; background: var(--accent-red-soft); color: var(--ink); cursor: pointer; }
+.global-capture__mark span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.global-capture__mark svg { flex: none; }
+.global-capture__mark:disabled { cursor: default; }
+.global-capture__message { margin: 10px 0 0; font-size: 13px; color: var(--ink-soft); overflow-wrap: anywhere; }
+.global-capture--dialog { top: auto; bottom: 0; margin: 20px 0 0; }
+@media (max-width: 760px) {
+  .global-capture { top: 70px; padding: 12px; }
+  .global-capture__top { flex-wrap: wrap; }
+  .global-capture .button-row { width: 100%; }
+  .global-capture .button-row button { flex: 1; padding: 0 10px; }
+  .global-capture--dialog { top: auto; }
+}

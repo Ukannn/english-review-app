@@ -91,6 +91,7 @@ const contexts: ContextInbox = {
     candidates: [{ id: "demo-candidate", position: 1, candidate: "carve out time", cueZh: "挤出时间", whyUseful: "适合工作与训练安排。", confidence: 0.94, decisionStatus: "pending" }],
   }],
 };
+const contextSaveKeys = new Map<string, string>();
 
 const status: SystemStatus = {
   ok: true,
@@ -137,7 +138,19 @@ export const demoApi: ApiClient = {
   },
   async importAiResult() { submissionState = "committed"; return { ok: true, jobId: "demo-job", status: "consumed", actualCount: questions.length }; },
   async cancelAiJob() { return { ok: true, status: "cancelled" }; },
-  async saveContext() { return { ok: true, contextId: crypto.randomUUID(), status: "pending" }; },
+  async saveContext(payload, _revision, key) {
+    const existing = contextSaveKeys.get(key);
+    if (existing) return {ok: true, contextId: existing, status: "pending"};
+    const id = crypto.randomUUID();
+    contexts.contexts.unshift({id, rawText: String(payload.rawText),
+      selectedSpans: Array.isArray(payload.selectedSpans) ? structuredClone(payload.selectedSpans) : [],
+      sourceUrl: typeof payload.sourceUrl === "string" ? payload.sourceUrl : null,
+      sourceTitle: typeof payload.sourceTitle === "string" ? payload.sourceTitle : null,
+      userNote: typeof payload.userNote === "string" ? payload.userNote : null,
+      status: "pending", createdAt: new Date().toISOString(), candidates: []});
+    contextSaveKeys.set(key, id);
+    return {ok: true, contextId: id, status: "pending"};
+  },
   async getContextInbox() { return contexts; },
   async decideContextCandidate() { return { ok: true }; },
   async getDashboard() { return dashboard; },

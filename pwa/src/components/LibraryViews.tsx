@@ -57,10 +57,10 @@ function MarkedContext({text,spans}: {text:string;spans:ContextSpan[]}) {
   parts.push(text.slice(cursor));
   return <>{parts}</>;
 }
-export function ContextView({client}: {client:ApiClient}) {
+export function ContextView({client,refreshToken=0}: {client:ApiClient;refreshToken?:number}) {
   const [data,setData]=useState<ContextInbox|null>(null);const [rawText,setRawText]=useState("");const [spans,setSpans]=useState<ContextSpan[]>([]);const [selectionMessage,setSelectionMessage]=useState<string|null>(null);const textArea=useRef<HTMLTextAreaElement>(null);const [note,setNote]=useState("");const [sourceUrl,setSourceUrl]=useState("");const [busy,setBusy]=useState(false);const [message,setMessage]=useState<string|null>(null);const [tab,setTab]=useState<"pending"|"review"|"archived">("pending");
   const refresh=useCallback(async()=>{try{setData(await client.getContextInbox());}catch(caught){setMessage(caught instanceof Error?caught.message:"语料读取失败。");}},[client]);
-  useEffect(()=>{void refresh();},[refresh]);
+  useEffect(()=>{void refresh();},[refresh,refreshToken]);
   function addSelection(){
     const field=textArea.current;
     if(!field || field.selectionStart===field.selectionEnd){setSelectionMessage("请先在原文中选中不懂的部分。");return;}

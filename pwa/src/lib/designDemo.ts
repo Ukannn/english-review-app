@@ -44,7 +44,7 @@ function previewGrades(): GradeStatus[] {
   });
   if (variant === "long") {
     result[0].observedAnswer = "I'll provide an updade tomorrow, once the team has reviewed the latest figures and confirmed how the revised timeline will affect the launch. We also need to explain which assumptions have changed, what we have already verified, and which questions still need a decision before we can commit to the next step.";
-    result[0].feedbackZh = "这是一条专门用于长文本验收的本地示例。拼写应为 update；完整原答保留，卡片随真实文字增高，不截断内容。";
+    result[0].feedbackZh = "这是一条专门用于长文本验收的本地示例。拼写应为 update；完整原答保留，超过统一高度时可在卡片内上下滚动。";
   }
   return result;
 }

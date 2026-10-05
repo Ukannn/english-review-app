@@ -1,8 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import {execFileSync} from 'node:child_process';
 
 const root = process.cwd();
+const gitRoot=fs.realpathSync(execFileSync('git',['rev-parse','--show-toplevel'],{cwd:root,encoding:'utf8'}).trim());
+if(gitRoot!==fs.realpathSync(root))throw new Error('Export must run from the Git repository root');
+const tracked=new Set(execFileSync('git',['ls-files','-z'],{cwd:root,encoding:'utf8'}).split('\0').filter(Boolean));
+const directories=new Set([...tracked].flatMap(file=>file.split('/').slice(0,-1).map((_,i)=>file.split('/').slice(0,i+1).join('/'))));
+function exportable(entry) {
+  const relative=path.relative(root,entry).split(path.sep).join('/');
+  return (tracked.has(relative)||directories.has(relative))&&!fs.lstatSync(entry).isSymbolicLink()
+    &&!relative.split('/').includes('__pycache__')&&!relative.endsWith('.pyc');
+}
 const targetFlag = process.argv.indexOf('--target');
 if (targetFlag === -1 || !process.argv[targetFlag + 1]) {
   throw new Error('Usage: node scripts/export-public.mjs --target <empty-directory>');
@@ -46,8 +56,9 @@ for (const relativePath of copyEntries) {
   const source = path.join(root, relativePath);
   const destination = path.join(target, relativePath);
   fs.mkdirSync(path.dirname(destination), { recursive: true });
-  fs.cpSync(source, destination, { recursive: true, filter: entry => !entry.split(path.sep).some(part => part === '__pycache__') && !entry.endsWith('.pyc') });
+  fs.cpSync(source, destination, { recursive: true, filter: exportable });
 }
+for(const entry of ['scripts/public/README.md','scripts/public/ci.yml'])if(!tracked.has(entry)||!exportable(path.join(root,entry)))throw new Error('Public template must be a tracked regular file');
 fs.copyFileSync(path.join(root, 'scripts/public/README.md'), path.join(target, 'README.md'));
 fs.mkdirSync(path.join(target, '.github/workflows'), { recursive: true });
 fs.copyFileSync(path.join(root, 'scripts/public/ci.yml'), path.join(target, '.github/workflows/ci.yml'));

@@ -4,9 +4,12 @@ import { makeIdempotencyKey, sha256Jsonb } from "../lib/hash";
 import { loadRecovery, saveRecovery } from "../lib/recovery";
 import { ActiveTime } from "../lib/activeTime";
 import { PageHeading } from "./PageHeading";
+import { mergeLessonRecovery } from "../lib/lessonRecovery";
+import { formatLearningDate, learningDateAt } from "../lib/learningDate";
+import type { RecoveryState } from "../lib/recovery";
 
 type Attempt = "answered" | "dont_know" | "skipped";
-export function LessonView({api, bootstrap, onRefresh, onSubmitted}: {api:ApiClient;bootstrap:ReviewBootstrap;onRefresh():Promise<void>;onSubmitted(id:string):void}) {
+export function LessonView({api, bootstrap, todayDate=learningDateAt(), onRefresh, onSubmitted}: {api:ApiClient;bootstrap:ReviewBootstrap;todayDate?:string;onRefresh():Promise<void>;onSubmitted(id:string):void}) {
   const session=bootstrap.session!, questions=bootstrap.questions;
   const root=useRef<HTMLElement>(null);
   const [lesson,setLesson]=useState<Lesson>(bootstrap.lesson!);
@@ -20,7 +23,8 @@ export function LessonView({api, bootstrap, onRefresh, onSubmitted}: {api:ApiCli
   const [revealed,setRevealed]=useState<number|null>(null);
   const revision=useRef(session.revision), synced=useRef(new Set<number>()), seconds=useRef<Record<string,number>>({reading:lesson.readingSeconds});
   const clock=useRef(new ActiveTime()), writeChain=useRef(Promise.resolve()), pendingCheckpoint=useRef<{hash:string;key:string}|null>(null), submitKey=useRef(makeIdempotencyKey("lesson-submit"));
-  const live=useRef({answers,inputs,hints,learned,ready,busy,revealed,conflict});live.current={answers,inputs,hints,learned,ready,busy,revealed,conflict};
+  const live=useRef({answers,inputs,hints,learned,ready,busy,revealed,conflict,conflictingAnswers});live.current={answers,inputs,hints,learned,ready,busy,revealed,conflict,conflictingAnswers};
+  const lastBootstrap=useRef(bootstrap);
   const review=questions.filter(q=>q.phase==="review"), expression=questions.filter(q=>q.phase==="expression");
   const pendingReview=review.find(q=>!answers.has(q.position));
   const current=pendingReview??(lesson.readingCompleted?expression.find(q=>!answers.has(q.position)):undefined);
@@ -30,17 +34,37 @@ export function LessonView({api, bootstrap, onRefresh, onSubmitted}: {api:ApiCli
     const snapshot={sessionId:session.id,sessionRevision:revision.current,answers:[...next.answers.values()],checkpointedPositions:[...synced.current],hintCounts:next.hints,learnedPositions:next.learned,updatedAt:new Date().toISOString(),lessonWork:{inputs:next.inputs,seconds:{...seconds.current}}};
     const save=writeChain.current.catch(()=>undefined).then(()=>saveRecovery(snapshot));writeChain.current=save;return save;
   }
+  function restore(fresh:ReviewBootstrap, local:RecoveryState|null) {
+    const merged=mergeLessonRecovery(fresh,local);
+    revision.current=merged.sessionRevision;synced.current=merged.checkpointed;seconds.current=merged.seconds;
+    const hasConflict=merged.conflictingAnswers.length>0;
+    live.current={...live.current,answers:merged.answers,inputs:merged.inputs,hints:merged.hintCounts,learned:merged.learnedPositions,ready:true,conflict:hasConflict,conflictingAnswers:merged.conflictingAnswers};
+    setAnswers(merged.answers);setInputs(merged.inputs);setHints(merged.hintCounts);setLearned(merged.learnedPositions);
+    setConflict(hasConflict);setConflictingAnswers(merged.conflictingAnswers);setReady(true);
+    if(hasConflict)setError("另一设备已保存不同答案。请核对下面两份内容，再继续云端进度。");
+    else setError(current=>current?.includes("REVISION_CONFLICT")?null:current);
+    setLesson(previous=>({...fresh.lesson!,readingStarted:previous.readingStarted||fresh.lesson!.readingStarted,
+      readingCompleted:previous.readingCompleted||fresh.lesson!.readingCompleted,
+      readingSeconds:Math.max(previous.readingSeconds,fresh.lesson!.readingSeconds),material:fresh.lesson!.material??previous.material}));
+  }
   useEffect(()=>{
     let cancelled=false;
     void loadRecovery(session.id).then(local=>{
       if(cancelled)return;
-      const merged=new Map<number,CheckpointAnswer>();const hc:Record<number,number>={};const lc:number[]=[];
-      for(const q of questions){if(q.draft){merged.set(q.position,{position:q.position,answer:q.draft.answer,revision:q.draft.revision,revealHash:q.contentHash,activeSeconds:q.draft.activeSeconds??0,attemptState:q.draft.attemptState??"answered",hintUsed:q.draft.hintUsed??false,hintCount:q.draft.hintCount??0,learningCardViewed:q.draft.learningCardViewed??false,clientInstanceId:"restored",pageStartedAt:new Date().toISOString()});synced.current.add(q.position);}hc[q.position]=Math.max(q.hintCount??0,q.draft?.hintCount??0,local?.hintCounts?.[q.position]??0);if(q.learningCardViewed||q.draft?.learningCardViewed)lc.push(q.position);}
-      for(const a of local?.answers??[]){const cloud=merged.get(a.position);if(cloud&&(cloud.answer!==a.answer||cloud.attemptState!==(a.attemptState??"answered"))){setConflict(true);setConflictingAnswers(values=>[...values,a]);setError("另一设备已保存不同答案。请核对下面两份内容，再继续云端进度。");}else if(!cloud)merged.set(a.position,a);}
-      seconds.current={...seconds.current,...local?.lessonWork?.seconds,reading:Math.max(lesson.readingSeconds,local?.lessonWork?.seconds.reading??0)};setAnswers(merged);setInputs(local?.lessonWork?.inputs??{});setHints(hc);setLearned([...new Set([...lc,...local?.learnedPositions??[]])]);setReady(true);
+      restore(bootstrap,local);lastBootstrap.current=bootstrap;
     }).catch(()=>setError("无法读取本机草稿，请刷新重试。"));
     return()=>{cancelled=true;};
   },[session.id]);
+  useEffect(()=>{
+    if(!ready||busy||lastBootstrap.current===bootstrap)return;
+    lastBootstrap.current=bootstrap;
+    // An older in-flight refresh must not roll back a confirmed checkpoint.
+    if(session.revision<revision.current)return;
+    const state=live.current,localAnswers=new Map(state.answers);
+    for(const answer of state.conflictingAnswers)if(answer.clientInstanceId!=="unsubmitted-input")localAnswers.set(answer.position,answer);
+    restore(bootstrap,{sessionId:session.id,sessionRevision:revision.current,answers:[...localAnswers.values()],checkpointedPositions:[...synced.current],
+      hintCounts:state.hints,learnedPositions:state.learned,lessonWork:{inputs:state.inputs,seconds:{...seconds.current}},updatedAt:new Date().toISOString()});
+  },[bootstrap,ready,busy]);
   useEffect(()=>{
     const interact=()=>clock.current.interact();
     const visibility=()=>{clock.current.tick(false);};document.addEventListener("visibilitychange",visibility);
@@ -73,9 +97,10 @@ export function LessonView({api, bootstrap, onRefresh, onSubmitted}: {api:ApiCli
   });}
   const refQuestion=questions.find(q=>q.position===revealed);
   const learning=current?.isNew&&current.learningCard&&!learned.includes(current.position);
-  return <section ref={root} className="page-stack lesson-view"><PageHeading eyebrow="连贯内容 · 主动表达" title="今天，学会表达一件事" description="约 15–20 分钟 · 先独立回忆，再阅读与回应。"/>
+  const resumed=bootstrap.learningDate<todayDate;
+  return <section ref={root} className="page-stack lesson-view"><PageHeading eyebrow={resumed?`${formatLearningDate(bootstrap.learningDate)} · 继续未完成的学习`:"连贯内容 · 主动表达"} title={resumed?"接着上次，继续学":"今天，学会表达一件事"} description={resumed?"已保存的进度已恢复，继续完成这次学习即可。":"约 15–20 分钟 · 先独立回忆，再阅读与回应。"}/>
     <div className="session-summary"><span>复习 {review.filter(q=>answers.has(q.position)).length}/{review.length}</span><span>阅读 {lesson.readingCompleted?"已完成":"待阅读"}</span><span>表达 {expression.filter(q=>answers.has(q.position)).length}/2</span></div>
-    {!ready?<p>正在恢复学习进度…</p>:conflict?<article className="card"><h2>请先核对不同设备的答案</h2><p>本机已作答：</p><pre>{JSON.stringify(conflictingAnswers.map(a=>({题号:a.position,答案:a.answer,状态:a.attemptState})),null,2)}</pre><p>云端已作答：</p><pre>{JSON.stringify(conflictingAnswers.map(a=>({题号:a.position,答案:answers.get(a.position)?.answer,状态:answers.get(a.position)?.attemptState})),null,2)}</pre><p>本机未提交输入仍会保留。</p><button onClick={()=>{setConflict(false);setError(null);void persist({...live.current,conflict:false});}}>已核对，继续云端进度</button></article>:refQuestion?<article className="card"><h2>参考表达</h2><p lang="en">{refQuestion.expectedAnswers[0]}</p><p>详细反馈会在本次批改后呈现。</p><button className="primary-button" disabled={busy} onClick={()=>setRevealed(null)}>继续</button></article>:current?<article className="card question-card">
+    {!ready?<p>正在恢复学习进度…</p>:conflict?<article className="card"><h2>请先核对不同设备的答案</h2><p>本机答案或未提交输入：</p><pre>{JSON.stringify(conflictingAnswers.map(a=>({题号:a.position,答案:a.answer,状态:a.attemptState})),null,2)}</pre><p>云端已作答：</p><pre>{JSON.stringify(conflictingAnswers.map(a=>({题号:a.position,答案:answers.get(a.position)?.answer,状态:answers.get(a.position)?.attemptState})),null,2)}</pre><p>本机未提交输入仍会保留。</p><button onClick={()=>{setConflict(false);setConflictingAnswers([]);setError(null);void persist({...live.current,conflict:false,conflictingAnswers:[]});}}>已核对，继续云端进度</button></article>:refQuestion?<article className="card"><h2>参考表达</h2><p lang="en">{refQuestion.expectedAnswers[0]}</p><p>详细反馈会在本次批改后呈现。</p><button className="primary-button" disabled={busy} onClick={()=>setRevealed(null)}>继续</button></article>:current?<article className="card question-card">
       <header className="question-meta"><span>{current.phase==="expression"?"读后表达练习":"独立复习"}</span><span>{current.answerForm==="gap"?"填指定空格":current.answerForm==="response"?"写一两句回应":"写完整词块"}</span></header>
       {learning?<section className="question-body"><h2>先熟悉这个表达</h2><p>{current.learningCard!.meaningZh}</p><blockquote lang="en">{current.learningCard!.example}</blockquote><p>{current.learningCard!.usageNote}</p><button className="primary-button" disabled={busy} onClick={()=>void act(async()=>{const next=[...learned,current.position];await persist({...live.current,learned:next});setLearned(next);await api.recordQuestionActivity(session.id,current.position,"study",`lesson:${session.id}:study:${current.position}`);})}>隐藏学习卡，试着回忆</button><button className="text-button" disabled={busy} onClick={()=>void answer("skipped")}>跳过</button></section>:<section className="question-body">
         <h2>{current.promptZh}</h2>{current.promptEn&&<p lang="en">{current.promptEn}</p>}
@@ -87,6 +112,6 @@ export function LessonView({api, bootstrap, onRefresh, onSubmitted}: {api:ApiCli
       </section>}
     </article>:!lesson.readingStarted?<article className="card"><h2>接下来，读一段完整内容</h2><p>已完成的复习先保存，再打开材料。</p><button className="primary-button" disabled={busy} onClick={()=>void read("reading_start")}>开始阅读</button></article>:!lesson.readingCompleted?<article className="card"><span className="type-chip">{lesson.theme==="life"?"生活中的英语":"工作中的英语"}</span><h2>{lesson.material?.title}</h2><p lang="en" className="lesson-reading">{lesson.material?.body}</p><details><summary>需要中文帮助</summary><p>{lesson.material?.explanationZh}</p>{lesson.material?.notes.map(note=><p key={note.phraseId}>{note.explanationZh}</p>)}</details><button className="primary-button" disabled={busy} onClick={()=>void read("reading_complete")}>收起原文，试着回应</button></article>:<article className="card"><h2>本次练习已完成</h2><p>接下来一次批改，区分独立回忆与读后的表达。</p><button className="primary-button" disabled={busy} onClick={()=>void finish()}>提交本次学习</button></article>}
     {ready&&!conflict&&<button className="text-button" disabled={busy} onClick={()=>void finish()}>结束本次并批改已答内容</button>}
-    {error&&<p className="inline-error" role="alert">{error}</p>}{busy&&<p role="status">正在保存…</p>}
+    {error&&<div><p className="inline-error" role="alert">{error}</p>{!conflict&&<button className="secondary-button" disabled={busy} onClick={()=>void act(onRefresh)}>刷新云端进度</button>}</div>}{busy&&<p role="status">正在保存…</p>}
   </section>;
 }

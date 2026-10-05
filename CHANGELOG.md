@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.2] - 2026-10-05
+
+- Merge refreshed cloud revisions and checkpoints into an open lesson while preserving local input, unsynced answers and explicit conflict review. Identify older unfinished lessons with their original date.
+- Reuse context request keys after an unconfirmed response and make global capture collapsible without losing marked passages or retry state.
+- Restore archived contexts in the owner-scoped reader and count imported reviews with unknown rule versions as legacy history.
+- Give ChatGPT one complete v3 question/reading and grading contract, including every frozen item and required field, while retaining the short pending-task command.
+- Support both wrapped and unwrapped management migrations; restrict sanitized public exports to tracked regular files. Refresh development dependencies to clear the audited advisories.
+
 ## [0.17.1] - 2026-10-01
 
 - Keep feedback cards at a shared responsive height, with complete long content scrollable inside the active card. Keep carousel controls stable when switching between short and long feedback.

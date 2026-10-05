@@ -31,13 +31,16 @@ export function GlobalCapture({client, sourceTitle, onSaved}: {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [dialog, setDialog] = useState<HTMLDialogElement | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
   const saving = useRef(false);
   useEffect(() => {
     const root = document.getElementById("learning-content");
     if (!root) return;
     function readSelection() {
       if (saving.current || document.activeElement?.closest("[data-capture-ui]")) return;
-      setSelection(captureSelection(window.getSelection(), root!, sourceTitle));
+      const next=captureSelection(window.getSelection(), root!, sourceTitle);
+      setSelection(next);
+      if(next)setCollapsed(false);
     }
     function trackDialog() {
       const active = root!.querySelector<HTMLDialogElement>("dialog[open]");
@@ -56,19 +59,19 @@ export function GlobalCapture({client, sourceTitle, onSaved}: {
       document.removeEventListener("keyup", readSelection);
     };
   }, [sourceTitle]);
-  useEffect(() => {setSelection(null);}, [sourceTitle, dialog]);
+  useEffect(() => {setSelection(null);setCollapsed(true);}, [sourceTitle, dialog]);
 
   function mark() {
     if (!selection || saving.current) return;
     setGroups(current => addCapture(current, selection));
-    setSelection(null); setMessage(null);
+    setSelection(null); setMessage(null);setCollapsed(true);
     window.getSelection()?.removeAllRanges();
   }
   async function save() {
     if (saving.current) return;
     const batch = selection ? addCapture(groups, selection) : groups;
     if (!batch.length) return;
-    saving.current = true; setBusy(true); setMessage(null); setSelection(null);
+    saving.current = true; setBusy(true); setMessage(null); setSelection(null);setCollapsed(false);
     window.getSelection()?.removeAllRanges();
     // Freeze each payload before its first attempt; timeout retries use the same key.
     const pending = batch.map(group => ({...group, attempted: true}));
@@ -113,9 +116,12 @@ export function GlobalCapture({client, sourceTitle, onSaved}: {
   }
   const count = groups.reduce((total, group) => total + group.selectedSpans.length, 0);
   if (!selection && !count && !message && !dialog) return null;
-  const toolbar = <aside className={`global-capture ${dialog ? "global-capture--dialog" : ""}`} aria-label="随手收录" data-capture-ui>
+  const compact=collapsed&&!selection&&!busy&&!dialog;
+  const toolbar = <aside className={`global-capture ${dialog ? "global-capture--dialog" : compact?"global-capture--compact":""}`} aria-label="随手收录" data-capture-ui>
+    {compact?<button type="button" className="secondary-button" aria-label="展开随手收录" aria-expanded={false} onClick={()=>setCollapsed(false)}><BookmarkPlus size={18}/>{count?`已标记 ${count} 处`:"随手收录"}</button>:<>
     <div className="global-capture__top"><div className="global-capture__hint"><BookmarkPlus size={18}/><span>{count ? `已标记 ${count} 处，尚未完成收录` : "随手收录"}<small>划选或长按选中英语，保留原文语境</small></span></div>
       <div className="button-row">
+        {!dialog&&<button type="button" className="icon-button" aria-label="收起随手收录" aria-expanded={true} disabled={busy} onClick={()=>{setSelection(null);setCollapsed(true);window.getSelection()?.removeAllRanges();}}><X size={16}/></button>}
         {selection && <button type="button" className="secondary-button" disabled={busy} onPointerDown={event => event.preventDefault()} onClick={mark}>标记所选</button>}
         <button type="button" className="primary-button" disabled={busy || (!count && !selection)} onPointerDown={event => event.preventDefault()} onClick={() => void save()}><Check size={16}/>{busy ? "正在收录…" : groups.some(group => group.attempted) ? "重试收录" : "加入语料库"}</button>
       </div>
@@ -127,6 +133,7 @@ export function GlobalCapture({client, sourceTitle, onSaved}: {
       return selectedSpans.length ? [{...item, selectedSpans}] : [];
     }))}><span lang="en">{span.text}</span><X size={14}/></button>))}</div>}
     {message && <p className="global-capture__message" role="status">{message}</p>}
+    </>}
   </aside>;
   return dialog ? createPortal(toolbar, dialog) : toolbar;
 }

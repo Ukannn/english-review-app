@@ -100,3 +100,19 @@ it("makes collection controls available inside a modal detail sheet", async () =
   await userEvent.click(within(dialog).getByRole("button", {name: "加入语料库"}));
   await within(dialog).findByText(/已加入语料库/);
 });
+it("collapses marked passages and preserves them, the answer and retry key across navigation",async()=>{
+  const {client,contexts}=clientWithInbox(),view=render(content(client));
+  vi.mocked(client.saveContext).mockRejectedValueOnce(new Error("offline"));
+  select("Keep a close eye on the deadline.",0,18);
+  await userEvent.click(screen.getByRole("button",{name:"标记所选"}));
+  expect(screen.getByRole("button",{name:"展开随手收录"}).getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByRole("button",{name:"加入语料库"})).toBeNull();
+  await userEvent.click(screen.getByRole("button",{name:"展开随手收录"}));
+  await userEvent.click(screen.getByRole("button",{name:"加入语料库"}));await screen.findByText(/还有 1 段未确认/);
+  const key=vi.mocked(client.saveContext).mock.calls[0][2];
+  view.rerender(content(client,vi.fn(),"学习资料库"));
+  await userEvent.click(screen.getByRole("button",{name:"展开随手收录"}));
+  await userEvent.click(screen.getByRole("button",{name:"重试收录"}));await screen.findByText(/已加入语料库/);
+  expect(vi.mocked(client.saveContext).mock.calls[1][2]).toBe(key);expect(contexts).toHaveLength(1);
+  expect((screen.getByRole("textbox",{name:"正在作答"}) as HTMLTextAreaElement).value).toBe("My unfinished answer");
+});

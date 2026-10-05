@@ -11,10 +11,11 @@ const literal=value=>{const delimiter='$english_'+hash(value).slice(0,20)+'$';if
 export function migrationEnvelope(filename,source) {
   const match=/^(\d{14})_([a-z0-9_]+)\.sql$/.exec(filename);
   if(!match)throw new Error('Unsupported English migration filename');
-  // These versioned English files each own one outer transaction. Keep their body unchanged.
+  // Both CLI-style statements and an explicitly wrapped transaction are supported.
   const content=source.trim();
-  if(!/^begin;\s/i.test(content)||! /\scommit;$/i.test(content))throw new Error('Expected a single outer BEGIN/COMMIT migration');
-  const body=content.replace(/^begin;\s*/i,'').replace(/\s*commit;$/i,'');
+  const startsTransaction=/^begin;\s/i.test(content),endsTransaction=/\scommit;$/i.test(content);
+  if(startsTransaction!==endsTransaction)throw new Error('Incomplete outer BEGIN/COMMIT migration');
+  const body=startsTransaction?content.replace(/^begin;\s*/i,'').replace(/\s*commit;$/i,''):content;
   const [version,name]=match.slice(1), sourceSql=literal(source), bodySql=literal(body);
   return {version,name,sha256:hash(source),query:`do $english_apply$ begin
  perform set_config('lock_timeout','4s',true);

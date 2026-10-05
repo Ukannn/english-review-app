@@ -2,8 +2,30 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ApiClient, ContextInbox } from "../lib/contracts";
 import { ContextView } from "./LibraryViews";
+import { PhraseDetailSheet } from "./LibraryViews";
+import { StrictMode } from "react";
+import { demoApi } from "../lib/demoApi";
 
 afterEach(cleanup);
+
+it("keeps a reopened detail sheet after StrictMode queues an earlier close event",async()=>{
+  const prototype=HTMLDialogElement.prototype,originalShow=Object.getOwnPropertyDescriptor(prototype,"showModal"),originalClose=Object.getOwnPropertyDescriptor(prototype,"close");
+  const show=vi.fn(function(this:HTMLDialogElement){this.open=true;}),close=vi.fn(function(this:HTMLDialogElement){if(!this.open)return;this.open=false;window.setTimeout(()=>this.dispatchEvent(new Event("close")),0);});
+  Object.defineProperties(prototype,{showModal:{configurable:true,value:show},close:{configurable:true,value:close}});
+  try{
+    const detail=await demoApi.getPhraseDetail("p1"),onClose=vi.fn();
+    render(<StrictMode><PhraseDetailSheet detail={detail} onClose={onClose}/></StrictMode>);
+    await waitFor(()=>expect(show).toHaveBeenCalledTimes(2));
+    await new Promise(resolve=>window.setTimeout(resolve,10));
+    const dialog=screen.getByRole("dialog") as HTMLDialogElement;
+    expect(dialog.open).toBe(true);expect(onClose).not.toHaveBeenCalled();
+    dialog.close();await waitFor(()=>expect(onClose).toHaveBeenCalledOnce());
+  }finally{
+    cleanup();
+    if(originalShow)Object.defineProperty(prototype,"showModal",originalShow);else Reflect.deleteProperty(prototype,"showModal");
+    if(originalClose)Object.defineProperty(prototype,"close",originalClose);else Reflect.deleteProperty(prototype,"close");
+  }
+});
 
 function setup() {
   let contexts:ContextInbox["contexts"]=[];

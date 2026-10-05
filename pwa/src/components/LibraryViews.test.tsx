@@ -27,6 +27,32 @@ function select(start:number,end:number) {
 }
 
 describe("context selection",()=>{
+  it("replays an unchanged save after a lost response without creating a second context",async()=>{
+    const api=setup(),saved=new Map<string,string>();let fail=true;
+    api.saveContext=vi.fn(async(_payload,_revision,key)=>{
+      if(!saved.has(key))saved.set(key,`context-${saved.size+1}`);
+      if(fail){fail=false;throw new Error("response timeout");}
+      return {ok:true,contextId:saved.get(key)};
+    });
+    fireEvent.change(screen.getByLabelText("原文"),{target:{value:"Please follow up."}});
+    fireEvent.click(screen.getByRole("button",{name:"保存语料"}));await screen.findByText("response timeout");
+    fireEvent.click(screen.getByRole("button",{name:"保存语料"}));
+    await waitFor(()=>expect(api.saveContext).toHaveBeenCalledTimes(2));
+    expect(saved.size).toBe(1);expect(vi.mocked(api.saveContext).mock.calls[1][2]).toBe(vi.mocked(api.saveContext).mock.calls[0][2]);
+    await waitFor(()=>expect((screen.getByLabelText("原文") as HTMLTextAreaElement).value).toBe(""));
+    fireEvent.change(screen.getByLabelText("原文"),{target:{value:"Please follow up."}});
+    fireEvent.click(screen.getByRole("button",{name:"保存语料"}));
+    await waitFor(()=>expect(api.saveContext).toHaveBeenCalledTimes(3));expect(saved.size).toBe(2);
+  });
+  it("uses a new request key when a failed payload is edited",async()=>{
+    const api=setup();vi.mocked(api.saveContext).mockRejectedValueOnce(new Error("offline"));
+    fireEvent.change(screen.getByLabelText("原文"),{target:{value:"First source"}});
+    fireEvent.click(screen.getByRole("button",{name:"保存语料"}));await screen.findByText("offline");
+    fireEvent.change(screen.getByLabelText("原文"),{target:{value:"Changed source"}});
+    fireEvent.click(screen.getByRole("button",{name:"保存语料"}));
+    await waitFor(()=>expect(api.saveContext).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(api.saveContext).mock.calls[1][2]).not.toBe(vi.mocked(api.saveContext).mock.calls[0][2]);
+  });
   it("saves multiple exact UTF-16 spans and shows them after readback",async()=>{
     const api=setup();
     const raw="  😀 I can't make sense of this.\nPlease follow up.";

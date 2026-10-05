@@ -15,9 +15,9 @@ select pg_temp.assert_true(
   (select status='rejected' from english_private.contexts where id=(select id from pg_temp.context_to_discard)),
   'discard preserves source for recovery');
 select pg_temp.assert_true(
-  not exists (select 1 from jsonb_array_elements(english_api.get_context_inbox()->'contexts') c
-    where (c->>'id')::uuid=(select id from pg_temp.context_to_discard)),
-  'discarded context leaves active inbox');
+  exists (select 1 from jsonb_array_elements(english_api.get_context_inbox()->'contexts') c
+    where (c->>'id')::uuid=(select id from pg_temp.context_to_discard) and c->>'status'='rejected'),
+  'discarded context remains available as archived source');
 
 create temp table pg_temp.marked_context(id uuid);
 insert into pg_temp.marked_context

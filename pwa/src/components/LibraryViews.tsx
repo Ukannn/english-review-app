@@ -61,6 +61,7 @@ function MarkedContext({text,spans}: {text:string;spans:ContextSpan[]}) {
 export function ContextView({client,refreshToken=0}: {client:ApiClient;refreshToken?:number}) {
   const [data,setData]=useState<ContextInbox|null>(null);const [rawText,setRawText]=useState("");const [spans,setSpans]=useState<ContextSpan[]>([]);const [selectionMessage,setSelectionMessage]=useState<string|null>(null);const textArea=useRef<HTMLTextAreaElement>(null);const [note,setNote]=useState("");const [sourceUrl,setSourceUrl]=useState("");const [busy,setBusy]=useState(false);const [message,setMessage]=useState<string|null>(null);const [tab,setTab]=useState<"pending"|"review"|"archived">("pending");
   const refresh=useCallback(async()=>{try{setData(await client.getContextInbox());}catch(caught){setMessage(caught instanceof Error?caught.message:"语料读取失败。");}},[client]);
+  const pendingSave=useRef<{signature:string;key:string}|null>(null),saving=useRef(false);
   useEffect(()=>{void refresh();},[refresh,refreshToken]);
   function addSelection(){
     const field=textArea.current;
@@ -71,7 +72,16 @@ export function ContextView({client,refreshToken=0}: {client:ApiClient;refreshTo
     setSelectionMessage(null);
     field.setSelectionRange(end,end);
   }
-  async function submit(event:FormEvent){event.preventDefault();setBusy(true);setMessage(null);try{await client.saveContext({rawText,userNote:note.trim(),sourceUrl:sourceUrl.trim()||null,selectedSpans:spans},null,makeIdempotencyKey("context"));setRawText("");setSpans([]);setSelectionMessage(null);setNote("");setSourceUrl("");setTab("pending");await refresh();setMessage("语料已保存，可以交给 ChatGPT 整理。");}catch(caught){setMessage(caught instanceof Error?caught.message:"保存失败。");}finally{setBusy(false);}}
+  async function submit(event:FormEvent){
+    event.preventDefault();if(saving.current)return;saving.current=true;setBusy(true);setMessage(null);
+    const payload={rawText,userNote:note.trim(),sourceUrl:sourceUrl.trim()||null,selectedSpans:spans},signature=JSON.stringify(payload);
+    if(pendingSave.current?.signature!==signature)pendingSave.current={signature,key:makeIdempotencyKey("context")};
+    try{
+      const response=await client.saveContext(payload,null,pendingSave.current.key) as {ok?:boolean;contextId?:string}|null;
+      if(!response?.ok||typeof response.contextId!=="string")throw new Error("未收到保存确认，请重试。");
+      pendingSave.current=null;setRawText("");setSpans([]);setSelectionMessage(null);setNote("");setSourceUrl("");setTab("pending");await refresh();setMessage("语料已保存，可以交给 ChatGPT 整理。");
+    }catch(caught){setMessage(caught instanceof Error?caught.message:"保存失败。");}finally{saving.current=false;setBusy(false);}
+  }
   async function decide(id:string,action:"accept"|"edit"|"reject",edited:string|null){setBusy(true);try{await client.decideContextCandidate(id,action,edited,makeIdempotencyKey(`context-candidate:${id}`));await refresh();}catch(caught){setMessage(caught instanceof Error?caught.message:"处理失败。");}finally{setBusy(false);}}
   const category=(context:ContextInbox["contexts"][number])=>context.candidates.some(candidate=>pendingDecision(candidate.decisionStatus))?"review":["pending","processing"].includes(context.status)?"pending":"archived";
   const contexts=data?.contexts??[];

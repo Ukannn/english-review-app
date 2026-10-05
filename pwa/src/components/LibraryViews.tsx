@@ -31,7 +31,7 @@ export function PhraseView({client}: {client:ApiClient}) {
 export function PhraseDetailSheet({detail,onClose}: {detail:PhraseDetail;onClose():void}) {
   const dialog=useRef<HTMLDialogElement>(null);
   useEffect(()=>{const previous=document.activeElement instanceof HTMLElement?document.activeElement:null;const overflow=document.body.style.overflow;const element=dialog.current;document.body.style.overflow="hidden";element?.showModal();return()=>{element?.close();document.body.style.overflow=overflow;previous?.focus({preventScroll:true});};},[]);
-  return <dialog ref={dialog} className="detail-sheet" aria-label={`${detail.phrase.chunk} 的学习详情`} onCancel={onClose} onClose={onClose} onClick={event=>{if(event.target===event.currentTarget){const rect=event.currentTarget.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right)onClose();}}}>
+  return <dialog ref={dialog} className="detail-sheet" aria-label={`${detail.phrase.chunk} 的学习详情`} onCancel={onClose} onClose={event=>{if(!event.currentTarget.open)onClose();}} onClick={event=>{if(event.target===event.currentTarget){const rect=event.currentTarget.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right)onClose();}}}>
     <header><span className="status-chip">学习详情</span><button className="icon-button" aria-label="关闭表达详情" onClick={onClose}><X size={19}/></button></header>
     <div className="detail-title"><div><h2 className="expression-display" lang="en">{detail.phrase.chunk}</h2><p>{detail.phrase.cueZh}</p></div></div>
     <dl><div><dt>复习阶段</dt><dd>{detail.phrase.reviewStage}</dd></div><div><dt>下次复习</dt><dd>{detail.phrase.nextReviewAt?formatLearningDate(detail.phrase.nextReviewAt):"待安排"}</dd></div><div><dt>练习次数</dt><dd>{detail.stats.timesSeen}</dd></div></dl>

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.18.2] - 2026-10-06
+
+- Keep light, dark and system appearance controls in Settings only; remove the persistent top toolbar and its reserved space.
+- Preserve saved appearance and system or cross-tab theme updates while browsing learning pages.
+
 ## [0.18.1] - 2026-10-06
 
 - Allow immediate undo of a device’s own recent, unprocessed Shortcut capture without deleting source history or changing learning progress. Replayed capture requests keep their undone state.

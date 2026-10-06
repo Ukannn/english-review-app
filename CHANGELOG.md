@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.18.0] - 2026-10-06
+
+- Add revocable, insert-only connections for Apple Shortcuts in Settings. Connections expire after 90 days and cannot read the library or change learning progress.
+- Preserve shared text as pending context and make identical request retries return the original receipt. Verify capture capabilities in isolated database CI.
+
 ## [0.17.2] - 2026-10-05
 
 - Merge refreshed cloud revisions and checkpoints into an open lesson while preserving local input, unsynced answers and explicit conflict review. Identify older unfinished lessons with their original date.

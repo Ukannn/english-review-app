@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.18.1] - 2026-10-06
+
+- Allow immediate undo of a device’s own recent, unprocessed Shortcut capture without deleting source history or changing learning progress. Replayed capture requests keep their undone state.
+
 ## [0.18.0] - 2026-10-06
 
 - Add revocable, insert-only connections for Apple Shortcuts in Settings. Connections expire after 90 days and cannot read the library or change learning progress.

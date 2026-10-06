@@ -13,7 +13,7 @@ import { clearAllRecovery } from "./lib/recovery";
 import { GlobalCapture } from "./components/GlobalCapture";
 import { RecordsView } from "./components/RecordsView";
 import { usePhraseInventory } from "./lib/usePhraseInventory";
-import { applyTheme, readThemePreference } from "./lib/theme";
+import { applyTheme, readThemePreference, THEME_STORAGE_KEY } from "./lib/theme";
 
 function routeFromHash(): ViewId {
   const route = location.hash.replace(/^#\/?/, "").split(/[/?]/)[0];
@@ -64,8 +64,10 @@ export function LearningApp({ client, demo }: { client: ApiClient; demo: boolean
   useEffect(() => {
     const system = window.matchMedia?.("(prefers-color-scheme: dark)");
     const update = () => applyTheme(readThemePreference());
+    const sync = (event: StorageEvent) => { if (event.key === THEME_STORAGE_KEY || event.key === null) update(); };
     update(); system?.addEventListener("change", update);
-    return () => system?.removeEventListener("change", update);
+    window.addEventListener("storage", sync);
+    return () => { system?.removeEventListener("change", update); window.removeEventListener("storage", sync); };
   }, []);
   useLayoutEffect(() => {
     previousView.current = view;

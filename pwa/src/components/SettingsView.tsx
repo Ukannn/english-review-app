@@ -1,3 +1,4 @@
+import { ShortcutSettings } from "./ShortcutSettings";
 import { ArrowRight, Check, CircleAlert, Cloud, Database, History, LockKeyhole, RefreshCw, ShieldCheck, Smartphone, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { ApiClient, LegacyRecovery, ReviewBootstrap, SystemStatus } from "../lib/contracts";
@@ -66,6 +67,7 @@ export function SettingsView({client,demo,onSignOut,onChanged}: {client:ApiClien
       <StatusCard icon={<Smartphone/>} title="提交状态" value={status?status.failedSubmissions?`${status.failedSubmissions} 项需要重试`:"没有失败的提交":"正在读取"} note="作答中的恢复草稿保存在当前设备" ok={Boolean(status)&&status?.failedSubmissions===0}/>
       <StatusCard icon={<History/>} title="最近结果保存" value={status?.lastCommittedAt?formatLearningTime(status.lastCommittedAt):"暂无记录"} note="上海时间；与会话学习日期分别记录" ok={Boolean(status)}/>
     </div>
+    {!demo&&<ShortcutSettings/>}
     <QuestionCountSettings client={client} demo={demo} onChanged={onChanged}/>
     <article className="card settings-card"><h2>页面外观</h2><p>选择浅色、深色，或随系统实时切换。</p><ThemeControl/></article>
     <article className="card account-security-card"><div className="section-title"><div><span>账号安全</span><p>在当前登录状态下修改密码。</p></div><LockKeyhole size={21}/></div><button className="secondary-button" onClick={()=>setPasswordPage(true)}>修改密码<ArrowRight size={17}/></button></article>

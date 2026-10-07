@@ -670,7 +670,6 @@ dialog.detail-sheet::backdrop { background: rgba(0,0,0,.22); backdrop-filter: bl
 }
 
 .lesson-reading { white-space: pre-line; font-size: 1.12rem; line-height: 1.9; max-width: 68ch; }
-.lesson-view .card { padding: clamp(20px, 4vw, 36px); }
 .lesson-view details { margin: 20px 0; }
 .lesson-view .button-row { flex-wrap: wrap; }
 

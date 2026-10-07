@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.18.4] - 2026-10-07
+
+- Align lesson summaries, reading/reference cards, AI handoff panels and extra practice with shared responsive content spacing and heading typography.
+- Separate optional burden feedback and give expanded grading details a clear reading gap.
+
 ## [0.18.3] - 2026-10-07
 
 - Keep explicitly saved or marked English words as learning candidates instead of excluding them for lacking a sentence. Mark provisional meanings and distinguish teaching examples from source quotations.

@@ -114,6 +114,49 @@
 .theme-control { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .theme-control > span { font-size: 13px; color: var(--ink-soft); }
 .theme-control .segmented-control button { display: flex; align-items: center; gap: 6px; }
+/* Content cards own their spacing; structured question/chart cards keep their own layout. */
+.sample-shell { --card-padding: 24px; --card-content-gap: 12px; }
+.sample-shell .content-card, .sample-shell .prompt-box, .sample-shell .practice-card {
+  padding: var(--card-padding);
+  display: grid;
+  gap: var(--card-content-gap);
+  min-width: 0;
+  text-align: left;
+}
+.sample-shell .content-card > *, .sample-shell .prompt-box > *, .sample-shell .practice-card > * { min-width: 0; margin: 0; }
+.sample-shell .content-card > h2, .sample-shell .prompt-box > h2, .sample-shell .practice-card > h3 {
+  font-family: var(--font-ui);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: -.02em;
+}
+.sample-shell .content-card > p, .sample-shell .prompt-box > p, .sample-shell .practice-card > p {
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.sample-shell .content-card > button, .sample-shell .prompt-box > button, .sample-shell .practice-card > button { justify-self: start; }
+.sample-shell .content-card pre { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sample-shell .content-card details p + p { margin-top: 10px; }
+.sample-shell .content-card .lesson-reading { color: var(--ink); font-size: 18px; line-height: 1.85; white-space: pre-wrap; }
+.sample-shell .prompt-box .answer-field, .sample-shell .prompt-box .button-row { margin-top: 4px; }
+.sample-shell .prompt-box .answer-field textarea { min-height: 80px; }
+.sample-shell .prompt-box .status-message { color: var(--accent-blue); font-size: 13px; }
+.burden-feedback { display: grid; gap: 12px; border-top: 1px solid var(--line); margin-top: 4px; padding-top: 16px; }
+.burden-feedback p { margin: 0; color: var(--ink-soft); font-size: 13px; line-height: 1.65; }
+.sample-shell .grading-summary { padding: 20px var(--card-padding); }
+.grading-summary p { font-size: 14px; line-height: 1.65; }
+.feedback-details > summary { display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--ink-soft); font-size: 13px; }
+.feedback-details > summary::before { content: "▸"; }
+.feedback-details[open] > summary::before { content: "▾"; }
+.feedback-details > summary::-webkit-details-marker { display: none; }
+.feedback-details > .results-grid { margin-top: 16px; }
+@media (max-width: 760px) {
+  .sample-shell { --card-padding: 20px; }
+  .sample-shell .content-card > h2 { overflow-wrap: anywhere; }
+}
 .sample-shell .global-capture:not(.global-capture--dialog) { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 12px); right: max(18px,env(safe-area-inset-right)); left: auto; width: min(600px,calc(100vw - 36px)); margin: 0; z-index: 45; max-height: 35dvh; background: var(--surface); box-shadow: var(--shadow-lg); }
 .sample-shell .global-capture.global-capture--compact { top: auto; bottom: max(20px,env(safe-area-inset-bottom)); width: auto; padding: 6px; border-radius: 18px; }
 @media (max-width: 767px) { .sample-shell .global-capture.global-capture--compact { bottom: calc(88px + env(safe-area-inset-bottom)); } }

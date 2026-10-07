@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.18.3] - 2026-10-07
+
+- Keep explicitly saved or marked English words as learning candidates instead of excluding them for lacking a sentence. Mark provisional meanings and distinguish teaching examples from source quotations.
+- Keep phrase-first selection for automatic article extraction and require learner confirmation before any candidate enters learning.
+- Add an owner-scoped, idempotent retry for completed extractions with no candidates, preserving the source and prior AI receipt.
+
 ## [0.18.2] - 2026-10-06
 
 - Keep light, dark and system appearance controls in Settings only; remove the persistent top toolbar and its reserved space.

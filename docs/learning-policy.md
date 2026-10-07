@@ -1,6 +1,12 @@
 # English learning policy v3
 
-The goal is reliable production of useful chunks, especially for a learner who understands expressions but cannot retrieve them when needed. The default workload is about 15–20 minutes, with up to eight independent reviews, one reading and two short responses; actual duration is measured rather than guaranteed.
+The goal is reliable production of useful words and chunks, especially for a learner who understands expressions but cannot retrieve them when needed. The default workload is about 15–20 minutes, with up to eight independent reviews, one reading and two short responses; actual duration is measured rather than guaranteed.
+
+## Captured learning targets
+
+A recognizable English word saved on its own or explicitly marked in a passage is a learning request. Keep it as a word candidate rather than discarding it for lacking context or forcing it into a phrase. Use the surrounding passage to determine meaning when available. Without context, propose one common sense, label the meaning as provisional in the context explanation and selection reason, and note relevant alternative senses or register. A generated teaching example is never a source quotation. Normalize inflection only when clear, retaining the exact source text separately.
+
+Automatic extraction from an unmarked article still favors useful chunks and does not harvest every word. The candidate count is a maximum, not a quota. Unrecognizable or unhelpful material can yield no suggestions. All proposals require learner confirmation before entering learning; the AI cannot accept them or change review progress.
 
 ## Evidence used
 

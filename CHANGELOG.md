@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.18.5] - 2026-10-07
+
+- Remove doubled padding from daily question cards and align their headers, prompts, hints, answer fields and actions.
+- Keep consistent spacing in recall and expression exercises, with stacked answer actions on narrow screens.
+
 ## [0.18.4] - 2026-10-07
 
 - Align lesson summaries, reading/reference cards, AI handoff panels and extra practice with shared responsive content spacing and heading typography.

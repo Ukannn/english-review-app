@@ -140,6 +140,30 @@
 .sample-shell .content-card > button, .sample-shell .prompt-box > button, .sample-shell .practice-card > button { justify-self: start; }
 .sample-shell .content-card pre { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .sample-shell .content-card details p + p { margin-top: 10px; }
+/* Question sections share one inset; the outer card never adds a second one. */
+.sample-shell .lesson-view, .sample-shell .review-workspace { max-width: 840px; min-width: 0; }
+.sample-shell .session-summary { flex-wrap: wrap; gap: 8px 16px; padding: 0; }
+.sample-shell .question-card { width: 100%; margin: 0; padding: 0; min-width: 0; }
+.sample-shell .question-meta, .sample-shell .question-navigation { padding: 16px var(--card-padding); flex-wrap: wrap; }
+.sample-shell .question-meta > div { flex-wrap: wrap; gap: 8px; }
+.sample-shell .question-meta .capability-chip { margin: 0; }
+.sample-shell .question-body { display: grid; gap: 16px; padding: var(--card-padding); min-width: 0; }
+.sample-shell .question-body > * { min-width: 0; margin: 0; }
+.sample-shell .question-body > h2:not(.expression-display) { font-size: 22px; font-weight: 600; line-height: 1.55; overflow-wrap: anywhere; }
+.sample-shell .question-body > p { line-height: 1.65; overflow-wrap: anywhere; }
+.sample-shell .question-body > p[lang="en"] { font-size: 20px; font-weight: 400; line-height: 1.6; }
+.sample-shell .question-body > blockquote { padding: 16px; line-height: 1.65; overflow-wrap: anywhere; }
+.sample-shell .question-body > button { justify-self: start; }
+.sample-shell .question-body > .reveal-button { justify-self: stretch; }
+.sample-shell .question-body .answer-field { margin: 4px 0 0; gap: 8px; }
+.sample-shell .question-body .answer-field textarea { min-height: 112px; padding: 14px 16px; font-size: 18px; line-height: 1.6; }
+.sample-shell .question-body .hint-box { display: grid; gap: 8px; margin: 0; padding: 12px 16px; font-size: 14px; line-height: 1.65; }
+.sample-shell .question-body .hint-box > * { margin: 0; min-width: 0; }
+.sample-shell .question-body .hint-box > button { justify-self: start; }
+.sample-shell .question-body .button-row { margin: 0; gap: 10px; }
+.sample-shell .question-body .answer-reveal { margin: 0; padding: 16px; }
+.sample-shell .question-body .answer-reveal > strong { margin: 8px 0 0; overflow-wrap: anywhere; }
+.sample-shell .lesson-view > .text-button, .sample-shell .review-library-link { justify-self: start; }
 .sample-shell .content-card .lesson-reading { color: var(--ink); font-size: 18px; line-height: 1.85; white-space: pre-wrap; }
 .sample-shell .prompt-box .answer-field, .sample-shell .prompt-box .button-row { margin-top: 4px; }
 .sample-shell .prompt-box .answer-field textarea { min-height: 80px; }
@@ -156,6 +180,11 @@
 @media (max-width: 760px) {
   .sample-shell { --card-padding: 20px; }
   .sample-shell .content-card > h2 { overflow-wrap: anywhere; }
+  .sample-shell .question-body > h2:not(.expression-display) { font-size: 20px; }
+  .sample-shell .question-body > p[lang="en"] { font-size: 18px; }
+  .sample-shell .question-meta, .sample-shell .question-navigation { gap: 10px; }
+  .sample-shell .lesson-view .question-body .button-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .sample-shell .lesson-view .question-body .button-row .primary-button { grid-column: 1 / -1; }
 }
 .sample-shell .global-capture:not(.global-capture--dialog) { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 12px); right: max(18px,env(safe-area-inset-right)); left: auto; width: min(600px,calc(100vw - 36px)); margin: 0; z-index: 45; max-height: 35dvh; background: var(--surface); box-shadow: var(--shadow-lg); }
 .sample-shell .global-capture.global-capture--compact { top: auto; bottom: max(20px,env(safe-area-inset-bottom)); width: auto; padding: 6px; border-radius: 18px; }

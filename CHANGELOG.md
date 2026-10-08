@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.18.6] - 2026-10-08
+
+- Synchronize the Learning Lab ll• mark across the sidebar, mobile header, sign-in screen, favicon and PWA installation icons.
+- Generate all brand sizes from shared vector geometry and align the installation canvas with the current interface.
+
 ## [0.18.5] - 2026-10-07
 
 - Remove doubled padding from daily question cards and align their headers, prompts, hints, answer fields and actions.

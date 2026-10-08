@@ -57,12 +57,16 @@
 .action-button__layer {
   grid-area: 1 / 1; display: flex; align-items: center; justify-content: center; gap: 7px;
   opacity: 0; transform: translateY(4px) scale(.97); pointer-events: none;
-  transition: opacity 120ms ease, transform 200ms var(--motion-ease);
+  transition: opacity 60ms ease, transform 120ms var(--motion-ease);
 }
 .action-button__layer > svg, .action-button__spinner { flex: none; }
 .action-button[data-action-state="idle"] [data-state="idle"],
 .action-button[data-action-state="pending"] [data-state="pending"],
-.action-button[data-action-state="success"] [data-state="success"] { opacity: 1; transform: none; }
+.action-button[data-action-state="success"] [data-state="success"] {
+  opacity: 1; transform: none;
+  /* Finish the outgoing text before revealing its replacement in the same cell. */
+  transition: opacity 100ms ease 60ms, transform 180ms var(--motion-ease) 60ms;
+}
 .action-button__spinner { display: inline-flex; }
 .action-button[aria-busy="true"], .action-button[data-action-state="success"]:disabled { opacity: .85; }
 .action-button[data-action-state="pending"] .action-button__spinner { animation: action-spin 900ms linear infinite; }

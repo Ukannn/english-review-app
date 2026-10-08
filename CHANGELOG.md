@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.18.10] - 2026-10-08
+
+- Stagger action-label exit and entry so saving/copying text stays readable throughout the transition, retaining stable widths and immediate reduced-motion updates.
+
 ## [0.18.9] - 2026-10-08
 
 - Let segmented selection surfaces stretch slightly between choices, with the leading edge moving before the trailing edge. Keep labels crisp and resize alignment immediate.

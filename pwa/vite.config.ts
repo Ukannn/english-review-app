@@ -7,13 +7,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["logo-128.png", "favicon-32.png", "icon-192.png", "icon-512.png", "apple-touch-icon.png"],
+      includeAssets: ["logo.svg", "logo-128.png", "favicon-32.png", "icon-192.png", "icon-512.png", "apple-touch-icon.png"],
       manifest: {
         name: "English Learning Lab",
         short_name: "English Lab",
         description: "Private English collocation review and learning workspace.",
-        theme_color: "#f5f0e8",
-        background_color: "#f5f0e8",
+        theme_color: "#f6f7f9",
+        background_color: "#f6f7f9",
         display: "standalone",
         start_url: "/",
         lang: "zh-CN",

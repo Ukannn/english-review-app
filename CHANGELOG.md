@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.18.8] - 2026-10-08
+
+- Use licensed SF Pro SC website fonts with SF Pro Text/Display for mixed Chinese/English text; remove the competing Inter and serif overrides. Keep system fallbacks for missing glyphs and failed font requests.
+- Protect short Chinese title/description endings, balance headings, and refine typography without changing copied text, questions or learner answers.
+- Cache fonts as used for offline reading and exclude licensed font binaries and declarations from public source exports.
+
 ## [0.18.7] - 2026-10-08
 
 - Add paired opening/closing transitions to feedback dialogs and expression sheets, retaining native keyboard, focus and scroll behavior.

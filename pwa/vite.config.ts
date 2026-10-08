@@ -25,6 +25,17 @@ export default defineConfig({
       workbox: {
         navigateFallback: "/index.html",
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        // Load/cache only the fonts actually used instead of precaching every weight.
+        globIgnores: ["**/fonts/apple/**"],
+        runtimeCaching: [{
+          urlPattern: /\/fonts\/apple\/.*\.woff2$/,
+          handler: "CacheFirst",
+          options: {
+            cacheName: "apple-website-fonts-v1",
+            cacheableResponse: { statuses: [200] },
+            expiration: { maxEntries: 12, maxAgeSeconds: 365 * 24 * 60 * 60 }
+          }
+        }],
         cleanupOutdatedCaches: true
       }
     })

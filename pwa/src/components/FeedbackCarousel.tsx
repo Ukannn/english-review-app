@@ -1,3 +1,4 @@
+import { TypographyText } from "./TypographyText";
 import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
 import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { GradeStatus } from "../lib/contracts";
@@ -93,7 +94,7 @@ function FeedbackFace({ grade }: { grade: GradeStatus }) {
   const answer = evidence && grade.observedAnswer?.includes(evidence) ? evidence : grade.observedAnswer;
   const spelling = spellingPresentation(answer, grade);
   const category = feedbackCategory(grade);
-  return <><span className={`feedback-type ${category === "拼写修正" ? "correction" : ""}`}>{category}</span><div className="answer-comparison"><div><label>你的表达{answer !== grade.observedAnswer ? " · 相关片段" : ""}</label><p lang="en">{spelling ? <FeedbackWords parts={spelling.original}/> : answer || "未提供答案"}</p></div><span className="answer-arrow" aria-hidden="true">→</span><div><label>{spelling ? "建议写法" : grade.targetOutcome === "not_measured" ? "目标完整形式" : "参考表达"}</label><p lang="en">{spelling ? <FeedbackWords parts={spelling.suggestion} corrected/> : grade.expectedAnswer || "本题未提供参考"}</p></div></div><p className="card-rationale">{grade.feedbackZh || "本题未提供判定说明，可查阅完整反馈。"}</p></>;
+  return <><span className={`feedback-type ${category === "拼写修正" ? "correction" : ""}`}>{category}</span><div className="answer-comparison"><div><label>你的表达{answer !== grade.observedAnswer ? " · 相关片段" : ""}</label><p lang="en">{spelling ? <FeedbackWords parts={spelling.original}/> : answer || "未提供答案"}</p></div><span className="answer-arrow" aria-hidden="true">→</span><div><label>{spelling ? "建议写法" : grade.targetOutcome === "not_measured" ? "目标完整形式" : "参考表达"}</label><p lang="en">{spelling ? <FeedbackWords parts={spelling.suggestion} corrected/> : grade.expectedAnswer || "本题未提供参考"}</p></div></div><p className="card-rationale"><TypographyText text={grade.feedbackZh || "本题未提供判定说明，可查阅完整反馈。"}/></p></>;
 }
 
 function FeedbackWords({ parts, corrected = false }: { parts: FeedbackTextPart[]; corrected?: boolean }) {

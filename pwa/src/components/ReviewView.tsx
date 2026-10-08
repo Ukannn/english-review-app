@@ -1,3 +1,4 @@
+import { TypographyText } from "./TypographyText";
 import { Cloud, ChevronLeft, ChevronRight } from "lucide-react";
 import { PageHeading } from "./PageHeading";
 import { ProgressOrb } from "./ProgressOrb";
@@ -137,7 +138,7 @@ export function ReviewView({api,bootstrap,onClose,onSubmitted,headerAction}:Prop
     : <article className="question-card card">
       <header className="question-meta"><div><span className="type-chip">{typeLabel}</span><span className="capability-chip">{question.isNew ? "新表达" : "复习"}</span></div><span className="question-number">第 {visibleIndex+1} / {questions.length} 题</span></header>
       <section className="question-body">
-        <h2 className="question-prompt">{question.promptZh||question.promptEn}</h2>
+        <h2 className="question-prompt"><TypographyText text={question.promptZh||question.promptEn}/></h2>
         {question.promptZh&&question.promptEn&&<p className="question-english" lang="en">{question.promptEn}</p>}
         {!isRevealed&&(question.hints?.length??0)>0&&<div className="hint-box">{question.hints!.slice(0,hintCounts[question.position]??0).map((text,i)=><p key={i}>{text}</p>)}{(hintCounts[question.position]??0)<question.hints!.length&&<button className="text-button" onClick={()=>void hint()}>需要提示</button>}</div>}
         <label className="answer-field"><span>你的答案</span><textarea value={input} onChange={event=>setInput(event.target.value)} disabled={isRevealed||revealing} placeholder={["short_expression","transfer_expression"].includes(question.questionType??"")?"写一两句回应…":"在这里写下完整搭配…"}/></label>

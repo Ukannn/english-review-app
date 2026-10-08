@@ -1,0 +1,53 @@
+/* Licensed webfont declarations are excluded from public source exports. */
+/* Text and display faces follow Apple's optical-size split. SF Pro SC provides
+   the smaller Chinese glyphs and narrower full-width punctuation itself. */
+body {
+  font-family: var(--font-ui);
+  font-kerning: normal;
+  line-break: strict;
+  word-break: normal;
+  text-autospace: normal;
+}
+.typography-keep { white-space: nowrap; }
+.page-title-text { min-width: 0; text-wrap: balance; }
+.title-check { flex: none; }
+.page-heading > div:first-child { min-width: 0; }
+.sample-shell .page-heading h1 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.35;
+  text-wrap: balance;
+}
+.page-heading p:not(.eyebrow), .section-title p, .empty-state p,
+.settings-card > p, .card-rationale, .chart-note {
+  text-wrap: pretty;
+}
+.page-heading p:not(.eyebrow) { line-height: 1.65; }
+.sample-shell .eyebrow { letter-spacing: .08em; }
+.sample-brand strong { font-weight: 600; letter-spacing: -.02em; }
+.sample-shell .nav-item.is-active { font-weight: 500; }
+.sample-shell .section-title h2, .sample-shell .settings-card > h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+.feedback-carousel .answer-comparison p {
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1.4;
+  letter-spacing: -.015em;
+  text-wrap: pretty;
+}
+.expression-display, .expression-title h2, .phrase {
+  font-family: var(--font-display);
+  line-height: 1.35;
+  letter-spacing: -.015em;
+}
+input, textarea, select, pre, code {
+  text-autospace: no-autospace;
+}
+@media (max-width: 540px) {
+  .feedback-carousel .answer-comparison p { font-size: 23px; }
+}

@@ -6,6 +6,7 @@ import "./styles.css";
 import "./sample.css";
 import "./design.css";
 import "./motion.css";
+import "./typography.css";
 
 document.body.classList.add("editorial-review");
 

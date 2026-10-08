@@ -1,8 +1,8 @@
 /* Shared visual grammar adapted from the Korean companion app. */
 :root {
   color-scheme: light;
-  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
-  --font-display: Georgia, "Songti SC", serif;
+  --font-ui: "SF Pro SC", "SF Pro Text", -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Segoe UI", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-display: "SF Pro SC", "SF Pro Display", -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Segoe UI", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
   --font-zh-display: var(--font-ui);
   font-family: var(--font-ui);
   font-synthesis: none;

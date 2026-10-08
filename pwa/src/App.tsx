@@ -10,7 +10,6 @@ import type { ApiClient, DashboardData, ReviewBootstrap } from "./lib/contracts"
 import { demoApi } from "./lib/demoApi";
 import { designDemoApi } from "./lib/designDemo";
 import { clearAllRecovery } from "./lib/recovery";
-import { GlobalCapture } from "./components/GlobalCapture";
 import { RecordsView } from "./components/RecordsView";
 import { usePhraseInventory } from "./lib/usePhraseInventory";
 import { applyTheme, readThemePreference, THEME_STORAGE_KEY } from "./lib/theme";
@@ -32,7 +31,6 @@ export function LearningApp({ client, demo }: { client: ApiClient; demo: boolean
   const [bootstrap, setBootstrap] = useState<ReviewBootstrap | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [captureRevision, setCaptureRevision] = useState(0);
   const [dataRevision, setDataRevision] = useState(0);
   const [recordsQuery, setRecordsQuery] = useState(() => routeFromHash() === "history" ? location.hash.split("?")[1] ?? "" : "");
   const recordsLocation = useRef(routeFromHash() === "history" ? location.hash : "#history");
@@ -93,11 +91,10 @@ export function LearningApp({ client, demo }: { client: ApiClient; demo: boolean
     catch (caught) { setError(caught instanceof Error ? caught.message : "退出失败，请重试。"); }
   }
   return <AppShell activeView={view} onNavigate={navigate} online={online} demo={demo} onSignOut={demo ? undefined : () => void signOut()}>
-    <GlobalCapture client={client} sourceTitle={({today:"今日学习",intake:"语料",analytics:"学习报告",history:"学习记录",library:"学习资料库",status:"同步与设置"})[view]} onSaved={() => setCaptureRevision(current => current + 1)}/>
     {error && <div className="notice notice--red" role="alert"><span>{error}</span><button className="text-button" onClick={() => void refresh()}>重试</button></div>}
     {/* Keep the active question mounted when visiting another top-level page. */}
     <div hidden={view !== "today"}><TodayView key={bootstrap?.queueId ?? bootstrap?.learningDate ?? "loading"} active={view === "today"} client={client} bootstrap={bootstrap} dashboard={dashboard} loading={loading} demo={demo} online={online} onRefresh={refresh} onNavigate={navigate}/></div>
-    {view === "intake" && <ContextView client={client} refreshToken={captureRevision}/>}
+    {view === "intake" && <ContextView client={client}/>}
     <div hidden={view !== "analytics"}><AnalyticsView dashboard={dashboard} inventory={inventory.items} inventoryLoading={inventory.loading} inventoryError={inventory.error} loading={loading} onRefresh={refresh} onRecords={filter => { const query = new URLSearchParams(filter as Record<string, string>); location.hash = `history${query.size ? `?${query}` : ""}`; }}/></div>
     <div hidden={view !== "history"}><RecordsView active={view === "history"} query={recordsQuery} dataRevision={dataRevision} onQueryChanged={updateRecordsQuery} client={client} items={inventory.items} loading={inventory.loading} error={inventory.error} bootstrap={bootstrap} onToday={() => navigate("today")} onRefresh={refresh}/></div>
     {view === "library" && <LibraryWorkspace client={client} onGenerate={() => navigate("status")} onIntake={() => navigate("intake")}/>}

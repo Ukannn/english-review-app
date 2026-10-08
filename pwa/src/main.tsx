@@ -5,6 +5,7 @@ import { App } from "./App";
 import "./styles.css";
 import "./sample.css";
 import "./design.css";
+import "./motion.css";
 
 document.body.classList.add("editorial-review");
 

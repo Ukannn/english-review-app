@@ -54,3 +54,7 @@ npm --prefix pwa run check
 ## Version 0.15
 
 Frozen `english_v3` lessons combine independent review, coherent reading and two short responses. The default review count is 8 (future preference 4–12). Post-reading expression and independent retrieval remain distinct. See [learning policy](docs/learning-policy.md). Docker is available for isolated tests, not database backups.
+
+### Typography assets
+
+Public source uses the same typography rules with system-font fallbacks. Licensed Apple website font files and their `@font-face` declarations are excluded from this export. Production loads separately licensed SF Pro SC and SF Pro Text/Display assets from its own origin.

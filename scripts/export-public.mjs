@@ -10,6 +10,8 @@ const tracked=new Set(execFileSync('git',['ls-files','-z'],{cwd:root,encoding:'u
 const directories=new Set([...tracked].flatMap(file=>file.split('/').slice(0,-1).map((_,i)=>file.split('/').slice(0,i+1).join('/'))));
 function exportable(entry) {
   const relative=path.relative(root,entry).split(path.sep).join('/');
+  // Website font embedding does not grant public source redistribution rights.
+  if (relative === 'pwa/public/fonts/apple' || relative.startsWith('pwa/public/fonts/apple/')) return false;
   return (tracked.has(relative)||directories.has(relative))&&!fs.lstatSync(entry).isSymbolicLink()
     &&!relative.split('/').includes('__pycache__')&&!relative.endsWith('.pyc');
 }
@@ -71,6 +73,13 @@ function replaceExact(relativePath, pattern, replacement, label) {
   if (matches.length !== 1) throw new Error(`${label} expected one match, found ${matches.length}`);
   fs.writeFileSync(file, source.replace(pattern, replacement));
 }
+
+replaceExact(
+  'pwa/src/typography.css',
+  /^[\s\S]*?(?=\/\* Text and display faces)/,
+  '/* Licensed webfont declarations are excluded from public source exports. */\n',
+  'licensed website font declarations'
+);
 
 replaceExact(
   'src/server/config/review-contract.gs',

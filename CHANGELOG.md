@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.9] - 2026-10-08
+
+- Let segmented selection surfaces stretch slightly between choices, with the leading edge moving before the trailing edge. Keep labels crisp and resize alignment immediate.
+- Add stable-width saving/copying confirmations to learning settings, context capture and ChatGPT/Shortcut copy actions, driven by acknowledged results.
+- Present feedback autoplay as an accessible capsule switch while preserving reading, focus, navigation and reduced-motion pause rules.
+- Use precise minus/plus controls for learning amounts and quieter button surfaces; retain existing themes, learning data and API contracts.
+
 ## [0.18.8] - 2026-10-08
 
 - Use licensed SF Pro SC website fonts with SF Pro Text/Display for mixed Chinese/English text; remove the competing Inter and serif overrides. Keep system fallbacks for missing glyphs and failed font requests.

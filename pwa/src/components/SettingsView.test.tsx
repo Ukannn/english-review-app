@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { demoApi } from "../lib/demoApi";
@@ -7,6 +7,24 @@ vi.mock("../lib/recovery",()=>({loadRecovery:vi.fn(async()=>null),syncPendingAct
 vi.mock("./PasswordForm",()=>({PasswordForm:()=>null}));
 afterEach(cleanup);
 describe("Question settings",()=>{
+ it("keeps learning amount exact and confirms only an acknowledged save",async()=>{
+  const data=structuredClone(await demoApi.getReviewBootstrap());data.ruleVersion="english_v3";data.settings={defaultQuestionCount:8,todayQuestionCount:8,minimumTodayCount:1,revision:17};
+  let acknowledge!:(value:unknown)=>void;
+  const api={...demoApi,getReviewBootstrap:vi.fn(async()=>data),setLearningSettings:vi.fn(()=>new Promise<any>(resolve=>{acknowledge=resolve;}))};
+  const user=userEvent.setup();render(<SettingsView client={api} demo onSignOut={async()=>undefined} onChanged={async()=>undefined}/>);
+  const input=await screen.findByLabelText("以后的独立复习项数");
+  await user.click(screen.getByRole("button",{name:"以后的独立复习项数加一"}));
+  expect((input as HTMLInputElement).value).toBe("9");
+  await user.click(screen.getByRole("button",{name:"保存以后的学习量"}));
+  expect((screen.getByRole("button",{name:"正在保存…"}) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByRole("button",{name:"已保存"})).toBeNull();
+  await act(async()=>acknowledge({ok:true}));
+  expect(api.setLearningSettings).toHaveBeenCalledWith(9,17,expect.any(String));
+  expect(screen.getByRole("button",{name:"已保存"})).toBeTruthy();
+  await user.click(screen.getByRole("button",{name:"以后的独立复习项数减一"}));
+  expect((input as HTMLInputElement).value).toBe("8");
+  expect(screen.getByRole("button",{name:"保存以后的学习量"})).toBeTruthy();
+ });
  it("sends both scopes atomically with the current settings revision",async()=>{
   const data=structuredClone(await demoApi.getReviewBootstrap());data.settings={defaultQuestionCount:12,todayQuestionCount:12,minimumTodayCount:3,revision:17};
   const api={...demoApi,getReviewBootstrap:vi.fn(async()=>data),setQuestionCount:vi.fn(async()=>({ok:true,count:20,mode:"both",revision:18,actualCount:7}))};

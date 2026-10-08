@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CopyButton } from "./CopyButton";
 import { supabase } from "../lib/api";
 type Device = { id:string; label:string; expiresAt:string; revokedAt:string|null };
 export function ShortcutSettings() {
@@ -31,7 +32,7 @@ export function ShortcutSettings() {
       <p>连接允许新增语料，以及在 10 分钟内撤销本连接刚收集、尚未整理的语料；有效期 90 天，可随时撤销连接。不能读取语料、修改学习进度或调用 AI。</p>
       <p>连接码只显示一次。将它填入「收集语料」快捷指令对应的 英语 连接码。配置后的快捷指令含私人连接码，会随你的快捷指令同步；请勿共享配置后的副本。</p>
       <button className="primary-button" disabled={busy||Boolean(token)} onClick={()=>void run(create)}>创建 英语 连接码</button>
-      {token&&<div><label>英语 连接码<input type="password" readOnly value={token} autoComplete="off" aria-label="英语 连接码" /></label><button className="secondary-button" disabled={busy} onClick={()=>void run(async()=>{await navigator.clipboard.writeText(token);setMessage("已复制，请粘贴到快捷指令。");})}>复制连接码</button><button className="text-button" onClick={()=>{setToken("");setTokenId("");}}>已完成配置，隐藏连接码</button></div>}
+      {token&&<div><label>英语 连接码<input type="password" readOnly value={token} autoComplete="off" aria-label="英语 连接码" /></label><CopyButton className="secondary-button" text={token} label="复制连接码" disabled={busy} onCopied={()=>setMessage("已复制，请粘贴到快捷指令。")} onError={()=>setMessage("无法自动复制，请重新尝试。")}/><button className="text-button" onClick={()=>{setToken("");setTokenId("");}}>已完成配置，隐藏连接码</button></div>}
       <ul>{devices.map(device=><li key={device.id}>{device.label} · {device.revokedAt?"已撤销":`到期 ${new Date(device.expiresAt).toLocaleDateString()}`} {!device.revokedAt&&<button className="text-button" disabled={busy} onClick={()=>void run(()=>revoke(device.id))}>撤销连接</button>}</li>)}</ul>
     </>}
     {message&&<p role="status">{message}</p>}

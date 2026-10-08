@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { SegmentedControl } from "./SegmentedControl";
 import type { LearningAnalytics, PhraseSummary } from "../lib/contracts";
 import { dueSchedule, expressionLayer, expressionLayers, rate, type ExpressionLayer } from "../lib/learningMetrics";
 import { formatLearningDate } from "../lib/learningDate";
@@ -80,7 +81,7 @@ export function DueChart({ items, today }: { items: PhraseSummary[]; today: stri
   const maximum = Math.max(1, ...schedule.days.map(d => d.count));
   const detail = schedule.days.find(d => d.date === selected);
   return <>
-    <div className="due-summary"><div><strong>{schedule.total}</strong><span>项在未来 {range} 天到期</span></div><div className="segmented-control" aria-label="未来复习量范围">{([7, 30] as const).map(n => <button key={n} aria-pressed={range === n} className={range === n ? "is-active" : ""} onClick={() => { setRange(n); setSelected(null); }}>{n} 天</button>)}</div></div>
+    <div className="due-summary"><div><strong>{schedule.total}</strong><span>项在未来 {range} 天到期</span></div><SegmentedControl label="未来复习量范围">{([7, 30] as const).map(n => <button key={n} aria-pressed={range === n} className={range === n ? "is-active" : ""} onClick={() => { setRange(n); setSelected(null); }}>{n} 天</button>)}</SegmentedControl></div>
     <div className="due-scroll" tabIndex={0} aria-label={`未来${range}天的每日到期量，可横向滚动`}><div className={`due-bars due-bars--${range}`}>
       {schedule.days.map(d => <button className={selected === d.date ? "is-selected" : ""} key={d.date} aria-label={`${formatLearningDate(d.date)} 到期 ${d.count} 项`} onMouseEnter={() => setSelected(d.date)} onFocus={() => setSelected(d.date)} onClick={() => setSelected(d.date)}><span className="due-bar-track"><span className="due-bar" style={{ height: `${d.count / maximum * 100}%` }}/><b>{d.count}</b></span><time>{d.date.slice(5)}</time></button>)}
     </div></div>

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.18.7] - 2026-10-08
+
+- Add paired opening/closing transitions to feedback dialogs and expression sheets, retaining native keyboard, focus and scroll behavior.
+- Slide a shared selection surface between corpus, library, appearance and review-range choices; give buttons subtle highlights, shadows and press feedback.
+- Remove the web selection capture toolbar and its listeners. Capture through Apple Shortcuts or the corpus page; retain existing contexts and Shortcut connections.
+- Honor reduced motion and retain the current layout, theme, question drafts and learning navigation.
+- Update the transitive build dependency source-map-js to 1.2.2 to resolve its source-map denial-of-service advisory.
+
 ## [0.18.6] - 2026-10-08
 
 - Synchronize the Learning Lab ll• mark across the sidebar, mobile header, sign-in screen, favicon and PWA installation icons.

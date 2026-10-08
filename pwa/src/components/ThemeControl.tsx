@@ -1,5 +1,6 @@
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
+import { SegmentedControl } from "./SegmentedControl";
 import { applyTheme, readThemePreference, setThemePreference, THEME_EVENT, THEME_STORAGE_KEY, type ThemePreference } from "../lib/theme";
 
 export function ThemeControl() {
@@ -15,5 +16,5 @@ export function ThemeControl() {
     window.addEventListener(THEME_EVENT, sessionSync);
     return () => { system?.removeEventListener("change", update); window.removeEventListener("storage", sync); window.removeEventListener(THEME_EVENT, sessionSync); };
   }, [preference]);
-  return <div className="theme-control"><span>外观</span><div className="segmented-control" aria-label="页面外观">{([{ value: "light", label: "浅色", icon: Sun }, { value: "dark", label: "深色", icon: Moon }, { value: "system", label: "系统", icon: Monitor }] as const).map(({ value, label, icon: Icon }) => <button key={value} className={preference === value ? "is-active" : ""} aria-pressed={preference === value} onClick={() => setThemePreference(value)}><Icon size={15}/>{label}</button>)}</div></div>;
+  return <div className="theme-control"><span>外观</span><SegmentedControl label="页面外观">{([{ value: "light", label: "浅色", icon: Sun }, { value: "dark", label: "深色", icon: Moon }, { value: "system", label: "系统", icon: Monitor }] as const).map(({ value, label, icon: Icon }) => <button key={value} className={preference === value ? "is-active" : ""} aria-pressed={preference === value} onClick={() => setThemePreference(value)}><Icon size={15}/>{label}</button>)}</SegmentedControl></div>;
 }

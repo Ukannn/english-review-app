@@ -186,9 +186,6 @@
   .sample-shell .lesson-view .question-body .button-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .sample-shell .lesson-view .question-body .button-row .primary-button { grid-column: 1 / -1; }
 }
-.sample-shell .global-capture:not(.global-capture--dialog) { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 12px); right: max(18px,env(safe-area-inset-right)); left: auto; width: min(600px,calc(100vw - 36px)); margin: 0; z-index: 45; max-height: 35dvh; background: var(--surface); box-shadow: var(--shadow-lg); }
-.sample-shell .global-capture.global-capture--compact { top: auto; bottom: max(20px,env(safe-area-inset-bottom)); width: auto; padding: 6px; border-radius: 18px; }
-@media (max-width: 767px) { .sample-shell .global-capture.global-capture--compact { bottom: calc(88px + env(safe-area-inset-bottom)); } }
 .report-coverage > .secondary-button { flex-shrink: 0; white-space: nowrap; }
 .sample-shell { display: flow-root; min-height: 100dvh; }
 :root[data-theme] { --canvas: var(--bg); --ink: var(--text); --ink-soft: var(--muted); --ink-faint: var(--quiet); --accent-blue: var(--accent); --accent-blue-bright: var(--accent); --accent-blue-soft: var(--active); --surface-muted: var(--subtle); --line: var(--border); --line-strong: var(--border); --shadow-sm: 0 2px 8px var(--shadow); --shadow-lg: 0 20px 60px var(--shadow); --sidebar-width: 235px; }

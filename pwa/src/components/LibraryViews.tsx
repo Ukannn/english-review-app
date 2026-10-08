@@ -4,13 +4,15 @@ import type { ApiClient, CandidateBootstrap, CandidateItem, ContextInbox, Phrase
 import { makeIdempotencyKey } from "../lib/hash";
 import { ContextBatchPanel } from "./ContextBatchPanel";
 import { PageHeading } from "./PageHeading";
+import { SegmentedControl } from "./SegmentedControl";
+import { useAnimatedDialog } from "../lib/useAnimatedDialog";
 import { formatLearningDate, formatLearningTime } from "../lib/learningDate";
 
 export function LibraryWorkspace({client,onGenerate,onIntake}: {client:ApiClient;onGenerate():void;onIntake?():void}) {
   const [tab,setTab]=useState<"library"|"candidates">("library");
   return <section className="page-stack view-enter">
     <PageHeading eyebrow="把表达慢慢变成自己的" title="学习资料库" description="查阅表达、复习记录，以及等待你确认的新素材。" action={<div className="heading-icon"><BookOpen/></div>}/>
-    <div className="inbox-toolbar"><div className="segmented-control" aria-label="资料库分类"><button className={tab==="library"?"is-active":""} aria-pressed={tab==="library"} onClick={()=>setTab("library")}>已收录表达</button><button className={tab==="candidates"?"is-active":""} aria-pressed={tab==="candidates"} onClick={()=>setTab("candidates")}>待确认候选</button></div><div className="button-row">{onIntake&&<button className="secondary-button" onClick={onIntake}><Inbox size={16}/>语料与来源</button>}<button className="text-button" onClick={onGenerate}><Sparkles size={16}/>补充学习素材</button></div></div>
+    <div className="inbox-toolbar"><SegmentedControl label="资料库分类"><button className={tab==="library"?"is-active":""} aria-pressed={tab==="library"} onClick={()=>setTab("library")}>已收录表达</button><button className={tab==="candidates"?"is-active":""} aria-pressed={tab==="candidates"} onClick={()=>setTab("candidates")}>待确认候选</button></SegmentedControl><div className="button-row">{onIntake&&<button className="secondary-button" onClick={onIntake}><Inbox size={16}/>语料与来源</button>}<button className="text-button" onClick={onGenerate}><Sparkles size={16}/>补充学习素材</button></div></div>
     {tab==="library"?<PhraseView client={client}/>:<CandidateView client={client}/>}
   </section>;
 }
@@ -29,10 +31,9 @@ export function PhraseView({client}: {client:ApiClient}) {
   </div>;
 }
 export function PhraseDetailSheet({detail,onClose}: {detail:PhraseDetail;onClose():void}) {
-  const dialog=useRef<HTMLDialogElement>(null);
-  useEffect(()=>{const previous=document.activeElement instanceof HTMLElement?document.activeElement:null;const overflow=document.body.style.overflow;const element=dialog.current;document.body.style.overflow="hidden";element?.showModal();return()=>{element?.close();document.body.style.overflow=overflow;previous?.focus({preventScroll:true});};},[]);
-  return <dialog ref={dialog} className="detail-sheet" aria-label={`${detail.phrase.chunk} 的学习详情`} onCancel={onClose} onClose={event=>{if(!event.currentTarget.open)onClose();}} onClick={event=>{if(event.target===event.currentTarget){const rect=event.currentTarget.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right)onClose();}}}>
-    <header><span className="status-chip">学习详情</span><button className="icon-button" aria-label="关闭表达详情" onClick={onClose}><X size={19}/></button></header>
+  const { dialog, requestClose, onCancel, onNativeClose } = useAnimatedDialog(onClose);
+  return <dialog ref={dialog} data-motion="entering" className="detail-sheet" aria-label={`${detail.phrase.chunk} 的学习详情`} onCancel={onCancel} onClose={onNativeClose} onClick={event=>{if(event.target===event.currentTarget){const rect=event.currentTarget.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)requestClose();}}}>
+    <header><span className="status-chip">学习详情</span><button className="icon-button" aria-label="关闭表达详情" onClick={requestClose}><X size={19}/></button></header>
     <div className="detail-title"><div><h2 className="expression-display" lang="en">{detail.phrase.chunk}</h2><p>{detail.phrase.cueZh}</p></div></div>
     <dl><div><dt>复习阶段</dt><dd>{detail.phrase.reviewStage}</dd></div><div><dt>下次复习</dt><dd>{detail.phrase.nextReviewAt?formatLearningDate(detail.phrase.nextReviewAt):"待安排"}</dd></div><div><dt>练习次数</dt><dd>{detail.stats.timesSeen}</dd></div></dl>
     {detail.phrase.naturalExample&&<div className="detail-example"><span lang="en">{detail.phrase.naturalExample}</span></div>}
@@ -58,11 +59,11 @@ function MarkedContext({text,spans}: {text:string;spans:ContextSpan[]}) {
   parts.push(text.slice(cursor));
   return <>{parts}</>;
 }
-export function ContextView({client,refreshToken=0}: {client:ApiClient;refreshToken?:number}) {
+export function ContextView({client}: {client:ApiClient}) {
   const [data,setData]=useState<ContextInbox|null>(null);const [rawText,setRawText]=useState("");const [spans,setSpans]=useState<ContextSpan[]>([]);const [selectionMessage,setSelectionMessage]=useState<string|null>(null);const textArea=useRef<HTMLTextAreaElement>(null);const [note,setNote]=useState("");const [sourceUrl,setSourceUrl]=useState("");const [busy,setBusy]=useState(false);const [message,setMessage]=useState<string|null>(null);const [tab,setTab]=useState<"pending"|"review"|"archived">("pending");
   const refresh=useCallback(async()=>{try{setData(await client.getContextInbox());}catch(caught){setMessage(caught instanceof Error?caught.message:"语料读取失败。");}},[client]);
   const pendingSave=useRef<{signature:string;key:string}|null>(null),saving=useRef(false);
-  useEffect(()=>{void refresh();},[refresh,refreshToken]);
+  useEffect(()=>{void refresh();},[refresh]);
   function addSelection(){
     const field=textArea.current;
     if(!field || field.selectionStart===field.selectionEnd){setSelectionMessage("请先在原文中选中不懂的部分。");return;}
@@ -89,7 +90,7 @@ export function ContextView({client,refreshToken=0}: {client:ApiClient;refreshTo
     <PageHeading eyebrow="从真实语境开始" title="语料" description="留下阅读、工作与对话中，你真正想用的英语。" action={<div className="heading-icon heading-icon--red"><Inbox/></div>}/>
     <form className="context-form card" onSubmit={submit}><div className="section-title"><div><span>添加一段原文</span><p>可以保存一个不懂的单词，也可以粘贴完整原文并标记不懂的部分；有上下文时能更准确地判断含义。</p></div></div><label>原文<textarea ref={textArea} value={rawText} onChange={event=>{setRawText(event.target.value);if(spans.length){setSpans([]);setSelectionMessage("原文已修改，旧标记已清除，请重新选中标记。");}}} required placeholder="输入遇到的英语单词、句子、对话或段落…" rows={5}/></label><div className="context-marking-actions"><button type="button" className="secondary-button" disabled={busy||!rawText.trim()} onClick={addSelection}>标记选中的不懂部分</button>{spans.length>0&&<button type="button" className="text-button" onClick={()=>{setSpans([]);setSelectionMessage(null);}}>清除全部标记</button>}</div>{selectionMessage&&<p className="context-selection-message" role="status">{selectionMessage}</p>}{spans.length>0&&<div className="context-marking-preview"><span>已标记 {spans.length} 处</span><p lang="en"><MarkedContext text={rawText} spans={spans}/></p><div className="span-list">{spans.map(span=><button type="button" key={`${span.start}:${span.end}`} aria-label={`移除标记 ${span.text}`} onClick={()=>setSpans(current=>current.filter(item=>item!==span))}>{span.text}<X size={14}/></button>)}</div></div>}<div className="form-grid"><label>来源链接（可选）<input type="url" value={sourceUrl} onChange={event=>setSourceUrl(event.target.value)} placeholder="https://"/></label><label>想表达什么（可选）<input value={note} onChange={event=>setNote(event.target.value)} placeholder="记录场景或想学会它的原因"/></label></div><div className="form-footer"><span>{rawText.length.toLocaleString()} 个字符</span><button className="primary-button" disabled={busy||!rawText.trim()}><Check size={17}/>保存语料</button></div></form>
     {message&&<p role="status" className="job-message">{message}</p>}
-    <div className="inbox-toolbar"><div className="segmented-control" aria-label="语料状态">{([["pending","待整理"],["review","待确认"],["archived","已归档"]] as const).map(([value,label])=><button key={value} className={tab===value?"is-active":""} aria-pressed={tab===value} onClick={()=>setTab(value)}>{label}<span>{contexts.filter(context=>category(context)===value).length}</span></button>)}</div></div>
+    <div className="inbox-toolbar"><SegmentedControl label="语料状态">{([["pending","待整理"],["review","待确认"],["archived","已归档"]] as const).map(([value,label])=><button key={value} className={tab===value?"is-active":""} aria-pressed={tab===value} onClick={()=>setTab(value)}>{label}<span>{contexts.filter(context=>category(context)===value).length}</span></button>)}</SegmentedControl></div>
     {data&&<ContextBatchPanel api={client} contextIds={contexts.filter(context=>category(context)==="pending").map(context=>context.id)} onRefresh={refresh}/>}
     <div className="context-list">{contexts.filter(context=>category(context)===tab).map(context=><article key={context.id} className="context-card card"><header><div><span className={`status-chip status-chip--${context.status}`}>{category(context)==="pending"?"等待整理":category(context)==="review"?"等待确认":"已归档"}</span><time>{formatLearningDate(context.createdAt)}</time></div>{context.sourceUrl&&<a href={context.sourceUrl} target="_blank" rel="noreferrer" aria-label="查看原文链接"><ExternalLink size={17}/></a>}</header><p className="context-text" lang="en"><MarkedContext text={context.rawText} spans={validContextSpans(context.rawText,context.selectedSpans)}/></p>{context.userNote&&<p className="context-note">{context.userNote}</p>}<div className="candidate-list">{context.candidates.map(candidate=><CandidateEditor key={candidate.id} item={{id:candidate.id,source:"context",candidate:candidate.candidate,cueZh:candidate.cueZh,whyUseful:candidate.whyUseful,naturalExample:null,status:candidate.decisionStatus}} busy={busy} decide={(action,edited)=>decide(candidate.id,action,edited??null)}/>)}</div></article>)}{data&&contexts.filter(context=>category(context)===tab).length===0&&<div className="empty-state card"><Inbox size={30}/><h2>{tab==="pending"?"没有待整理的语料":tab==="review"?"没有待确认的表达":"还没有归档语料"}</h2><p>{tab==="pending"?"把遇到的一句话留下来，慢慢积累自己的素材。":"整理与确认后的语料会保留在这里。"}</p></div>}{!data&&<p className="empty-inline">正在读取语料…</p>}</div>
   </section>;

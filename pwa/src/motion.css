@@ -1,0 +1,78 @@
+/* Small, shared interaction polish; layout and learning state stay with the app. */
+:root {
+  --motion-press: 120ms;
+  --motion-switch: 220ms;
+  --motion-open: 240ms;
+  --motion-close: 150ms;
+  --motion-ease: cubic-bezier(.22, 1, .36, 1);
+  --control-highlight: rgba(255, 255, 255, .22);
+  --control-shadow: rgba(24, 35, 47, .09);
+}
+:root[data-theme="dark"] {
+  --control-highlight: rgba(255, 255, 255, .10);
+  --control-shadow: rgba(0, 0, 0, .25);
+}
+
+:root[data-theme] :is(.primary-button, .secondary-button, .icon-button) {
+  background-image: linear-gradient(180deg, rgba(255,255,255,.10), transparent 65%, rgba(0,0,0,.025));
+  box-shadow: inset 0 1px 0 var(--control-highlight), 0 2px 5px var(--control-shadow);
+  transition: transform var(--motion-press) var(--motion-ease),
+    background-color var(--motion-press) ease, border-color var(--motion-press) ease,
+    box-shadow var(--motion-press) ease, opacity var(--motion-press) ease;
+}
+@media (hover: hover) {
+  :root[data-theme] :is(.primary-button, .secondary-button, .icon-button):hover:not(:disabled) {
+    transform: translateY(-1px);
+    background-image: linear-gradient(180deg, rgba(255,255,255,.15), transparent 75%);
+    box-shadow: inset 0 1px 0 var(--control-highlight), 0 3px 7px var(--control-shadow);
+  }
+}
+:root[data-theme] :is(.primary-button, .secondary-button, .icon-button):active:not(:disabled) {
+  transform: translateY(1px) scale(.98);
+  box-shadow: inset 0 1px 2px var(--control-shadow), 0 1px 2px var(--control-shadow);
+}
+:root[data-theme] :is(.primary-button, .secondary-button, .icon-button):disabled {
+  transform: none;
+  box-shadow: none;
+  background-image: none;
+}
+
+.segmented-control--motion { position: relative; isolation: isolate; }
+.segmented-control--motion > button { position: relative; z-index: 1; transition: color var(--motion-press) ease; }
+.segmented-control__indicator {
+  position: absolute; top: 0; left: 0; z-index: 0;
+  border-radius: 9px; background: var(--surface);
+  box-shadow: inset 0 1px 0 var(--control-highlight), 0 1px 5px var(--control-shadow);
+  pointer-events: none; visibility: hidden;
+}
+.segmented-control--motion[data-measured="true"] > .segmented-control__indicator { visibility: visible; }
+.segmented-control--motion[data-motion-ready="true"] > .segmented-control__indicator {
+  transition: transform var(--motion-switch) var(--motion-ease),
+    width var(--motion-switch) var(--motion-ease);
+}
+.segmented-control--motion[data-measured="true"] > button.is-active { background: transparent; box-shadow: none; }
+
+.feedback-dialog[data-motion="entering"] { animation: dialog-pop-in var(--motion-open) var(--motion-ease) both; }
+.detail-sheet[data-motion="entering"] { animation: dialog-sheet-in var(--motion-open) var(--motion-ease) both; }
+:is(.feedback-dialog, .detail-sheet)[data-motion="entering"]::backdrop {
+  animation: dialog-backdrop-in var(--motion-switch) ease both;
+}
+.feedback-dialog[data-motion="closing"] { animation: dialog-pop-out var(--motion-close) var(--motion-ease) both; }
+.detail-sheet[data-motion="closing"] { animation: dialog-sheet-out var(--motion-close) var(--motion-ease) both; }
+:is(.feedback-dialog, .detail-sheet)[data-motion="closing"]::backdrop {
+  animation: dialog-backdrop-out var(--motion-close) ease both;
+}
+@keyframes dialog-pop-in { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes dialog-pop-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(4px) scale(.98); } }
+@keyframes dialog-sheet-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+@keyframes dialog-sheet-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(12px); } }
+@keyframes dialog-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dialog-backdrop-out { from { opacity: 1; } to { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme] :is(.primary-button, .secondary-button, .icon-button),
+  .segmented-control--motion > button, .segmented-control__indicator { transition: none !important; }
+  :root[data-theme] :is(.primary-button, .secondary-button, .icon-button):is(:hover, :active) { transform: none; }
+  :is(.feedback-dialog, .detail-sheet)[data-motion],
+  :is(.feedback-dialog, .detail-sheet)[data-motion]::backdrop { animation: none !important; }
+}

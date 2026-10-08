@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CopyButton } from "./CopyButton";
 import type { AiJob, AiJobPrompt, ApiClient } from "../lib/contracts";
 import { makeIdempotencyKey } from "../lib/hash";
 
@@ -103,11 +104,6 @@ function AiJobPanelContent({ api, kind, subjectId = null, requestedCount = null,
     return () => { window.clearInterval(timer); window.removeEventListener("focus", focus); };
   }, [api, job]);
 
-  async function copy() {
-    try { await navigator.clipboard.writeText(CHATGPT_COMMAND); if (active.current) setMessage("已复制，请发给已连接 Supabase 的 ChatGPT。完成后此页会自动更新。"); }
-    catch { if (active.current) setMessage("无法自动复制，请选中上方指令后复制。"); }
-  }
-
   async function cancel() {
     if (!job || operation.current) return;
     operation.current = true; setBusy(true);
@@ -125,7 +121,7 @@ function AiJobPanelContent({ api, kind, subjectId = null, requestedCount = null,
     {canPrepare ? <><p>准备好后，发一句指令给 ChatGPT 即可处理。</p><button className="primary-button" disabled={busy} onClick={() => void prepare()}>{busy ? "正在读取…" : "准备 AI 处理"}</button></> : <>
       <p>{job.status === "consumed" ? "处理完成，内容已保存。" : "把下面一句话发给已连接 Supabase 的 ChatGPT，它会生成并保存结果，此页会自动更新。"}</p>
       {job.status === "consumed" && kind === "candidate_generate" && <button className="primary-button" disabled={busy} onClick={() => void prepare()}>再生成一批</button>}
-      {job.status !== "consumed" && <><label className="answer-field"><span>发给 ChatGPT 的指令</span><textarea readOnly rows={2} value={CHATGPT_COMMAND} /></label><div className="button-row"><button className="primary-button" onClick={() => void copy()}>复制给 ChatGPT</button><button className="secondary-button" disabled={busy} onClick={() => void check()}>检查进度</button><button className="quiet-button" disabled={busy} onClick={() => void cancel()}>取消处理</button></div></>}
+      {job.status !== "consumed" && <><label className="answer-field"><span>发给 ChatGPT 的指令</span><textarea readOnly rows={2} value={CHATGPT_COMMAND} /></label><div className="button-row"><CopyButton text={CHATGPT_COMMAND} label="复制给 ChatGPT" onCopied={() => setMessage("已复制，请发给已连接 Supabase 的 ChatGPT。完成后此页会自动更新。")} onError={() => setMessage("无法自动复制，请选中上方指令后复制。")}/><button className="secondary-button" disabled={busy} onClick={() => void check()}>检查进度</button><button className="quiet-button" disabled={busy} onClick={() => void cancel()}>取消处理</button></div></>}
     </>}
     {message && <p role="status" className="status-message">{message}</p>}
   </section>;

@@ -1,5 +1,5 @@
 import { TypographyText } from "./TypographyText";
-import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { GradeStatus } from "../lib/contracts";
 import { spellingPresentation, type FeedbackTextPart } from "../lib/feedbackText";
@@ -83,7 +83,7 @@ export function FeedbackCarousel({ grades, active, onOpen }: { grades: GradeStat
         </Fragment>;
       })}
     </div>
-    {items.length > 1 && <div className="carousel-controls"><div className="carousel-status"><span>{index % items.length + 1} / {items.length}</span><button className="carousel-play" aria-label={playing ? "暂停自动轮播" : "播放自动轮播"} aria-pressed={playing} aria-controls={id} onClick={() => { if (active && document.visibilityState !== "hidden" && !document.querySelector("dialog[open]")) setPlaying(value => !value); }}>{playing ? <Pause size={13}/> : <Play size={13}/>}<span>{playing ? "暂停" : "播放"}</span></button></div><div className="carousel-arrows"><button className="icon-button" aria-label="上一条反馈" aria-controls={id} onClick={() => choose(index - 1)}><ChevronLeft size={21}/></button><button className="icon-button" aria-label="下一条反馈" aria-controls={id} onClick={() => choose(index + 1)}><ChevronRight size={21}/></button></div></div>}
+    {items.length > 1 && <div className="carousel-controls"><div className="carousel-status"><span>{index % items.length + 1} / {items.length}</span><button className="carousel-play" role="switch" aria-label="自动轮播" aria-checked={playing} aria-controls={id} onClick={() => { if (active && document.visibilityState !== "hidden" && !document.querySelector("dialog[open]")) setPlaying(value => !value); }}><span>自动轮播</span><span className="control-switch" aria-hidden="true"><span className="control-switch__knob"/></span></button></div><div className="carousel-arrows"><button className="icon-button" aria-label="上一条反馈" aria-controls={id} onClick={() => choose(index - 1)}><ChevronLeft size={21}/></button><button className="icon-button" aria-label="下一条反馈" aria-controls={id} onClick={() => choose(index + 1)}><ChevronRight size={21}/></button></div></div>}
     <div className="carousel-bottom"><button className="text-button" onClick={() => { pause(); onOpen(current.position); }}>查看完整反馈 ↗</button></div>
     <span className="sr-only" role="status" aria-live="polite">{announcement}</span>
   </section>;

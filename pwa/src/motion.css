@@ -14,8 +14,8 @@
 }
 
 :root[data-theme] :is(.primary-button, .secondary-button, .icon-button) {
-  background-image: linear-gradient(180deg, rgba(255,255,255,.10), transparent 65%, rgba(0,0,0,.025));
-  box-shadow: inset 0 1px 0 var(--control-highlight), 0 2px 5px var(--control-shadow);
+  background-image: none;
+  box-shadow: 0 2px 4px var(--control-shadow);
   transition: transform var(--motion-press) var(--motion-ease),
     background-color var(--motion-press) ease, border-color var(--motion-press) ease,
     box-shadow var(--motion-press) ease, opacity var(--motion-press) ease;
@@ -23,8 +23,7 @@
 @media (hover: hover) {
   :root[data-theme] :is(.primary-button, .secondary-button, .icon-button):hover:not(:disabled) {
     transform: translateY(-1px);
-    background-image: linear-gradient(180deg, rgba(255,255,255,.15), transparent 75%);
-    box-shadow: inset 0 1px 0 var(--control-highlight), 0 3px 7px var(--control-shadow);
+    box-shadow: 0 3px 6px var(--control-shadow);
   }
 }
 :root[data-theme] :is(.primary-button, .secondary-button, .icon-button):active:not(:disabled) {
@@ -40,17 +39,79 @@
 .segmented-control--motion { position: relative; isolation: isolate; }
 .segmented-control--motion > button { position: relative; z-index: 1; transition: color var(--motion-press) ease; }
 .segmented-control__indicator {
-  position: absolute; top: 0; left: 0; z-index: 0;
+  position: absolute; z-index: 0;
   border-radius: 9px; background: var(--surface);
   box-shadow: inset 0 1px 0 var(--control-highlight), 0 1px 5px var(--control-shadow);
   pointer-events: none; visibility: hidden;
 }
 .segmented-control--motion[data-measured="true"] > .segmented-control__indicator { visibility: visible; }
 .segmented-control--motion[data-motion-ready="true"] > .segmented-control__indicator {
-  transition: transform var(--motion-switch) var(--motion-ease),
-    width var(--motion-switch) var(--motion-ease);
+  transition: left 220ms var(--motion-ease) var(--edge-lag, 12ms), right 220ms var(--motion-ease);
+}
+.segmented-control--motion[data-motion-ready="true"][data-direction="left"] > .segmented-control__indicator {
+  transition: left 220ms var(--motion-ease), right 220ms var(--motion-ease) var(--edge-lag, 12ms);
 }
 .segmented-control--motion[data-measured="true"] > button.is-active { background: transparent; box-shadow: none; }
+
+.action-button__layers { display: grid; min-width: 0; }
+.action-button__layer {
+  grid-area: 1 / 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+  opacity: 0; transform: translateY(4px) scale(.97); pointer-events: none;
+  transition: opacity 120ms ease, transform 200ms var(--motion-ease);
+}
+.action-button__layer > svg, .action-button__spinner { flex: none; }
+.action-button[data-action-state="idle"] [data-state="idle"],
+.action-button[data-action-state="pending"] [data-state="pending"],
+.action-button[data-action-state="success"] [data-state="success"] { opacity: 1; transform: none; }
+.action-button__spinner { display: inline-flex; }
+.action-button[aria-busy="true"], .action-button[data-action-state="success"]:disabled { opacity: .85; }
+.action-button[data-action-state="pending"] .action-button__spinner { animation: action-spin 900ms linear infinite; }
+@keyframes action-spin { to { transform: rotate(360deg); } }
+
+.feedback-carousel .carousel-play { gap: 8px; padding: 0 2px; color: var(--ink-soft); }
+.feedback-carousel .carousel-play:hover { background: transparent; }
+.control-switch {
+  position: relative; width: 40px; height: 24px; flex: none;
+  border: 1px solid var(--line-strong); border-radius: 999px;
+  background: var(--surface-muted); transition: background-color 180ms ease, border-color 180ms ease;
+}
+.control-switch__knob {
+  position: absolute; top: 2px; left: 2px; right: 18px; height: 18px;
+  border-radius: 999px; background: var(--surface); box-shadow: 0 1px 3px var(--control-shadow);
+  transition: left 180ms var(--motion-ease), right 230ms var(--motion-ease) 25ms;
+}
+[aria-checked="true"] .control-switch { background: var(--accent-blue); border-color: var(--accent-blue); }
+[aria-checked="true"] .control-switch__knob {
+  left: 18px; right: 2px; background: var(--accent-ink);
+  transition: left 230ms var(--motion-ease) 25ms, right 180ms var(--motion-ease);
+}
+.number-field { display: grid; gap: 8px; justify-items: start; }
+.number-field > label { font-size: 13px; font-weight: 650; color: var(--ink-soft); }
+.number-stepper {
+  display: inline-flex; align-items: center; border: 1px solid var(--line-strong);
+  border-radius: 12px; background: var(--surface-muted); overflow: hidden;
+}
+.number-stepper > button {
+  width: 44px; min-height: 44px; border: 0; padding: 0; display: grid; place-items: center;
+  background: transparent; color: var(--ink); transition: background-color 120ms ease;
+}
+.number-stepper > button:hover:not(:disabled) { background: var(--accent-blue-soft); }
+.number-stepper > button:disabled { opacity: .35; }
+.number-stepper > button:focus-visible { outline-offset: -4px; }
+.settings-card .number-stepper > input {
+  width: 56px; min-height: 44px; border: 0; border-radius: 0; padding: 0 4px;
+  background: transparent; text-align: center; font-variant-numeric: tabular-nums;
+  appearance: textfield; -moz-appearance: textfield;
+}
+.number-stepper > input::-webkit-inner-spin-button,
+.number-stepper > input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.number-stepper:focus-within { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+@media (forced-colors: active) {
+  .control-switch { border-color: ButtonText; }
+  [aria-checked="true"] .control-switch { background: Highlight; border-color: Highlight; }
+  .control-switch__knob, [aria-checked="true"] .control-switch__knob { background: ButtonText; }
+  .segmented-control__indicator { border: 1px solid Highlight; }
+}
 
 .feedback-dialog[data-motion="entering"] { animation: dialog-pop-in var(--motion-open) var(--motion-ease) both; }
 .detail-sheet[data-motion="entering"] { animation: dialog-sheet-in var(--motion-open) var(--motion-ease) both; }
@@ -72,6 +133,8 @@
 @media (prefers-reduced-motion: reduce) {
   :root[data-theme] :is(.primary-button, .secondary-button, .icon-button),
   .segmented-control--motion > button, .segmented-control__indicator { transition: none !important; }
+  .action-button__layer, .control-switch, .control-switch__knob { transition: none !important; transform: none; }
+  .action-button .action-button__spinner { animation: none !important; }
   :root[data-theme] :is(.primary-button, .secondary-button, .icon-button):is(:hover, :active) { transform: none; }
   :is(.feedback-dialog, .detail-sheet)[data-motion],
   :is(.feedback-dialog, .detail-sheet)[data-motion]::backdrop { animation: none !important; }

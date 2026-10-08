@@ -5,6 +5,8 @@ import { makeIdempotencyKey } from "../lib/hash";
 import { ContextBatchPanel } from "./ContextBatchPanel";
 import { PageHeading } from "./PageHeading";
 import { SegmentedControl } from "./SegmentedControl";
+import { ActionButton } from "./ActionButton";
+import { useActionFeedback } from "../lib/useActionFeedback";
 import { useAnimatedDialog } from "../lib/useAnimatedDialog";
 import { formatLearningDate, formatLearningTime } from "../lib/learningDate";
 
@@ -62,6 +64,7 @@ function MarkedContext({text,spans}: {text:string;spans:ContextSpan[]}) {
 export function ContextView({client}: {client:ApiClient}) {
   const [data,setData]=useState<ContextInbox|null>(null);const [rawText,setRawText]=useState("");const [spans,setSpans]=useState<ContextSpan[]>([]);const [selectionMessage,setSelectionMessage]=useState<string|null>(null);const textArea=useRef<HTMLTextAreaElement>(null);const [note,setNote]=useState("");const [sourceUrl,setSourceUrl]=useState("");const [busy,setBusy]=useState(false);const [message,setMessage]=useState<string|null>(null);const [tab,setTab]=useState<"pending"|"review"|"archived">("pending");
   const refresh=useCallback(async()=>{try{setData(await client.getContextInbox());}catch(caught){setMessage(caught instanceof Error?caught.message:"语料读取失败。");}},[client]);
+  const feedback=useActionFeedback();
   const pendingSave=useRef<{signature:string;key:string}|null>(null),saving=useRef(false);
   useEffect(()=>{void refresh();},[refresh]);
   function addSelection(){
@@ -74,13 +77,13 @@ export function ContextView({client}: {client:ApiClient}) {
     field.setSelectionRange(end,end);
   }
   async function submit(event:FormEvent){
-    event.preventDefault();if(saving.current)return;saving.current=true;setBusy(true);setMessage(null);
+    event.preventDefault();if(saving.current)return;feedback.reset();saving.current=true;setBusy(true);setMessage(null);
     const payload={rawText,userNote:note.trim(),sourceUrl:sourceUrl.trim()||null,selectedSpans:spans},signature=JSON.stringify(payload);
     if(pendingSave.current?.signature!==signature)pendingSave.current={signature,key:makeIdempotencyKey("context")};
     try{
       const response=await client.saveContext(payload,null,pendingSave.current.key) as {ok?:boolean;contextId?:string}|null;
       if(!response?.ok||typeof response.contextId!=="string")throw new Error("未收到保存确认，请重试。");
-      pendingSave.current=null;setRawText("");setSpans([]);setSelectionMessage(null);setNote("");setSourceUrl("");setTab("pending");await refresh();setMessage("语料已保存，可以交给 ChatGPT 整理。");
+      pendingSave.current=null;setRawText("");setSpans([]);setSelectionMessage(null);setNote("");setSourceUrl("");setTab("pending");await refresh();feedback.confirm();setMessage("语料已保存，可以交给 ChatGPT 整理。");
     }catch(caught){setMessage(caught instanceof Error?caught.message:"保存失败。");}finally{saving.current=false;setBusy(false);}
   }
   async function decide(id:string,action:"accept"|"edit"|"reject",edited:string|null){setBusy(true);try{await client.decideContextCandidate(id,action,edited,makeIdempotencyKey(`context-candidate:${id}`));await refresh();}catch(caught){setMessage(caught instanceof Error?caught.message:"处理失败。");}finally{setBusy(false);}}
@@ -88,7 +91,7 @@ export function ContextView({client}: {client:ApiClient}) {
   const contexts=data?.contexts??[];
   return <section className="page-stack view-enter">
     <PageHeading eyebrow="从真实语境开始" title="语料" description="留下阅读、工作与对话中，你真正想用的英语。" action={<div className="heading-icon heading-icon--red"><Inbox/></div>}/>
-    <form className="context-form card" onSubmit={submit}><div className="section-title"><div><span>添加一段原文</span><p>可以保存一个不懂的单词，也可以粘贴完整原文并标记不懂的部分；有上下文时能更准确地判断含义。</p></div></div><label>原文<textarea ref={textArea} value={rawText} onChange={event=>{setRawText(event.target.value);if(spans.length){setSpans([]);setSelectionMessage("原文已修改，旧标记已清除，请重新选中标记。");}}} required placeholder="输入遇到的英语单词、句子、对话或段落…" rows={5}/></label><div className="context-marking-actions"><button type="button" className="secondary-button" disabled={busy||!rawText.trim()} onClick={addSelection}>标记选中的不懂部分</button>{spans.length>0&&<button type="button" className="text-button" onClick={()=>{setSpans([]);setSelectionMessage(null);}}>清除全部标记</button>}</div>{selectionMessage&&<p className="context-selection-message" role="status">{selectionMessage}</p>}{spans.length>0&&<div className="context-marking-preview"><span>已标记 {spans.length} 处</span><p lang="en"><MarkedContext text={rawText} spans={spans}/></p><div className="span-list">{spans.map(span=><button type="button" key={`${span.start}:${span.end}`} aria-label={`移除标记 ${span.text}`} onClick={()=>setSpans(current=>current.filter(item=>item!==span))}>{span.text}<X size={14}/></button>)}</div></div>}<div className="form-grid"><label>来源链接（可选）<input type="url" value={sourceUrl} onChange={event=>setSourceUrl(event.target.value)} placeholder="https://"/></label><label>想表达什么（可选）<input value={note} onChange={event=>setNote(event.target.value)} placeholder="记录场景或想学会它的原因"/></label></div><div className="form-footer"><span>{rawText.length.toLocaleString()} 个字符</span><button className="primary-button" disabled={busy||!rawText.trim()}><Check size={17}/>保存语料</button></div></form>
+    <form className="context-form card" onSubmit={submit}><div className="section-title"><div><span>添加一段原文</span><p>可以保存一个不懂的单词，也可以粘贴完整原文并标记不懂的部分；有上下文时能更准确地判断含义。</p></div></div><label>原文<textarea ref={textArea} value={rawText} onChange={event=>{feedback.reset();setRawText(event.target.value);if(spans.length){setSpans([]);setSelectionMessage("原文已修改，旧标记已清除，请重新选中标记。");}}} required placeholder="输入遇到的英语单词、句子、对话或段落…" rows={5}/></label><div className="context-marking-actions"><button type="button" className="secondary-button" disabled={busy||!rawText.trim()} onClick={addSelection}>标记选中的不懂部分</button>{spans.length>0&&<button type="button" className="text-button" onClick={()=>{setSpans([]);setSelectionMessage(null);}}>清除全部标记</button>}</div>{selectionMessage&&<p className="context-selection-message" role="status">{selectionMessage}</p>}{spans.length>0&&<div className="context-marking-preview"><span>已标记 {spans.length} 处</span><p lang="en"><MarkedContext text={rawText} spans={spans}/></p><div className="span-list">{spans.map(span=><button type="button" key={`${span.start}:${span.end}`} aria-label={`移除标记 ${span.text}`} onClick={()=>setSpans(current=>current.filter(item=>item!==span))}>{span.text}<X size={14}/></button>)}</div></div>}<div className="form-grid"><label>来源链接（可选）<input type="url" value={sourceUrl} onChange={event=>{feedback.reset();setSourceUrl(event.target.value);}} placeholder="https://"/></label><label>想表达什么（可选）<input value={note} onChange={event=>{feedback.reset();setNote(event.target.value);}} placeholder="记录场景或想学会它的原因"/></label></div><div className="form-footer"><span>{rawText.length.toLocaleString()} 个字符</span><ActionButton type="submit" label="保存语料" icon={Check} pending={saving.current} success={feedback.success} disabled={busy||!rawText.trim()}/></div></form>
     {message&&<p role="status" className="job-message">{message}</p>}
     <div className="inbox-toolbar"><SegmentedControl label="语料状态">{([["pending","待整理"],["review","待确认"],["archived","已归档"]] as const).map(([value,label])=><button key={value} className={tab===value?"is-active":""} aria-pressed={tab===value} onClick={()=>setTab(value)}>{label}<span>{contexts.filter(context=>category(context)===value).length}</span></button>)}</SegmentedControl></div>
     {data&&<ContextBatchPanel api={client} contextIds={contexts.filter(context=>category(context)==="pending").map(context=>context.id)} onRefresh={refresh}/>}

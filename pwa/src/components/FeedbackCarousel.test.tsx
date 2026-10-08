@@ -13,13 +13,13 @@ it("uses distinct neighbors and never clones a third card for two items", () => 
   expect(screen.getAllByRole("button", { name: /选择下一条/ })).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", { name: /选择下一条/ }));
   expect(screen.getByRole("article").textContent).toContain("answer 2");
-  expect(screen.getByRole("button", { name: "播放自动轮播" })).toBeTruthy();
+  expect(screen.getByRole("switch", { name: "自动轮播" }).getAttribute("aria-checked")).toBe("false");
 });
 it("shows neutral zero and static one-item states", () => {
   const view = setup(0);
   expect(screen.getByText(/没有已记录的重点项/)).toBeTruthy();
   view.rerender(<FeedbackCarousel grades={[grade(1)]} active onOpen={vi.fn()}/>);
-  expect(screen.queryByRole("button", { name: /自动轮播/ })).toBeNull();
+  expect(screen.queryByRole("switch", { name: "自动轮播" })).toBeNull();
 });
 it("latches pause after reading and only explicit play restarts a fresh nine seconds", () => {
   vi.useFakeTimers(); setup();
@@ -29,7 +29,7 @@ it("latches pause after reading and only explicit play restarts a fresh nine sec
   fireEvent.pointerLeave(document.querySelector(".carousel-stage")!);
   act(() => vi.advanceTimersByTime(18000));
   expect(screen.getByRole("article").textContent).toContain("answer 2");
-  fireEvent.click(screen.getByRole("button", { name: "播放自动轮播" }));
+  fireEvent.click(screen.getByRole("switch", { name: "自动轮播" }));
   act(() => vi.advanceTimersByTime(8999));
   expect(screen.getByRole("article").textContent).toContain("answer 2");
   act(() => vi.advanceTimersByTime(1));
@@ -41,7 +41,7 @@ it("stays paused after leaving the page and returning", () => {
   view.rerender(<FeedbackCarousel grades={[grade(1), grade(2), grade(3)]} active onOpen={vi.fn()}/>);
   act(() => vi.advanceTimersByTime(18000));
   expect(screen.getByRole("article").textContent).toContain("answer 1");
-  expect(screen.getByRole("button", { name: "播放自动轮播" })).toBeTruthy();
+  expect(screen.getByRole("switch", { name: "自动轮播" }).getAttribute("aria-checked")).toBe("false");
 });
 it("keeps reasonable alternative answers separate from errors", () => {
   const view = setup(1);
@@ -66,7 +66,7 @@ it("pauses when keyboard focus enters the arrow controls", () => {
   fireEvent.focus(screen.getByRole("button", { name: "下一条反馈" }));
   act(() => vi.advanceTimersByTime(18000));
   expect(screen.getByRole("article").textContent).toContain("answer 1");
-  expect(screen.getByRole("button", { name: "播放自动轮播" })).toBeTruthy();
+  expect(screen.getByRole("switch", { name: "自动轮播" }).getAttribute("aria-checked")).toBe("false");
 });
 it("uses a supplied evidence snippet only when it occurs verbatim in the original answer", () => {
   const view = setup(1);

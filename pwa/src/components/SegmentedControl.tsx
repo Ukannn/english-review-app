@@ -15,9 +15,16 @@ export function SegmentedControl({ label, children }: { label: string; children:
       element.dataset.motionReady = "false";
       window.cancelAnimationFrame(frame.current ?? 0);
     }
-    pill.style.width = `${selected.offsetWidth}px`;
+    const nextCenter = selected.offsetLeft + selected.offsetWidth / 2;
+    const previousCenter = element.dataset.measured === "true" ? pill.offsetLeft + pill.offsetWidth / 2 : nextCenter;
+    element.dataset.direction = nextCenter >= previousCenter ? "right" : "left";
+    // Cap stretching on long jumps and rapid reversals instead of stretching across every skipped tab.
+    pill.style.setProperty("--edge-lag", `${Math.min(18, 1000 / Math.max(1, Math.abs(nextCenter - previousCenter)))}ms`);
+    // The leading edge moves first; the trailing edge catches up without distorting text.
+    pill.style.left = `${selected.offsetLeft}px`;
+    pill.style.right = `${element.clientWidth - selected.offsetLeft - selected.offsetWidth}px`;
     pill.style.height = `${selected.offsetHeight}px`;
-    pill.style.transform = `translate(${selected.offsetLeft}px, ${selected.offsetTop}px)`;
+    pill.style.top = `${selected.offsetTop}px`;
     element.dataset.measured = "true";
     if (!animate) {
       // Commit initial/resize geometry before enabling the next selection tween.

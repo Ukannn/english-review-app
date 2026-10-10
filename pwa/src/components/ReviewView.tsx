@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ApiClient, CheckpointAnswer, ReviewBootstrap } from "../lib/contracts";
 import { makeIdempotencyKey, sha256Jsonb } from "../lib/hash";
 import { clearRecovery, loadRecovery, recordActivity, saveRecovery, syncPendingActivities } from "../lib/recovery";
+import { useReviewPosition } from "../lib/useReviewPosition";
+import { QuestionNavigator } from "./QuestionNavigator";
 
 interface Props { api: ApiClient; bootstrap: ReviewBootstrap; onClose(): void; onSubmitted(submissionId: string): void; headerAction?: ReactNode }
 function cloudAnswers(bootstrap: ReviewBootstrap) {
@@ -14,7 +16,8 @@ function cloudAnswers(bootstrap: ReviewBootstrap) {
 export function ReviewView({api,bootstrap,onClose,onSubmitted,headerAction}:Props) {
   const session=bootstrap.session!;
   const questions=useMemo(()=>[...bootstrap.questions].sort((a,b)=>Number(Boolean(a.isNew))-Number(Boolean(b.isNew))||a.position-b.position),[bootstrap.questions]);
-  const [index,setIndex]=useState(0);
+  const {selectedQuestion,selectQuestion}=useReviewPosition(session.id,questions);
+  const index=Math.max(0,questions.findIndex(q=>q.id===selectedQuestion?.id));
   const [answers,setAnswers]=useState(()=>cloudAnswers(bootstrap));
   const [checkpointed,setCheckpointed]=useState(()=>new Set(bootstrap.questions.filter(q=>q.draft).map(q=>q.position)));
   const [sessionRevision,setSessionRevision]=useState(session.revision);
@@ -23,15 +26,17 @@ export function ReviewView({api,bootstrap,onClose,onSubmitted,headerAction}:Prop
   const [restoring,setRestoring]=useState(true);
   const [conflicts,setConflicts]=useState<CheckpointAnswer[]>([]);
   const [syncing,setSyncing]=useState(false);const [submitting,setSubmitting]=useState(false);const [revealing,setRevealing]=useState(false);
-  const [error,setError]=useState<string|null>(null);const [input,setInput]=useState("");
+  const [error,setError]=useState<string|null>(null);const [inputs,setInputs]=useState<Record<number,string>>({});
+  const inputsRef=useRef(inputs);inputsRef.current=inputs;
+  const writeChain=useRef(Promise.resolve());
   const pageStartedAt=useRef(new Date().toISOString());const clientInstanceId=useRef(crypto.randomUUID());const questionStartedAt=useRef(new Date().toISOString());const syncingRef=useRef(false);
   const pendingRequest=useRef<{signature:string;key:string}|null>(null);const submitKey=useRef(makeIdempotencyKey(`submit:${session.id}`));
   const lastBootstrap=useRef(bootstrap);
   const visibleIndex=Math.min(index,questions.length-1);
   const question=questions[visibleIndex];
-  const inputQuestionId=useRef(question.id);
+  const input=answers.get(question.position)?.answer??inputs[question.position]??"";
   const isRevealed=answers.has(question.position);
-  const studyQuestion=questions.find(q=>q.isNew&&q.learningCard&&!learned.has(q.position)&&!answers.has(q.position));
+  const studyQuestion=question.isNew&&question.learningCard&&!learned.has(question.position)&&!isRevealed?question:undefined;
   const answeredCount=answers.size;const allRevealed=answeredCount===questions.length;
 
   useEffect(()=>{
@@ -47,6 +52,7 @@ export function ReviewView({api,bootstrap,onClose,onSubmitted,headerAction}:Prop
         if(!cloud)next.set(local.position,local);
       }
       setAnswers(next);setConflicts(collisions);
+      setInputs(recovery.reviewWork?.inputs??{});
       // Only the current bootstrap proves which answers reached the cloud.
       setCheckpointed(new Set(bootstrap.questions.filter(q=>q.draft).map(q=>q.position)));
       setSessionRevision(session.revision);
@@ -75,16 +81,12 @@ export function ReviewView({api,bootstrap,onClose,onSubmitted,headerAction}:Prop
     setLearned(current=>new Set([...current,...questions.filter(q=>q.draft?.learningCardViewed||q.learningCardViewed).map(q=>q.position)]));
     setError(null);
   },[bootstrap,session.revision,sessionRevision,questions,answers,conflicts,restoring,syncing,submitting,revealing]);
-  useEffect(()=>{setIndex(visibleIndex);},[visibleIndex]);
-  useEffect(()=>{
-    if(inputQuestionId.current!==question.id||answers.has(question.position))setInput(answers.get(question.position)?.answer??"");
-    inputQuestionId.current=question.id;
-  },[answers,question.id,question.position]);
   useEffect(()=>{questionStartedAt.current=new Date().toISOString();},[question.position,Boolean(studyQuestion)]);
   useEffect(()=>{const sync=()=>{void syncPendingActivities(api).catch(()=>undefined);};window.addEventListener("online",sync);sync();return()=>window.removeEventListener("online",sync);},[api]);
   const orderedAnswers=useMemo(()=>Array.from(answers.values()).sort((a,b)=>a.position-b.position),[answers]);
   async function persist(nextAnswers=answers,nextCheckpointed=checkpointed,nextRevision=sessionRevision,nextHints=hintCounts,nextLearned=learned){
-    await saveRecovery({sessionId:session.id,sessionRevision:nextRevision,answers:Array.from(nextAnswers.values()),checkpointedPositions:Array.from(nextCheckpointed),updatedAt:new Date().toISOString(),hintCounts:nextHints,learnedPositions:Array.from(nextLearned)});
+    const snapshot={sessionId:session.id,sessionRevision:nextRevision,answers:Array.from(nextAnswers.values()),checkpointedPositions:Array.from(nextCheckpointed),updatedAt:new Date().toISOString(),hintCounts:nextHints,learnedPositions:Array.from(nextLearned),reviewWork:{inputs:inputsRef.current}};
+    const save=writeChain.current.catch(()=>undefined).then(()=>saveRecovery(snapshot));writeChain.current=save;await save;
   }
   async function checkpoint(batch:CheckpointAnswer[],snapshot=answers){
     if(!batch.length||syncingRef.current||conflicts.length)return;
@@ -123,7 +125,7 @@ export function ReviewView({api,bootstrap,onClose,onSubmitted,headerAction}:Prop
       await syncPendingActivities(api);
       const frozenRows=await Promise.all(orderedAnswers.map(async answer=>{const target=questions.find(q=>q.position===answer.position)!;return{position:answer.position,questionId:target.id,answer:answer.answer,revision:answer.revision,answerHash:await sha256Jsonb({questionId:target.id,answer:answer.answer,revision:answer.revision})};}));
       const result=await api.submitSession({sessionId:session.id,answers:orderedAnswers.filter(answer=>!checkpointed.has(answer.position)),sessionRevision,idempotencyKey:submitKey.current,frozenHash:await sha256Jsonb(frozenRows)});
-      await clearRecovery(session.id);onSubmitted(result.submissionId);
+      await writeChain.current;await clearRecovery(session.id);selectQuestion();onSubmitted(result.submissionId);
     }catch(caught){setError((caught instanceof Error?caught.message:"提交未完成")+"。请重试；若其他设备已修改，请返回首页重新打开。");}
     finally{setSubmitting(false);}
   }
@@ -133,6 +135,7 @@ export function ReviewView({api,bootstrap,onClose,onSubmitted,headerAction}:Prop
   return <section className="page-stack review-workspace">
     <PageHeading today eyebrow={`${bootstrap.learningDate} · 今天`} title="今天，也前进一步" description="从复习到新表达，开始今天的英语学习。" action={<div className="today-actions">{headerAction}<ProgressOrb value={answeredCount} total={questions.length}/></div>}/>
     <div className="session-summary"><span><i className="summary-dot summary-dot--blue"/>复习 {questions.filter(q=>!q.isNew).length}</span><span><i className="summary-dot summary-dot--red"/>新表达 {questions.filter(q=>q.isNew).length}</span><span className="summary-sync"><Cloud size={15}/>{syncing ? "正在保存…" : `已同步 ${checkpointed.size}/${questions.length}`}</span></div>
+    <div className="review-question-layout">
     {conflicts.length ? <section className="card conflict-card"><h2>发现两个设备的答案不同</h2><p>请先保留下面的本机答案，再选择继续使用云端记录。</p>{conflicts.map(answer=><article key={answer.position}><h3>第 {answer.position} 题</h3><p>本机：{answer.answer}</p><p>云端：{answers.get(answer.position)?.answer??"该位置已调整"}</p><textarea aria-label={`第 ${answer.position} 题本机答案`} value={answer.answer} readOnly/></article>)}<button className="primary-button" onClick={()=>void useCloud()}>使用云端记录继续</button></section>
     : studyQuestion ? <article className="question-card card"><header className="question-meta"><span className="type-chip">先熟悉这个表达</span><span className="question-number">新表达</span></header><section className="question-body learning-card"><h2 className="expression-display">{studyQuestion.learningCard?.expression??studyQuestion.expectedAnswers[0]}</h2><p>{studyQuestion.learningCard!.meaningZh}</p><blockquote>{studyQuestion.learningCard!.example}</blockquote><p>{studyQuestion.learningCard!.usageNote}</p><button className="primary-button reveal-button" onClick={()=>void study()}>我已看过，隐藏学习卡</button><p className="muted">接下来会隐藏内容，试着自己回忆。</p></section></article>
     : <article className="question-card card">
@@ -141,11 +144,13 @@ export function ReviewView({api,bootstrap,onClose,onSubmitted,headerAction}:Prop
         <h2 className="question-prompt"><TypographyText text={question.promptZh||question.promptEn}/></h2>
         {question.promptZh&&question.promptEn&&<p className="question-english" lang="en">{question.promptEn}</p>}
         {!isRevealed&&(question.hints?.length??0)>0&&<div className="hint-box">{question.hints!.slice(0,hintCounts[question.position]??0).map((text,i)=><p key={i}>{text}</p>)}{(hintCounts[question.position]??0)<question.hints!.length&&<button className="text-button" onClick={()=>void hint()}>需要提示</button>}</div>}
-        <label className="answer-field"><span>你的答案</span><textarea value={input} onChange={event=>setInput(event.target.value)} disabled={isRevealed||revealing} placeholder={["short_expression","transfer_expression"].includes(question.questionType??"")?"写一两句回应…":"在这里写下完整搭配…"}/></label>
+        <label className="answer-field"><span>你的答案</span><textarea value={input} onChange={event=>{const next={...inputs,[question.position]:event.target.value};inputsRef.current=next;setInputs(next);void persist().catch(()=>setError("草稿保存失败，请保持页面打开并重试。"));}} disabled={isRevealed||revealing||submitting} placeholder={["short_expression","transfer_expression"].includes(question.questionType??"")?"写一两句回应…":"在这里写下完整搭配…"}/></label>
         {!isRevealed ? <button className="primary-button reveal-button" onClick={()=>void reveal()} disabled={!input.trim()||revealing||syncing}>{revealing?"保存中…":"查看答案"}</button> : <div className="answer-reveal" data-testid="answer-reveal"><div className="answer-reveal__header">参考表达</div><strong className="expression-display" lang="en">{question.expectedAnswers[0]}</strong>{question.acceptedVariants.length>0&&<p>也接受：{question.acceptedVariants.join(" · ")}</p>}</div>}
       </section>
-      <footer className="question-navigation"><button className="secondary-button" onClick={()=>setIndex(current=>Math.max(0,current-1))} disabled={index===0}><ChevronLeft size={17}/>上一题</button>{index<questions.length-1 ? <button className="primary-button" onClick={()=>setIndex(current=>current+1)} disabled={!isRevealed||syncing}>下一题<ChevronRight size={17}/></button> : <button className="primary-button" onClick={()=>void submit()} disabled={!allRevealed||submitting||syncing}>{submitting?"正在提交…":"提交本次学习"}</button>}</footer>
+      <footer className="question-navigation"><button className="secondary-button" onClick={()=>selectQuestion(questions[index-1])} disabled={index===0||revealing||submitting||syncing}><ChevronLeft size={17}/>上一题</button>{index<questions.length-1 ? <button className="primary-button" onClick={()=>selectQuestion(questions[index+1])} disabled={!isRevealed||syncing||revealing||submitting}>下一题<ChevronRight size={17}/></button> : <button className="primary-button" onClick={()=>void submit()} disabled={!allRevealed||submitting||syncing}>{submitting?"正在提交…":"提交本次学习"}</button>}</footer>
     </article>}
+    <QuestionNavigator questions={questions} currentId={question.id} answers={answers} inputs={inputs} disabled={revealing||submitting||syncing||conflicts.length>0} onSelect={selectQuestion}/>
+    </div>
     {error&&<div className="review-error"><p className="inline-error" role="alert">{error}</p>{answers.size>checkpointed.size&&<button className="secondary-button" onClick={()=>void checkpoint(orderedAnswers.filter(answer=>!checkpointed.has(answer.position)),answers)} disabled={syncing||conflicts.length>0}>重试同步</button>}</div>}
     <button className="text-button review-library-link" onClick={onClose}>查看学习资料库</button>
   </section>;

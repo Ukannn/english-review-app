@@ -10,6 +10,7 @@ export interface RecoveryState {
   hintCounts?: Record<number, number>;
   learnedPositions?: number[];
   lessonWork?: { inputs: Record<number,string>; seconds: Record<string,number>; skipped?: number[] };
+  reviewWork?: { inputs: Record<number, string> };
 }
 const key = (sessionId: string) => `english-review:v1:${sessionId}`;
 export async function loadRecovery(sessionId: string): Promise<RecoveryState | null> {
@@ -22,6 +23,7 @@ export async function clearAllRecovery(): Promise<void> {
   const all = await keys();
   await delMany(all.filter(item => typeof item === "string" && item.startsWith("english-review:")));
   for (const storageKey of Object.keys(localStorage)) if (storageKey.startsWith("english-review:")) localStorage.removeItem(storageKey);
+  for (const storageKey of Object.keys(sessionStorage)) if (storageKey.startsWith("english-review-position:")) sessionStorage.removeItem(storageKey);
 }
 interface PendingActivity { sessionId: string; position: number; action: "hint" | "study" | "reveal"; idempotencyKey: string }
 export async function recordActivity(client: ApiClient, sessionId: string, position: number, action: PendingActivity["action"], ordinal = 1): Promise<void> {

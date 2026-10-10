@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.18.11] - 2026-10-10
+
+- Add a themed question navigator to review sets and lessons, with a desktop side panel and collapsible mobile card. Keep drafts when jumping, and show completed answers read-only.
+- Restore the selected question and draft after refresh within the same session; preserve reading prerequisites, checkpoint behavior and submission rules.
+
 ## [0.18.10] - 2026-10-08
 
 - Stagger action-label exit and entry so saving/copying text stays readable throughout the transition, retaining stable widths and immediate reduced-motion updates.

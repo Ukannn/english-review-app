@@ -13,8 +13,34 @@ async function clickWhenReady(name:string) {
   fireEvent.click(button);
 }
 afterEach(cleanup);
-beforeEach(()=>{vi.clearAllMocks();vi.mocked(loadRecovery).mockResolvedValue(null);});
+beforeEach(()=>{sessionStorage.clear();vi.clearAllMocks();vi.mocked(loadRecovery).mockResolvedValue(null);});
 describe("lesson phases and evidence",()=>{
+ it("jumps among review questions while retaining drafts and reading gates",async()=>{
+  const boot=b();boot.questions=[q(1),q(2),q(3,"expression"),q(4,"expression")];const {api}=setup(boot);await screen.findByText("任务 1");
+  fireEvent.change(screen.getByRole("textbox"),{target:{value:"draft one"}});
+  fireEvent.click(screen.getByRole("button",{name:"第 2 题 · 未答"}));await screen.findByText("任务 2");
+  fireEvent.change(screen.getByRole("textbox"),{target:{value:"draft two"}});
+  fireEvent.click(screen.getByRole("button",{name:"第 1 题 · 草稿"}));expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("draft one");
+  expect((screen.getByRole("button",{name:"第 3 题 · 阅读后解锁"}) as HTMLButtonElement).disabled).toBe(true);
+  expect(api.checkpointAnswers).not.toHaveBeenCalled();expect(api.recordLessonActivity).not.toHaveBeenCalled();
+ });
+ it("restores a selected draft and a locked reference view after remount",async()=>{
+  const boot=b();boot.questions=[q(1),q(2),q(3,"expression")];setup(boot);await screen.findByText("任务 1");
+  fireEvent.click(screen.getByRole("button",{name:"第 2 题 · 未答"}));cleanup();
+  vi.mocked(loadRecovery).mockResolvedValue({sessionId:"s",sessionRevision:1,answers:[],checkpointedPositions:[],updatedAt:"now",lessonWork:{inputs:{2:"second draft"},seconds:{2:12}}});
+  const view=setup(boot);await screen.findByDisplayValue("second draft");expect(screen.getByText("任务 2")).toBeTruthy();
+  await clickWhenReady("保存并看参考");await screen.findByText("参考表达");await waitFor(()=>expect(view.api.checkpointAnswers).toHaveBeenCalled());
+  const recovered=vi.mocked(saveRecovery).mock.calls.at(-1)![0];cleanup();vi.mocked(loadRecovery).mockResolvedValue(recovered);setup(boot);
+  await screen.findByText("参考表达");expect((screen.getByRole("textbox") as HTMLTextAreaElement).disabled).toBe(true);
+  expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("second draft");
+  await clickWhenReady("继续");await screen.findByText("任务 1");
+ });
+ it("permits jumping between expressions only after reading is complete",async()=>{
+  const boot=b();boot.questions[0].draft={answer:"saved",revision:1,answerHash:"hash",status:"checkpointed"};boot.lesson!.readingStarted=true;boot.lesson!.readingCompleted=true;
+  setup(boot);await screen.findByText("任务 2");fireEvent.click(screen.getByRole("button",{name:"第 3 题 · 未答"}));await screen.findByText("任务 3");
+  fireEvent.click(screen.getByRole("button",{name:"第 1 题 · 已作答"}));await screen.findByText("参考表达");await clickWhenReady("继续");await screen.findByText("任务 2");
+ });
+
  it("keeps private rubric and material hidden until review is saved",async()=>{const {api}=setup();await screen.findByText("任务 1");expect(screen.queryByText("private answer leak")).toBeNull();expect(screen.queryByText("Story")).toBeNull();fireEvent.click(screen.getByText("跳过"));await screen.findByText("开始阅读");await clickWhenReady("开始阅读");await screen.findByText("Story");expect(api.checkpointAnswers).toHaveBeenCalled();expect(api.recordLessonActivity).toHaveBeenCalledWith("s","reading_start",0,null,"lesson:s:reading_start:0");});
  it("freezes dont_know separately from skipped and submits a partial lesson",async()=>{const {api}=setup();await screen.findByText("任务 1");fireEvent.click(screen.getByText("暂时不会"));await screen.findByText("参考表达");await clickWhenReady("结束本次并批改已答内容");await waitFor(()=>expect(api.submitSession).toHaveBeenCalled());const batch=vi.mocked(api.checkpointAnswers).mock.calls.flatMap(call=>call[0].answers);expect(batch.map(a=>a.attemptState)).toEqual(["dont_know","skipped","skipped"]);expect(batch.map(a=>a.answer)).toEqual(["","",""]);});
  it("persists unrevealed text and restores it",async()=>{vi.mocked(loadRecovery).mockResolvedValue({sessionId:"s",sessionRevision:1,answers:[],checkpointedPositions:[],updatedAt:"now",lessonWork:{inputs:{1:"my draft"},seconds:{1:12}}});setup();await screen.findByDisplayValue("my draft");fireEvent.change(screen.getByRole("textbox"),{target:{value:"changed draft"}});await waitFor(()=>expect(saveRecovery).toHaveBeenCalledWith(expect.objectContaining({lessonWork:expect.objectContaining({inputs:{1:"changed draft"}})})));});

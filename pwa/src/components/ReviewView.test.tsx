@@ -7,7 +7,7 @@ import { ReviewView } from "./ReviewView";
 import type { ApiClient, CheckpointAnswer, ReviewBootstrap } from "../lib/contracts";
 vi.mock("../lib/recovery",()=>({loadRecovery:vi.fn(async()=>null),saveRecovery:vi.fn(async()=>undefined),clearRecovery:vi.fn(async()=>undefined),recordActivity:vi.fn(async()=>undefined),syncPendingActivities:vi.fn(async()=>undefined)}));
 afterEach(cleanup);
-beforeEach(()=>{vi.restoreAllMocks();vi.mocked(loadRecovery).mockResolvedValue(null);});
+beforeEach(()=>{sessionStorage.clear();vi.restoreAllMocks();vi.mocked(loadRecovery).mockResolvedValue(null);});
 async function setup(count=5,modify?:(data:ReviewBootstrap)=>void){
  const data=structuredClone(await demoApi.getReviewBootstrap());
  while(data.questions.length<count){const q={...data.questions[0],id:crypto.randomUUID(),position:data.questions.length+1};data.questions.push(q);}
@@ -21,6 +21,43 @@ async function answer(user:ReturnType<typeof userEvent.setup>,text="make steady 
  await user.type(screen.getByLabelText("你的答案"),text);await user.click(screen.getByRole("button",{name:"查看答案"}));await screen.findByTestId("answer-reveal");
 }
 describe("ReviewView",()=>{
+ it("jumps without revealing, preserves each draft, and blocks incomplete submission",async()=>{
+  const {user,api}=await setup(5);
+  await user.type(screen.getByLabelText("你的答案"),"first draft");
+  await user.click(screen.getByRole("button",{name:"第 3 题 · 未答"}));
+  expect((screen.getByLabelText("你的答案") as HTMLTextAreaElement).value).toBe("");
+  await user.type(screen.getByLabelText("你的答案"),"third draft");
+  await user.click(screen.getByRole("button",{name:"第 1 题 · 草稿"}));
+  expect((screen.getByLabelText("你的答案") as HTMLTextAreaElement).value).toBe("first draft");
+  expect(screen.getByRole("button",{name:"第 1 题 · 草稿"}).getAttribute("aria-current")).toBe("step");
+  await user.click(screen.getByRole("button",{name:"查看答案"}));await screen.findByTestId("answer-reveal");
+  await user.click(screen.getByRole("button",{name:"第 5 题 · 未答"}));
+  expect((screen.getByRole("button",{name:"提交本次学习"}) as HTMLButtonElement).disabled).toBe(true);
+  await user.click(screen.getByRole("button",{name:"第 1 题 · 已作答"}));
+  expect((screen.getByLabelText("你的答案") as HTMLTextAreaElement).disabled).toBe(true);
+  expect(api.checkpointAnswers).not.toHaveBeenCalled();expect(api.submitSession).not.toHaveBeenCalled();
+ });
+ it("restores the selected question and an unrevealed draft after remount",async()=>{
+  const {user,data}=await setup(5);
+  await user.click(screen.getByRole("button",{name:"第 3 题 · 未答"}));
+  await user.type(screen.getByLabelText("你的答案"),"return here");
+  cleanup();vi.mocked(loadRecovery).mockResolvedValue({sessionId:data.session!.id,sessionRevision:1,answers:[],checkpointedPositions:[],updatedAt:"now",reviewWork:{inputs:{3:"return here"}}});
+  await setup(5);
+  expect(screen.getByText("第 3 / 5 题")).toBeTruthy();
+  expect((screen.getByLabelText("你的答案") as HTMLTextAreaElement).value).toBe("return here");
+ });
+ it("falls back when a saved identity is removed and isolates other sessions",async()=>{
+  const {user,data}=await setup(2);await user.click(screen.getByRole("button",{name:"第 2 题 · 未答"}));cleanup();
+  await setup(2,next=>{next.questions[1].id="replacement";});expect(screen.getByText("第 1 / 2 题")).toBeTruthy();cleanup();
+  await setup(2,next=>{next.session!.id=data.session!.id+"-other";});expect(screen.getByText("第 1 / 2 题")).toBeTruthy();
+ });
+ it("shows a learning card only for the selected new expression",async()=>{
+  const {user}=await setup(2,next=>{next.questions[1]={...next.questions[1],isNew:true,learningCard:{meaningZh:"新表达",example:"New example"}};});
+  expect(screen.getByLabelText("你的答案")).toBeTruthy();
+  await user.click(screen.getByRole("button",{name:"第 2 题 · 未答"}));expect(screen.getByText("New example")).toBeTruthy();
+  await user.click(screen.getByRole("button",{name:"第 1 题 · 未答"}));expect(screen.getByLabelText("你的答案")).toBeTruthy();
+ });
+
  it("keeps an unsynced answer and submits the new revision after reducing today's count",async()=>{
   const{api,data,user,rerender}=await setup(2);
   await answer(user,"keep this answer");await user.click(screen.getByRole("button",{name:"下一题"}));
